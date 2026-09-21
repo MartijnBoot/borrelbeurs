@@ -2,7 +2,7 @@
 
 Route: [rebuild-route.md](rebuild-route.md) · Loop: [ADR 0009](../adr/0009-autonomous-swarm-delivery.md)
 Swarm state: CONTINUE
-Updated: 2026-09-21 by swarm conversion (hand-written; the orchestrator owns it from here)
+Updated: 2026-09-21 by orchestrator run 1
 
 This file is the swarm's only memory. It is reconciled against git at the start of every run,
 and written after **every** state transition — a run can die at any moment, and a transition
@@ -10,15 +10,25 @@ that is not written down did not happen.
 
 ## Now
 
-Phase 0. In flight: nothing. Next ready: **T2**. Blocked on: nothing.
+Phase 0. In flight: **T2 building**. Blocked on: nothing.
 
-First run must, before dispatching T2:
+T1's outstanding Gate C is now closed — `fresh-eyes-reviewer` returned **PASS** with zero
+Correctness findings, so no remediation task is needed and T2 was released.
 
-1. Dispatch `fresh-eyes-reviewer` on `aaf1e3b..d6c10a9` — T1 merged with its review still
-   outstanding under the old loop, and Gate C has never been satisfied for it. If it reports
-   Correctness findings, they become a task in the plan rather than a silent fix.
-2. Recompute the parallel groups below from the plan's own `Depends on` fields and correct them
-   here if they disagree.
+Run 1 reconciliation against git, 2026-09-21:
+
+- Working tree clean, `main` at `e0704bf`. No swarm worktrees, no open PRs. Only branches are
+  `chore/allowlist-toolchain` and `chore/autonomous-swarm-workflow`, both already merged. No task
+  was mid-flight from a killed run; the ledger matched reality and needed no correction.
+- `gh auth status` → logged in as `MartijnBoot`. PRs are available; no `no-PR` fallback needed.
+- Gate A: `docs/specs/phase-0-foundations.md` exists (human-approved, not agent-authored).
+- Gate B: `docs/plans/phase-0-foundations.md` signed `Audited by: MartijnBoot Date: 2026-09-21`.
+- **Parallel groups recomputed** from the plan's own `Depends on` fields (T2←T1, T3←T2, T4←T3,
+  T5←T3, T6←T5, T7←T3, T8←T6+T7, T9←T4+T6+T7, T10←T9, T11←T10, T12←T11, T13←T7). They agree with
+  the table below; no correction was needed.
+- T1's Gate C is the one genuine gap: it merged pre-swarm with no review. Dispatched. If the
+  review reports Correctness findings, they become a task in the plan rather than a silent fix —
+  and anything needing a history rewrite is a hard stop, not something the swarm resolves.
 
 ## Phases
 
@@ -39,7 +49,8 @@ First run must, before dispatching T2:
 
 Plan: [phase-0-foundations.md](phase-0-foundations.md) · audited by the human, 2026-09-21.
 
-Dependency graph as stated by the plan — **not serial**, despite what the old ledger said:
+Dependency graph as stated by the plan — **not serial**, despite what the old ledger said.
+Verified against the plan's `Depends on` fields by run 1:
 
 ```
 T1 ─► T2 ─► T3 ─┬─► T4 ─┐
@@ -60,8 +71,8 @@ T1 ─► T2 ─► T3 ─┬─► T4 ─┐
 
 | Task | State | Attempt | Branch | PR | Verified (command + actual output) | Review |
 |---|---|---|---|---|---|---|
-| T1 fresh repo | merged | 1 | `main` (founding commits `aaf1e3b`, `d6c10a9`) | none — pre-swarm | `git count-objects -vH` → size-pack 457.37 KiB < 5 MiB · largest blob after `docs/way-of-working.md` is 81.8 kB < 200 kB · `git log --all -- config/keys.json` → empty · `git log --all -- '*.tar'` → empty · all 32 imported blob hashes identical to v1 | **outstanding** — see Now, step 1 |
-| T2 skeleton + pins + legacy move | ready | 0 | — | — | — | — |
+| T1 fresh repo | merged | 1 | `main` (founding commits `aaf1e3b`, `d6c10a9`) | none — pre-swarm | `git count-objects -vH` → `size-pack: 457.37 KiB`, `in-pack: 122`, `packs: 1` < 5 MiB · `git rev-list --max-parents=0 HEAD` → `aaf1e3b` (sole root) · `git log --all --oneline --` for `config/keys.json`, `config/.jwt_secret`, `*.tar`, `static/earnings`, `static/uploads`, `*__pycache__*`, `*.pyc`, `*.pdf` → all empty · largest blob in repo is `docs/way-of-working.md` at 112,691 B < 200 kB · `git diff --name-status d6c10a9 HEAD` → no imported v1 file modified after import | **Gate C PASS** — `fresh-eyes-reviewer`, run 1, 2026-09-21. Zero Correctness findings. 5 Risk + 3 Optional recorded below |
+| T2 skeleton + pins + legacy move | building | 1 | `feature/phase-0-t2-skeleton-pins-legacy` | — | — | — |
 | T3 config module, fail-fast | pending | 0 | — | — | — | — |
 | T4 config boundary test | pending | 0 | — | — | — | — |
 | T5 FastAPI shell + health | pending | 0 | — | — | — | — |
@@ -76,19 +87,49 @@ T1 ─► T2 ─► T3 ─┬─► T4 ─┐
 
 ## Decisions the swarm took alone
 
-Carried forward from the pre-swarm loop, both taken during T1 with the human present:
-
 - **2026-09-21, T1 — v1 repo renamed to free D14's chosen name.** D14 specifies `borrelbeurs`,
   but GitHub repo names are case-insensitive and the name was held by v1's own `BorrelBeurs`.
   v1 became `MartijnBoot/borrelbeurs-v1`; the new repo took `borrelbeurs`. The same collision
   hit the filesystem, so the new repo is cloned at `borrelbeurs-v2` locally. **Directory name ≠
   repo name; do not "fix" this.** R8 is unaffected — renaming does not rotate v1's keys, and
   Phase 8 still owns that.
+Taken by the swarm:
+
+- **2026-09-21, run 1 — a tracked `.gitattributes` is folded into T2 (risk R3).** The plan does
+  not list one. It is not new scope in spirit: T2 already owns line-ending policy via
+  `.editorconfig`, and without a tracked `.gitattributes` the repo's byte-identity with v1
+  survives only in one developer's local `.git/config`. That identity is what Phase 1's golden
+  fixtures rest on, so losing it silently is the expensive failure. **Constraint on the builder:
+  the file must preserve the current per-file CRLF/LF split exactly — it may not renormalise.**
+  This is consistent with the T1 decision below, which asked for normalisation to be deliberate
+  and separate rather than incidental. No ADR needed; if `plan-auditor` disagrees at the next
+  phase it can be reverted in one commit.
+
+Carried forward from the pre-swarm loop:
+
 - **2026-09-21, T1 — the new repo sets `core.autocrlf=false`.** v1 committed a mix of CRLF and
   LF; importing through a filter would have silently renormalised files. The import copied blob
   objects directly, so all 32 hashes match v1 byte for byte. T2's `.editorconfig` should treat
   line-ending normalisation as a deliberate, separate change — not something done incidentally
   during `git mv`.
+
+## Findings recorded and not chased
+
+From `fresh-eyes-reviewer` on T1, 2026-09-21. None blocks a gate; each is carried to the task
+that already owns the surface, so none becomes a plan amendment on its own.
+
+| # | Finding | Carried to | Why not chased now |
+|---|---|---|---|
+| R1 | `run.bat:60` hard-codes `ADMIN_TOKEN=TestTest`, gating `/shutdown` at `backend/api.py:606-609`. Not on T1's exclusion list, so it is in history | T3 (`Settings`) | Placeholder in a private repo, on a file T2 moves to `legacy/v1/`. **Treat `TestTest` as burned** — nothing at an event may use it, and `ADMIN_TOKEN` joins `JWT_SECRET` in T3's `Settings` without the literal reappearing. A rewrite to remove it would be a hard stop and is not worth it |
+| R2 | `.gitignore` omits `static/uploads/`, `__pycache__/`, `*.pyc`, `*.pdf`, `.venv/` — all of which `.dockerignore` covers. Nothing stops a re-add | T2 | T2 already owns `.gitignore`; this is content within an existing deliverable, not new scope |
+| R3 | `core.autocrlf=false` lives only in local `.git/config`; no tracked `.gitattributes`. A fresh clone on default Windows settings checks out CRLF for every LF file and renormalises on first commit | T2 | Material to Phase 1's byte-identity claim. See the decision log — folded into T2, and it must **preserve** current per-file EOL, never renormalise |
+| R4 | `exchange/engine.py` imports `time` and defines `now_ms()`. The purity test `docs/design/architecture.md:87-89` mandates would go red on imported baseline code if it lands before Phase 1 replaces the engine | Phase 1 planning | Invariant 1 is introduced *by* Phase 1, not before it. Phase 0 must not add that test; when `phase-planner` reaches Phase 1, the test and the engine rewrite land together |
+| R5 | T2's "five tracked `.pyc` files removed" is already a no-op — T1's `__pycache__/**` exclusion took them. T2's check `grep -c '\.pyc$'` → 0 passes trivially | T2 verifier | Harmless, but a verifier could read the absent removal commit as an unimplemented step. Flagged so it is not mistaken for a gap |
+
+Optional, for the record: `readme.txt` carries a RFC1918 LAN address (disappears when T2 moves
+it); `docs/plans/phase-0-foundations.md:283` contains `AKIAIOSFODNN7EXAMPLE` as the secret-scan
+fixture, which gitleaks will flag on its own fixture unless T5 allowlists it; repo visibility is
+unverified because `gh repo` is on the swarm's never-do list — **worth a human eyeball.**
 
 ## Open items the plan does not cover
 
