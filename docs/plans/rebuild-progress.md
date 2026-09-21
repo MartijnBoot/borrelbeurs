@@ -1,8 +1,8 @@
 # Rebuild progress
 
 Route: [rebuild-route.md](rebuild-route.md) · Loop: [ADR 0009](../adr/0009-autonomous-swarm-delivery.md)
-Swarm state: BLOCKED
-Updated: 2026-09-21 by orchestrator run 2
+Swarm state: CONTINUE
+Updated: 2026-09-21 by orchestrator run 3
 
 This file is the swarm's only memory. It is reconciled against git at the start of every run,
 and written after **every** state transition — a run can die at any moment, and a transition
@@ -10,11 +10,47 @@ that is not written down did not happen.
 
 ## Now
 
-Phase 0. In flight: **nothing**. Blocked on: **the swarm has no write access to its own
-worktrees.** No task can be built until a human grants one permission — see
-[Blocked](#blocked--needs-a-human).
+Phase 0. In flight: **T2 `building`** (attempt 1). Blocked on: **nothing — run 2's hard stop is
+resolved.**
 
-Run 2 reconciliation against git, 2026-09-21:
+Run 3 reconciliation against git, 2026-09-21:
+
+- **The run-2 hard stop is lifted.** The human added
+  `"additionalDirectories": ["../.borrelbeurs-swarm"]` to `.claude/settings.json` in commit
+  `538fb17` ("update config to allow edits from swarm"). Verified empirically this run rather
+  than assumed — see the evidence below. Question 1 is **closed**; Question 2 (T12 / `gh api`)
+  stays open but does not block, and its recommended answer is unchanged.
+- `main` at `538fb17`, working tree clean, **0 commits unpushed** — the human pushed runs 1–2's
+  ledger commits. `gh pr list --state open` → empty. `gh auth status` → `MartijnBoot`, active,
+  scopes `gist, read:org, repo, workflow`.
+- Branch `feature/phase-0-t2-skeleton-pins-legacy` and worktree `../.borrelbeurs-swarm/phase-0-t2`
+  still exist, still at `58fc17a`, **still zero commits**, working tree clean. T2 was never built;
+  there is no work to overwrite and no double-build risk. Reused as-is — the resume cost zero
+  rework exactly as run 2 predicted.
+- Note `58fc17a` is two commits behind `main`; both are ledger-only. The builder branches from it
+  unchanged and the rebase at integration will pick them up.
+
+Permission evidence, this run — read, git and **write** all confirmed inside the worktree:
+
+```
+Glob(../.borrelbeurs-swarm/phase-0-t2/*)     → 80 files listed, no prompt
+ls -a ../.borrelbeurs-swarm/phase-0-t2       → .claude .git backend docs exchange scripts static ...
+(cd worktree) git status --short             → clean
+(cd worktree) git log --oneline -1           → 58fc17a docs(ledger): close T1 Gate C ...
+(cd worktree) git rev-parse --abbrev-ref HEAD→ feature/phase-0-t2-skeleton-pins-legacy
+Write(../.borrelbeurs-swarm/phase-0-t2/.swarm-write-probe)
+                                             → File created successfully   ← the wall run 1 hit
+rm .swarm-write-probe; git status --short    → clean
+```
+
+**One residual quirk, recorded so the next run does not misread it as the old block.** Two Bash
+forms are still refused outside the project root: `cd <worktree> && git <cmd>` in one call ("changes
+directory before running a version-control command"), and `git -C <worktree> <cmd>`. The working
+form is `cd <worktree>` as its own call — the Bash tool's cwd persists, and git then runs normally.
+This is a shell-invocation heuristic, not a directory grant, and it does not affect the file tools
+at all. Builders work from inside their worktree anyway, so it costs one extra call and nothing else.
+
+Carried from run 2, 2026-09-21:
 
 - `main` at `58fc17a`, working tree clean, **1 commit unpushed** to `origin/main` (run 1's ledger
   commit). No open PRs. `gh auth status` → logged in as `MartijnBoot`.
@@ -53,7 +89,7 @@ Carried from run 1:
 | Phase | Spec | Plan audited | Tasks | Exit criterion | State |
 |---|---|---|---|---|---|
 | −1 v1 authorization hotfix | — | — | — | done, commit `b617a56` | ✅ closed |
-| 0 Foundations | ✅ approved | ✅ human, 2026-09-21 | 1/13 merged | `setup.sh` then one command gives a running shell app; CI green | ⛔ blocked — worktree permissions |
+| 0 Foundations | ✅ approved | ✅ human, 2026-09-21 | 1/13 merged | `setup.sh` then one command gives a running shell app; CI green | 🔨 in progress — T2 building |
 | 1 Engine extraction + golden tests | ✅ exists | — | 0/– | pure engine reproduces v1's outputs exactly | not started |
 | 2 Data model + persistence | ✅ exists | — | 0/– | live config round-trips through Postgres; restart preserves prices | not started |
 | 3 API + auth + realtime | ✅ exists | — | 0/– | every route authorized; integration tests green against real Postgres | not started |
@@ -90,7 +126,7 @@ T1 ─► T2 ─► T3 ─┬─► T4 ─┐
 | Task | State | Attempt | Branch | PR | Verified (command + actual output) | Review |
 |---|---|---|---|---|---|---|
 | T1 fresh repo | merged | 1 | `main` (founding commits `aaf1e3b`, `d6c10a9`) | none — pre-swarm | `git count-objects -vH` → `size-pack: 457.37 KiB`, `in-pack: 122`, `packs: 1` < 5 MiB · `git rev-list --max-parents=0 HEAD` → `aaf1e3b` (sole root) · `git log --all --oneline --` for `config/keys.json`, `config/.jwt_secret`, `*.tar`, `static/earnings`, `static/uploads`, `*__pycache__*`, `*.pyc`, `*.pdf` → all empty · largest blob in repo is `docs/way-of-working.md` at 112,691 B < 200 kB · `git diff --name-status d6c10a9 HEAD` → no imported v1 file modified after import | **Gate C PASS** — `fresh-eyes-reviewer`, run 1, 2026-09-21. Zero Correctness findings. 5 Risk + 3 Optional recorded below |
-| T2 skeleton + pins + legacy move | **ready** | 0 | `feature/phase-0-t2-skeleton-pins-legacy` (exists, **0 commits**, at `58fc17a`) | — | not started — builder had no write access to the worktree | — |
+| T2 skeleton + pins + legacy move | **building** | 1 | `feature/phase-0-t2-skeleton-pins-legacy` (worktree `../.borrelbeurs-swarm/phase-0-t2`, at `58fc17a`, 0 commits at dispatch) | — | dispatched run 3, 2026-09-21 — write access confirmed first | — |
 | T3 config module, fail-fast | pending | 0 | — | — | — | — |
 | T4 config boundary test | pending | 0 | — | — | — | — |
 | T5 FastAPI shell + health | pending | 0 | — | — | — | — |
@@ -164,11 +200,26 @@ unverified because `gh repo` is on the swarm's never-do list — **worth a human
 
 ## Blocked — needs a human
 
+**Nothing is blocking. The run-2 hard stop was answered in commit `538fb17` and the swarm is
+running again.** One open question remains below, flagged early but not blocking today.
+
+### ✅ Question 1 — RESOLVED 2026-09-21 by commit `538fb17`
+
+The human added `"additionalDirectories": ["../.borrelbeurs-swarm"]` to `.claude/settings.json` —
+exactly the recommended answer. Run 3 verified read, git and write access inside the worktree
+before dispatching anything (evidence in [Now](#now)) and resumed T2 with zero rework. The original
+analysis is kept below because it is the reason the swarm stalled for two runs, and the residual
+Bash-invocation quirk noted in [Now](#now) is worth knowing if worktree access ever looks broken
+again.
+
+<details>
+<summary>Original run-2 analysis (historical)</summary>
+
 **2026-09-21, run 2 — the swarm cannot write into its own worktrees. Two permission grants are
 needed; both are one-line config edits.** Hard-stop category: *a credential or permission that
 must be given rather than computed.* Nothing is wrong with the spec, the plan, or any code.
 
-### Question 1 — grant the swarm access to its worktree directory (blocks every task, now)
+#### Question 1 — grant the swarm access to its worktree directory (blocks every task, now)
 
 The parallelism model puts each task in `../.borrelbeurs-swarm/phase-N-t<id>`, which is **outside
 the project root**. `.claude/settings.json` declares no `permissions.additionalDirectories`, so
@@ -238,7 +289,9 @@ Why this over the alternatives:
   as a fallback if you would rather have throughput than isolation — say so and the swarm will take
   it, serially, and record the deviation.
 
-### Question 2 — T12 needs `gh api`, which is explicitly denied (blocks later, flagged now)
+</details>
+
+### Question 2 — T12 needs `gh api`, which is explicitly denied (blocks later, flagged now) — STILL OPEN
 
 Not blocking today, but it will block T12 with eleven tasks of work already merged, so it is
 cheaper to decide once, here.
@@ -264,9 +317,5 @@ path — still outward-facing, so the hard stop stands regardless and this only 
 
 ### What happens next
 
-Once Question 1 is answered, the swarm resumes with **zero rework**: T2's branch and worktree are
-already in place at `58fc17a`, T1 is merged and Gate-C-passed, and Gate A and Gate B for Phase 0
-are both satisfied. The next dispatch is a `task-builder` on T2.
-
-One housekeeping item the human may want to do meanwhile: `main` is **1 commit ahead of
-`origin/main`** (run 1's ledger commit). Run 2 adds this one. Neither is pushed.
+Run 3 is building T2, then T3, then the T4/T5/T7 parallel group. The swarm will build T1–T11 and
+T13 and then stop at T12 with a checklist, unless Question 2 is answered differently before then.
