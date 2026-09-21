@@ -199,7 +199,9 @@ created the worktree successfully, dispatched a builder into it, and the builder
 one file. T2 sat at `building` with zero commits. **This is the whole reason the swarm made no
 progress.** Note the allowlist itself is live — `git log`, `cat` and `ls` inside the repo all ran
 unprompted this run, so the `hasTrustDialogAccepted` gotcha is *not* active; the scope is the only
-problem.
+problem. Checked directly since: `~/.claude.json` has `hasTrustDialogAccepted: true` for
+`C:/Users/MartijnBoot/Documents/GitHub-Personal/borrelbeurs-v2` and no directory grant of any kind,
+so the one line below is the whole fix.
 
 **Recommended answer — add `additionalDirectories` to `.claude/settings.json`:**
 
@@ -210,8 +212,20 @@ problem.
     "allow": [
 ```
 
+This edit has to come from the human: an agent session asked to make it is refused by the auto-mode
+classifier with `[Self-Modification]` — both the direct edit of `.claude/settings.json` and the
+`update-config` skill. Confirmed again 2026-09-21 in an interactive session. The swarm therefore
+cannot lift this block itself under any prompt; it stays a hard stop until the line is added by hand.
+
 Why this over the alternatives:
 
+- **Passing `--add-dir ../.borrelbeurs-swarm` in [scripts/swarm.ps1:146](../../scripts/swarm.ps1#L146)**
+  grants exactly the same access per `claude -p` invocation instead of repo-wide, and is an ordinary
+  code edit rather than a Claude-config edit. It is the second-best answer: it keeps the grant next
+  to the thing that needs it, but it only covers the swarm launcher — an orchestrator or builder
+  started any other way (interactive `/rebuild`, a re-dispatch by hand) hits the same wall again.
+  Say the word and the swarm will make this edit itself; it is the one route to unblocking that does
+  not need your hands on a config file.
 - **Moving worktrees inside the repo** (e.g. `.claude/worktrees/`) would put them in the project
   root where the existing allowlist already works — but `.gitignore` does not cover that path, so
   the parent tree would see the whole worktree as untracked and a builder running `git add -A`
