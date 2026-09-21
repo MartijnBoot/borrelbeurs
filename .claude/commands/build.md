@@ -1,6 +1,6 @@
 ---
 description: Implement ONE task from an audited phase plan, test-first, with evidence
-argument-hint: [phase number] [task id, e.g. T3]
+argument-hint: "[phase number] [task id, e.g. T3]"
 model: opus
 ---
 
@@ -8,7 +8,8 @@ Implement task **$2** from `docs/plans/phase-$1-*.md`.
 
 ## Preconditions — check these and stop if any fails
 
-- The plan exists and its audit checklist is filled in with a name and date. **No
+- The plan exists and its audit checklist is filled in with a name and date — either mine or
+  `plan-auditor`'s PASS, per [ADR 0009](../../docs/adr/0009-autonomous-swarm-delivery.md). **No
   implementation before an audited plan.**
 - Task $2 exists in that plan.
 - The working tree is clean, and you are on a feature branch — not `main`.
