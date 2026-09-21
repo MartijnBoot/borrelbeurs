@@ -6,3 +6,6 @@ config/.jwt_secret
 
 # Swarm driver run logs (scripts/swarm.ps1)
 .swarm-logs/
+
+# Swarm task worktrees (git worktree add, see .claude/commands/rebuild.md)
+/.worktrees/
