@@ -25,8 +25,13 @@ not consume this session's context.
 ## Output
 
 `docs/plans/phase-$1-<name>.md`, following `docs/way-of-working.md` Appendix D: Approach,
-Files table, Tasks (each with *Implements*, *Expected output*, *Verification*, *Depends on*),
-Data changes, Risks and unknowns, Out of scope, and the human audit checklist.
+Files table, Tasks (each with *Implements*, *Expected output*, *Verification*, *Depends on*,
+*Autonomy note*), the task graph and its parallel groups, Data changes, Risks and unknowns,
+Out of scope, and the audit checklist. The exact template is in
+[`.claude/agents/phase-planner.md`](../agents/phase-planner.md).
+
+The plan is also a **work queue**: the swarm schedules from `Depends on`, so every task needs
+one, and no two tasks in the same parallel group may write the same file.
 
 ## What makes this plan good or useless
 
@@ -45,6 +50,7 @@ Data changes, Risks and unknowns, Out of scope, and the human audit checklist.
 
 ## Finish by
 
-Stating plainly what you are uncertain about. Then tell me to run `/audit $1` — a plan is a
-proposal, not an instruction, and an agent will happily plan, build and verify the wrong
-thing to a very high standard.
+Stating plainly what you are uncertain about. Then the plan goes to `plan-auditor`, whose PASS
+is what unblocks implementation — a plan is a proposal, not an instruction, and an agent will
+happily plan, build and verify the wrong thing to a very high standard. Run `/audit $1` instead
+if you want to walk the checklist yourself; the swarm dispatches the agent either way.

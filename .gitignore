@@ -3,3 +3,6 @@ bierbeurs-image.tar
 static/earnings
 config/keys.json
 config/.jwt_secret
+
+# Swarm driver run logs (scripts/swarm.ps1)
+.swarm-logs/
