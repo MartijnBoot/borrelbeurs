@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Drives the v2 rebuild swarm until the route is finished or something blocks it.
@@ -139,8 +139,13 @@ try {
 
         Write-Banner "Run $run/$MaxRuns - $prompt - $(Get-Date -Format 'HH:mm:ss')"
 
+        # claude.exe writes warnings to stderr. Merging them with 2>&1 while
+        # $ErrorActionPreference is 'Stop' makes PowerShell treat the first warning as a
+        # terminating error and kill the swarm, so relax it for this one call.
+        $ErrorActionPreference = 'Continue'
         & claude -p $prompt --model $Model --permission-mode $PermissionMode 2>&1 |
             Tee-Object -FilePath $log
+        $ErrorActionPreference = 'Stop'
 
         $state = Get-SwarmState
         if ($state -eq 'UNKNOWN') {

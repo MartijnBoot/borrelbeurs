@@ -101,7 +101,6 @@
     "deny": [
       "Read(./config/keys.json)",
       "Edit(./config/keys.json)",
-      "Write(./config/keys.json)",
       "Read(./.env)",
       "Read(./.env.production)",
       "Bash(git push --force:*)",
