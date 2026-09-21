@@ -10,8 +10,28 @@ that is not written down did not happen.
 
 ## Now
 
-Phase 0. In flight: **swarm-infrastructure fix** (relocating worktrees inside the project root);
-**T2 `ready`**, re-dispatching the moment that lands. Blocked on: **nothing.**
+Phase 0. In flight: **a mechanism test** — can a subagent reach a worktree via the `EnterWorktree`
+tool rather than `cd`? **T2 `ready`**, re-dispatching only if that test passes. Blocked on:
+**nothing yet — but a hard stop is one failed test away.** See
+[If the mechanism fails](#if-the-mechanism-fails).
+
+Two relocation attempts have now failed (`../.borrelbeurs-swarm/`, then `.worktrees/`), both because
+git is refused for subagents in any non-primary worktree. The third approach does not move the
+worktree to a friendlier path — it changes **how the builder gets there**. `EnterWorktree`'s
+documentation states it works "from agents whose working directory was pinned at launch (subagent
+isolation or explicit cwd)" and that the target "must be a worktree under `.claude/worktrees/` of
+the same repository" — a location neither previous attempt used. If that holds, per-task isolation
+survives intact and ADR 0009 §5 is satisfied as written.
+
+### If the mechanism fails
+
+Then per-task worktree isolation is **impossible** for subagents under the current permissions, and
+this becomes a hard stop with two independent triggers: it needs a `.claude/settings.json` grant the
+swarm is refused (self-modification), **and** the only workaround — builders working serially in the
+primary checkout — contradicts ADR 0009 §5's "each in its own git worktree and branch". Run 2 flagged
+that same trade-off and was right to leave it to a human: it weakens the isolation model the ADR
+describes, and that is explicitly not the swarm's call. The recommended answer in that case is in
+[Blocked](#blocked--needs-a-human).
 
 ### T2 attempt 1 — failed on the environment, not on the code
 
@@ -171,6 +191,20 @@ T1 ─► T2 ─► T3 ─┬─► T4 ─┐
 | T12 repository governance | pending | 0 | — | — | — | — |
 | T13 `CLAUDE.md` + agent config + migration hook | pending | 0 | — | — | — | — |
 
+## ⚠ Live inconsistency the swarm cannot fix itself
+
+**`.claude/commands/rebuild.md` lines 91 and 151 still say `../.borrelbeurs-swarm/phase-N-t<id>`,
+which is no longer where worktrees live.** An agent dispatched to correct it had the Edit tool
+**denied** on `.claude/` and, per instruction, did not work around it with `sed` or Write.
+
+Until someone with `.claude/` write access corrects those two lines, **this ledger is the
+authoritative worktree location** — an orchestrator following `rebuild.md` literally will create
+worktrees in a directory that does not work. The two lines should read `.claude/worktrees/phase-N-t<id>`
+(pending the mechanism test in [Now](#now); if that test fails, see the hard stop instead).
+
+This is a documentation defect, not a code defect, and it blocks nothing on its own — recorded
+because a future run reading `rebuild.md` first would otherwise re-walk the entire dead end.
+
 ## Decisions the swarm took alone
 
 - **2026-09-21, T1 — v1 repo renamed to free D14's chosen name.** D14 specifies `borrelbeurs`,
@@ -199,8 +233,32 @@ T1 ─► T2 ─► T3 ─┬─► T4 ─┐
   **No ADR needed.** ADR 0009 §5 says only "each in its own git worktree and branch" — it does not
   specify a location, so per-task isolation is preserved exactly. Reversible in one commit.
 
-  Follow-on for T2's builder: T2 rewrites `.gitignore`, so it must **preserve** the `/.worktrees/`
-  entry rather than drop it.
+  Follow-on for T2's builder: T2 rewrites `.gitignore`, so it must **preserve** the swarm worktree
+  ignore entry rather than drop it.
+
+  **⚠ Superseded the same day — the premise above was wrong.** Relocating to `.worktrees/` inside
+  the root did **not** make git usable for subagents. Verified after the move:
+
+  ```
+  $ cd .../borrelbeurs-v2/.worktrees/phase-0-t2 && ls
+  ARCHITECTURE.md  backend  CLAUDE.md  config  Dockerfile  docs  exchange ...   ← allowed
+  $ cd .../borrelbeurs-v2/.worktrees/phase-0-t2 && git status --short
+  Permission to use Bash has been denied.
+  $ cd .../borrelbeurs-v2 && git -C .worktrees/phase-0-t2 rev-parse --abbrev-ref HEAD
+  Permission to use Bash has been denied.
+  $ cd .../borrelbeurs-v2 && git status --short          ← primary checkout
+   M .gitignore                                           ← allowed
+  ```
+
+  **The discriminator is the git repository the command resolves to, not the directory's location.**
+  A path with its own `.git` file resolving to a non-primary worktree is refused, inside the root or
+  outside it, by `cd` or by `git -C`. The control test that motivated the move — `cd <outside> && ls`
+  is allowed — only ever proved directory *reachability*, which was never the problem. It tested a
+  non-git command against a git-specific guard, so it could not have failed. **That is the reasoning
+  error to avoid repeating: a control test must exercise the thing being guarded.**
+
+  Still true and still useful: the Write tool *does* create files in the worktree. Only `git` is
+  unreachable — so a builder can write but cannot commit, which is no better than useless.
 
 Taken by the swarm:
 
