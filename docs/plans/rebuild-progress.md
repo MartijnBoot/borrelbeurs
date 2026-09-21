@@ -10,18 +10,40 @@ that is not written down did not happen.
 
 ## Now
 
-Phase 0. In flight: **T2 `building`** (attempt 1). Blocked on: **nothing — run 2's hard stop is
-resolved.**
+Phase 0. In flight: **swarm-infrastructure fix** (relocating worktrees inside the project root);
+**T2 `ready`**, re-dispatching the moment that lands. Blocked on: **nothing.**
 
-> **⚠ Guard for the next run — read before dispatching anything.** Run 3 dispatched a live
-> `task-builder` on T2 at 2026-09-21 and the branch had **0 commits at dispatch time**. The usual
-> reconciliation rule ("no commits ⇒ never built ⇒ dispatch a builder") is therefore **unsafe for
-> T2 specifically** — a branch still sitting at `58fc17a` may mean the builder is mid-flight, not
-> that it never ran. Before re-dispatching T2: check whether the worktree
-> `../.borrelbeurs-swarm/phase-0-t2` has uncommitted changes (`git status --short` from inside it).
-> **Dirty tree ⇒ a builder was interrupted** — resume by inspecting its work, do not start a second
-> one over the top. Clean tree *and* 0 commits ⇒ it is genuinely safe to dispatch. Delete this
-> guard once T2 reaches `verifying` or later.
+### T2 attempt 1 — failed on the environment, not on the code
+
+The builder wrote **nothing** and returned `blocked`. This was correct behaviour, not a defect: it
+declined to leave an uncommittable dirty tree. Branch still `58fc17a`, 0 commits, clean.
+
+**Root cause — run 3's permission probe was sound for the orchestrator and wrong for builders.**
+`additionalDirectories` does grant the *file* tools (Read/Write/Glob all work in the worktree, as
+probed). It does not lift a **git-specific, directory-scoped** guard on Bash. Every form is refused
+for a subagent:
+
+| Form | Result |
+|---|---|
+| `git -C <outside-root> <cmd>` | denied |
+| `cd <outside-root> && git <cmd>` (Windows, msys and relative paths all tried) | denied |
+| `cd <outside-root>` as its own call, then `git <cmd>` | **useless for subagents** |
+
+The last row is the trap. That pattern works in the orchestrator's thread — which is why run 3
+verified it and believed the block was lifted — but **agent threads reset cwd between Bash calls**,
+so the follow-up git command runs in the primary checkout instead. Proven by the builder: call 1
+`cd <worktree>`, call 2 `git rev-parse --abbrev-ref HEAD` → `main`, not the task branch. Two
+control tests isolate the guard exactly: `cd <outside-root> && ls` is **allowed** (not a compound
+command problem), and `cd <inside-root> && git status` is **allowed** (not a missing allow rule).
+
+Consequence: `git mv` (which the plan mandates, since `git log --follow` is a gate), `git add`,
+`git commit` and three of T2's four verification commands were all unavailable. No amount of
+builder skill gets past it.
+
+**Attempt accounting: this does not consume one of T2's three attempts.** The three-attempt budget
+exists for verify and review failures — evidence that the code is wrong. Nothing was built and
+nothing was judged. Burning a third of the budget on an environment defect the builder correctly
+refused to work around would punish the right behaviour. T2 re-dispatches at attempt 1.
 
 Run 3 reconciliation against git, 2026-09-21:
 
@@ -136,7 +158,7 @@ T1 ─► T2 ─► T3 ─┬─► T4 ─┐
 | Task | State | Attempt | Branch | PR | Verified (command + actual output) | Review |
 |---|---|---|---|---|---|---|
 | T1 fresh repo | merged | 1 | `main` (founding commits `aaf1e3b`, `d6c10a9`) | none — pre-swarm | `git count-objects -vH` → `size-pack: 457.37 KiB`, `in-pack: 122`, `packs: 1` < 5 MiB · `git rev-list --max-parents=0 HEAD` → `aaf1e3b` (sole root) · `git log --all --oneline --` for `config/keys.json`, `config/.jwt_secret`, `*.tar`, `static/earnings`, `static/uploads`, `*__pycache__*`, `*.pyc`, `*.pdf` → all empty · largest blob in repo is `docs/way-of-working.md` at 112,691 B < 200 kB · `git diff --name-status d6c10a9 HEAD` → no imported v1 file modified after import | **Gate C PASS** — `fresh-eyes-reviewer`, run 1, 2026-09-21. Zero Correctness findings. 5 Risk + 3 Optional recorded below |
-| T2 skeleton + pins + legacy move | **building** | 1 | `feature/phase-0-t2-skeleton-pins-legacy` (worktree `../.borrelbeurs-swarm/phase-0-t2`, at `58fc17a`, 0 commits at dispatch) | — | dispatched run 3, 2026-09-21 — write access confirmed first | — |
+| T2 skeleton + pins + legacy move | **ready** (re-dispatch pending worktree move) | 1 | `feature/phase-0-t2-skeleton-pins-legacy` (moving to `.worktrees/phase-0-t2`, at `58fc17a`, **0 commits**, clean) | — | attempt 1 returned `blocked` with nothing written — git unusable in an out-of-root worktree for subagents. Not a code failure; does not consume the attempt budget | — |
 | T3 config module, fail-fast | pending | 0 | — | — | — | — |
 | T4 config boundary test | pending | 0 | — | — | — | — |
 | T5 FastAPI shell + health | pending | 0 | — | — | — | — |
@@ -157,6 +179,29 @@ T1 ─► T2 ─► T3 ─┬─► T4 ─┐
   hit the filesystem, so the new repo is cloned at `borrelbeurs-v2` locally. **Directory name ≠
   repo name; do not "fix" this.** R8 is unaffected — renaming does not rotate v1's keys, and
   Phase 8 still owns that.
+- **2026-09-21, run 3 — swarm worktrees move inside the project root**, from
+  `../.borrelbeurs-swarm/phase-N-t<id>` to `.worktrees/phase-N-t<id>`, with `/.worktrees/` added to
+  `.gitignore` and the two paths in `.claude/commands/rebuild.md` updated. Nothing else changes;
+  `scripts/swarm.ps1` contains no worktree path.
+
+  Why this and not the alternatives: it is the **only** option that works under the permissions
+  that exist today, proven by the control test `cd <inside-root> && git status` → allowed. Granting
+  `Bash(git -C ../.borrelbeurs-swarm:*)` needs a human (the self-modification classifier refuses
+  agents editing `.claude/settings.json`) and may not even work, since the refusal looks like a
+  version-control heuristic rather than a missing allow rule. Building in the main tree with no
+  worktree abandons the per-task isolation ADR 0009 §5 names.
+
+  **Run 2 recorded this option as unavailable because `.gitignore` is a code edit "the orchestrator
+  is not allowed to make". That reasoning was wrong** — the orchestrator may not *write* code, but
+  it may *dispatch an agent* to. That distinction is the difference between a two-run stall and a
+  ten-minute fix, and it is why this is not a hard stop.
+
+  **No ADR needed.** ADR 0009 §5 says only "each in its own git worktree and branch" — it does not
+  specify a location, so per-task isolation is preserved exactly. Reversible in one commit.
+
+  Follow-on for T2's builder: T2 rewrites `.gitignore`, so it must **preserve** the `/.worktrees/`
+  entry rather than drop it.
+
 Taken by the swarm:
 
 - **2026-09-21, run 1 — a tracked `.gitattributes` is folded into T2 (risk R3).** The plan does
@@ -168,6 +213,34 @@ Taken by the swarm:
   This is consistent with the T1 decision below, which asked for normalisation to be deliberate
   and separate rather than incidental. No ADR needed; if `plan-auditor` disagrees at the next
   phase it can be reverted in one commit.
+
+  **Run 3 — the EOL baseline is now measured, and it rules out the obvious `.gitattributes`.**
+  T2's blocked builder captured it read-only before hitting the git wall:
+
+  ```
+  $ git ls-files --eol | awk '{print $1, $2}' | sort | uniq -c | sort -rn
+       61 i/lf w/lf
+       11 i/crlf w/crlf
+        6 i/-text w/-text
+        2 i/none w/none
+
+  $ git ls-files --eol | grep -E 'i/crlf|i/none'
+  i/crlf  .claude/agents/task-builder.md · .claude/settings.json · Dockerfile
+  i/crlf  backend/api.py · backend/config.py · backend/persistence.py
+  i/crlf  exchange/engine.py · readme.txt · rebuild.bat · requirements.txt · run.bat
+  i/none  backend/__init__.py · exchange/__init__.py
+  i/-text static/logo/*.png, *.jpeg (6 binaries)
+  ```
+
+  **`exchange/engine.py` is stored CRLF in the index.** So the conventional `* text=auto` — or any
+  `*.py text` — would rewrite that blob to LF on the next checkout and **silently break the
+  byte-identity that Phase 1's golden fixtures rest on.** This is precisely the expensive failure
+  R3 was raised to prevent, and it would have shipped unnoticed under the obvious formulation.
+
+  The only formulation that provably renormalises nothing is **`* -text`** — EOL conversion off for
+  everything. Diffs are unaffected, because textual diffing is the `diff` attribute, not `text`.
+  **Binding on T2's builder:** use `* -text`, and prove it with `git ls-files --eol` before and
+  after showing all 80 rows unchanged.
 
 Carried forward from the pre-swarm loop:
 
