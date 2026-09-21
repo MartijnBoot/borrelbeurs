@@ -1,7 +1,7 @@
 # Rebuild progress
 
 Route: [rebuild-route.md](rebuild-route.md) · Loop: [ADR 0009](../adr/0009-autonomous-swarm-delivery.md)
-Swarm state: CONTINUE
+Swarm state: BLOCKED
 Updated: 2026-09-21 by orchestrator run 3
 
 This file is the swarm's only memory. It is reconciled against git at the start of every run,
@@ -10,28 +10,33 @@ that is not written down did not happen.
 
 ## Now
 
-Phase 0. In flight: **a mechanism test** — can a subagent reach a worktree via the `EnterWorktree`
-tool rather than `cd`? **T2 `ready`**, re-dispatching only if that test passes. Blocked on:
-**nothing yet — but a hard stop is one failed test away.** See
-[If the mechanism fails](#if-the-mechanism-fails).
-
-Two relocation attempts have now failed (`../.borrelbeurs-swarm/`, then `.worktrees/`), both because
-git is refused for subagents in any non-primary worktree. The third approach does not move the
-worktree to a friendlier path — it changes **how the builder gets there**. `EnterWorktree`'s
-documentation states it works "from agents whose working directory was pinned at launch (subagent
-isolation or explicit cwd)" and that the target "must be a worktree under `.claude/worktrees/` of
-the same repository" — a location neither previous attempt used. If that holds, per-task isolation
-survives intact and ADR 0009 §5 is satisfied as written.
-
-### If the mechanism fails
-
-Then per-task worktree isolation is **impossible** for subagents under the current permissions, and
-this becomes a hard stop with two independent triggers: it needs a `.claude/settings.json` grant the
-swarm is refused (self-modification), **and** the only workaround — builders working serially in the
-primary checkout — contradicts ADR 0009 §5's "each in its own git worktree and branch". Run 2 flagged
-that same trade-off and was right to leave it to a human: it weakens the isolation model the ADR
-describes, and that is explicitly not the swarm's call. The recommended answer in that case is in
+Phase 0. In flight: **nothing**. Blocked on: **per-task worktree isolation is unreachable for
+subagent builders, so the swarm cannot build anything without a ruling on ADR 0009 §5.** See
 [Blocked](#blocked--needs-a-human).
+
+The mechanism test came back negative and closed the question. `EnterWorktree` is **not in a
+subagent's tool set at all** — builders get exactly `Bash, Edit, Glob, Grep, Read, Write`. This does
+not disprove that `EnterWorktree` would reach a worktree under `.claude/worktrees/`; it establishes
+the tool is unreachable from the context that needs it, which for the swarm is the same outcome.
+
+Three approaches are now exhausted, and the guard is fully characterised:
+
+| Attempt | Result |
+|---|---|
+| Worktree outside root (`../.borrelbeurs-swarm/`) | git refused for subagents |
+| Worktree inside root (`.worktrees/`) | git refused for subagents |
+| `EnterWorktree` from a subagent | tool not exposed to subagents |
+| `git -C <worktree>` from the primary checkout | refused |
+| git in the **primary checkout** | **permitted** |
+
+**The guard keys on the git repository the command resolves against, not on the shell's cwd and not
+on the directory's path.** It is enforced by the harness, not by `settings.json` — no allow/deny rule
+mentions worktrees, so no settings edit will lift it. The orchestrator's own thread *can* run git in
+a worktree, which is exactly what made this so slow to diagnose: every probe run from here passed,
+and every builder still failed.
+
+**Nothing has been lost.** T2 is at `58fc17a` with zero commits, its three-attempt budget intact, and
+no product code has been written or discarded across any of this.
 
 ### T2 attempt 1 — failed on the environment, not on the code
 
@@ -141,7 +146,7 @@ Carried from run 1:
 | Phase | Spec | Plan audited | Tasks | Exit criterion | State |
 |---|---|---|---|---|---|
 | −1 v1 authorization hotfix | — | — | — | done, commit `b617a56` | ✅ closed |
-| 0 Foundations | ✅ approved | ✅ human, 2026-09-21 | 1/13 merged | `setup.sh` then one command gives a running shell app; CI green | 🔨 in progress — T2 building |
+| 0 Foundations | ✅ approved | ✅ human, 2026-09-21 | 1/13 merged | `setup.sh` then one command gives a running shell app; CI green | ⛔ blocked — ADR 0009 §5 isolation model |
 | 1 Engine extraction + golden tests | ✅ exists | — | 0/– | pure engine reproduces v1's outputs exactly | not started |
 | 2 Data model + persistence | ✅ exists | — | 0/– | live config round-trips through Postgres; restart preserves prices | not started |
 | 3 API + auth + realtime | ✅ exists | — | 0/– | every route authorized; integration tests green against real Postgres | not started |
@@ -341,8 +346,92 @@ unverified because `gh repo` is on the swarm's never-do list — **worth a human
 
 ## Blocked — needs a human
 
-**Nothing is blocking. The run-2 hard stop was answered in commit `538fb17` and the swarm is
-running again.** One open question remains below, flagged early but not blocking today.
+**2026-09-21, run 3 — per-task worktree isolation is unreachable for subagent builders. ADR 0009 §5
+has to be amended, or the swarm cannot build.** Hard-stop category: *a decision that reverses or
+contradicts an ADR.* Nothing is wrong with the spec, the plan, or any code, and nothing has been
+lost — T2 still sits at `58fc17a` with zero commits.
+
+### Question 3 — how should builders get an isolated working tree? (blocks everything, now)
+
+ADR 0009 §5 says the swarm runs "concurrent builder–verifier–reviewer triads, **each in its own git
+worktree and branch**". That is not achievable: the harness refuses git in any non-primary worktree
+for a subagent, and swarm builders are subagents. Evidence is in [Now](#now) — three approaches,
+four refusal modes, one control that works.
+
+Note this is **not** a permissions request. No `settings.json` rule mentions worktrees; the guard is
+in the harness. Granting directory access does not touch it — `additionalDirectories` was already
+added in `538fb17` and the file tools work in the worktree today. Only `git` is unreachable, which
+means a builder can write but never commit.
+
+**Recommended answer — Option A: amend ADR 0009 §5 to branch-level isolation, builders serial in the
+primary checkout.** One builder at a time, each on its own `feature/phase-N-t<id>-<slug>` branch,
+committing in the primary checkout where git is proven to work.
+
+What this costs, stated plainly: the concurrency cap of three goes to one, and two builders can no
+longer be in flight at once. What it does **not** cost is every gate that makes the loop
+trustworthy — spec, audited plan, fresh-context verify, fresh-eyes review, PR-per-task and the
+engine-guardian rule are all untouched, because none of them depends on where the files sit. The
+ADR's *purpose* for worktrees is that concurrent agents must not overwrite each other; running one
+builder at a time satisfies that purpose directly rather than by mechanism. Phase 0's graph is
+mostly serial anyway — it reaches three-way parallelism at exactly one point (T4/T5/T7).
+
+**Option B, if throughput matters more than the edit is worth: run builders as top-level agents.**
+`scripts/swarm.ps1` already invokes `claude -p`; one invocation per task, launched with its working
+directory set to that task's worktree, would preserve *both* the ADR as written and the cap of three.
+The supporting evidence is that this orchestrator is a top-level agent and **did** run git
+successfully inside `../.borrelbeurs-swarm/phase-0-t2` this run. I am not recommending it because it
+is a real change to the swarm driver, it needs its own design pass over how dispatch and reporting
+work across processes, and it should not be decided in the same breath as unblocking Phase 0.
+
+**Do not choose Option C — building in the primary checkout with no branch discipline.** It is the
+one variant that genuinely weakens the loop.
+
+### Question 4 — `git mv` and `git rm` are not allowlisted (NOT blocking; decide at leisure)
+
+`.claude/settings.json` has no `Bash(git mv:*)` or `Bash(git rm:*)` rule, so both are refused even in
+the primary checkout — confirmed directly by the orchestrator, not just reported:
+
+```
+$ git mv --dry-run README.md README2.md
+This command requires approval
+```
+
+T2's plan mandates `git mv` for the `legacy/v1/` move, so this looks blocking. **It is not, and the
+swarm should not stop for it.** Git does not record renames — it stores snapshots and *detects*
+renames by content similarity at read time. `git mv old new` is exactly `mv old new` + `git rm
+--cached old` + `git add new`, so `mv old new && git add -A` produces a byte-identical commit and
+`git log --follow` behaves the same. `Bash(mv:*)` and `Bash(git add:*)` are both allowlisted, and
+plain `rm` works (used successfully this run). T2's `git log --follow` gate is therefore satisfiable
+without any new grant.
+
+**Recommended answer: add `Bash(git mv:*)` and `Bash(git rm:*)` anyway, when convenient.** Both are
+ordinary in-repo operations, fully revertible, and cannot rewrite history or reach outside the repo —
+the existing deny rules on `filter-branch`, `reset --hard` and force-push are what actually guard
+that. It removes a papercut rather than a blocker. If you would rather not, say so and T2's builder
+will be told to use `mv` + `git add -A` and to prove `--follow` still reaches the import commit.
+
+### Current state, for whoever picks this up
+
+```
+$ git worktree list
+C:/.../borrelbeurs-v2                        b256bb2 [main]
+C:/.../borrelbeurs-v2/.worktrees/phase-0-t2  58fc17a [feature/phase-0-t2-skeleton-pins-legacy]
+
+$ git rev-parse feature/phase-0-t2-skeleton-pins-legacy
+58fc17a07b38e9e67b066ccbec1e56c5a7c78165      ← zero commits, as dispatched
+```
+
+`.gitignore` carries `/.worktrees/` (commit `317dbaa`). If Option A is chosen, the worktree at
+`.worktrees/phase-0-t2` becomes dead weight and should be removed, the branch kept. One caveat the
+swarm could not close: **no agent could verify that worktree's tree is clean**, because git is
+refused against it — `git worktree remove` without `--force` is the safe test, since git refuses a
+dirty worktree, and it should be run before assuming the directory is disposable.
+
+### ✅ Resolved earlier this run
+
+The run-2 hard stop (Question 1, worktree directory access) was answered in commit `538fb17` and is
+closed. It turned out to be a *necessary but not sufficient* fix: it granted the file tools, which is
+why the orchestrator's probe passed, while the git guard that actually blocks builders remained.
 
 ### ✅ Question 1 — RESOLVED 2026-09-21 by commit `538fb17`
 
@@ -458,5 +547,8 @@ path — still outward-facing, so the hard stop stands regardless and this only 
 
 ### What happens next
 
-Run 3 is building T2, then T3, then the T4/T5/T7 parallel group. The swarm will build T1–T11 and
-T13 and then stop at T12 with a checklist, unless Question 2 is answered differently before then.
+Answer **Question 3** and the swarm resumes with zero rework: T2's branch is untouched at `58fc17a`,
+T1 is merged and Gate-C-passed, and Gates A and B for Phase 0 are both satisfied. Under Option A the
+next dispatch is a `task-builder` on T2 in the primary checkout.
+
+Questions 2 and 4 do not block and can be answered whenever. Question 1 is closed.
