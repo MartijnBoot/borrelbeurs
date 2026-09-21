@@ -13,6 +13,16 @@ that is not written down did not happen.
 Phase 0. In flight: **T2 `building`** (attempt 1). Blocked on: **nothing — run 2's hard stop is
 resolved.**
 
+> **⚠ Guard for the next run — read before dispatching anything.** Run 3 dispatched a live
+> `task-builder` on T2 at 2026-09-21 and the branch had **0 commits at dispatch time**. The usual
+> reconciliation rule ("no commits ⇒ never built ⇒ dispatch a builder") is therefore **unsafe for
+> T2 specifically** — a branch still sitting at `58fc17a` may mean the builder is mid-flight, not
+> that it never ran. Before re-dispatching T2: check whether the worktree
+> `../.borrelbeurs-swarm/phase-0-t2` has uncommitted changes (`git status --short` from inside it).
+> **Dirty tree ⇒ a builder was interrupted** — resume by inspecting its work, do not start a second
+> one over the top. Clean tree *and* 0 commits ⇒ it is genuinely safe to dispatch. Delete this
+> guard once T2 reaches `verifying` or later.
+
 Run 3 reconciliation against git, 2026-09-21:
 
 - **The run-2 hard stop is lifted.** The human added
