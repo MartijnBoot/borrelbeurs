@@ -1,0 +1,92 @@
+{
+  "names": [
+    "Bier",
+    "Wijn",
+    "Stelz",
+    "Alcmaeon shot",
+    "Fris",
+    "Vodka Red Bull"
+  ],
+  "p_min": [
+    1.5,
+    3.0,
+    3.0,
+    1.0,
+    1.0,
+    7.0
+  ],
+  "p_max": [
+    5.0,
+    6.5,
+    7.0,
+    3.0,
+    4.0,
+    12.0
+  ],
+  "p0": [
+    2.6,
+    4.5,
+    6.0,
+    1.5,
+    3.6,
+    9.7
+  ],
+  "a": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "d": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "s0": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "c": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "params": {
+    "alpha_price": 0.0,
+    "lambda_orders": 1.5,
+    "eta": 0.8,
+    "K": 5.0,
+    "step_quant": 0.1,
+    "phi_persist": 0.1,
+    "decay_rho": 0.98,
+    "history_window_minutes": 15.0,
+    "refresh_minutes": 0.2,
+    "idle_decay_minutes": 0.1,
+    "idle_strength": 1.5,
+    "idle_targets": [],
+    "idle_rise_minutes": 0.1,
+    "idle_rise_strength": 1.5,
+    "idle_rise_targets": [],
+    "bm_enabled": true,
+    "bm_sigma": 0.15,
+    "bm_dt_minutes": 1.0,
+    "bm_sigma_y": 0.18,
+    "flow_vol_amp": 0.7,
+    "flow_beta": 0.25,
+    "y_clip": 6.0,
+    "auto_calibrate_s0": false,
+    "demand_enabled": false
+  }
+}

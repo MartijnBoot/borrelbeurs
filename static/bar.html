@@ -1,0 +1,411 @@
+<!-- ======= bar.html (restructured) ======= -->
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<link rel="icon" href="/logo/logo_klein.png" type="image/jpeg">
+<link rel="apple-touch-icon" href="/logo/logo_klein.png">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Beurs borrel — Bar</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0"></script>
+<script src="/static/theme.js"></script>
+<style>
+  :root{--bg:#070b16;--panel:#0b1220;--panel2:#0e1628;--grid:#1a2744;--text:#e6edf3;--muted:#9aa7bd;--accent:#60a5fa;--ok:#059669;--danger:#dc2626;--header-top:#0b1325;--header-bot:#090f1c}
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Arial,sans-serif}
+  header{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--grid);background:linear-gradient(180deg,var(--header-top),var(--header-bot))}
+  .actions a{color:var(--accent);text-decoration:none;border:1px solid #1e3a8a;padding:6px 10px;border-radius:8px;margin-left:8px}
+  .container{padding:18px;display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:1400px;margin:0 auto}
+  .card{background:var(--panel);border:1px solid var(--grid);border-radius:12px;padding:14px}
+  .card h2{margin:0 0 10px 0;font-size:18px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .pill{padding:4px 8px;border:1px solid #334155;background:#0b1325;border-radius:999px;font-size:12px}
+  button{padding:10px 12px;border:0;border-radius:10px;background:var(--ok);color:#fff;font-weight:800;cursor:pointer;touch-action:manipulation}
+  button.danger{background:var(--danger)}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+  @media(max-width:768px){
+    .grid{grid-template-columns:repeat(2,1fr);gap:12px}
+    .grid button{min-height:56px;font-size:15px;padding:14px 10px}
+    .container{padding:12px}
+    .card{padding:12px}
+  }
+  @media(max-width:640px){
+    #revChart{display:none}
+  }
+  .muted{color:var(--muted);font-size:12px}
+  .brand{display:flex;gap:12px;align-items:center}
+  .brand .logo{height:36px;width:auto;display:block}
+  .kpi{display:flex;flex-direction:column;border:1px solid var(--grid);background:var(--panel2);border-radius:10px;padding:8px 10px}
+  .kpi .lab{font-size:12px;color:var(--muted)}
+  .kpi .val{font-size:22px;font-weight:800}
+  .nav { position:relative; }
+  .nav-btn{
+    display:flex; align-items:center; gap:6px;
+    padding:10px 14px; border-radius:8px; border:1px solid #1e3a8a;
+    background:transparent; color:var(--accent); font:inherit; cursor:pointer;
+    touch-action:manipulation;
+  }
+  .nav-panel{
+    position:absolute; right:0; top:calc(100% + 8px); z-index:40;
+    background:var(--panel); border:1px solid var(--grid); border-radius:10px;
+    min-width:220px; box-shadow:0 10px 30px rgba(0,0,0,.35); padding:6px;
+    display:none;
+  }
+  .nav.open .nav-panel{ display:block; }
+  .nav-item{
+    display:flex; align-items:center; gap:8px;
+    padding:8px 10px; border-radius:8px; color:var(--text); text-decoration:none;
+  }
+  .nav-item:hover{ background:#0b162b; }
+  .nav-sep{ height:1px; background:var(--grid); margin:6px 0; }
+  @media (max-width:1000px){ .container{grid-template-columns:1fr} }
+
+  /* ── Oudgeld theme overrides ── */
+  [data-theme="oudgeld"] .card{
+    border-color:#4a3f1a;
+    box-shadow:inset 0 0 0 1px rgba(201,168,76,.08), 0 2px 8px rgba(0,0,0,.5);
+  }
+  [data-theme="oudgeld"] .kpi{
+    border-color:#4a3f1a;
+    box-shadow:inset 0 0 0 1px rgba(201,168,76,.06);
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <img src="/logo/logo_medium.png" alt="Bier Beurs" class="logo">
+    <h1 style="margin:0;font-size:18px">🍺 Bar — Bestellen</h1></div>
+    <div class="nav" id="appNav">
+        <button class="nav-btn" aria-haspopup="true" aria-expanded="false">
+            Menu <span aria-hidden="true">▾</span>
+        </button>
+        <div class="nav-panel" role="menu">
+            <a class="nav-item" role="menuitem" href="/" data-page="/">🏠 Home</a>
+            <div class="nav-sep" aria-hidden="true"></div>
+            <a class="nav-item" role="menuitem" href="/koers" data-page="/koers">📈 Live koersbord</a>
+            <a class="nav-item" role="menuitem" href="/bar" data-page="/bar">🍺 Bar</a>
+            <a class="nav-item" role="menuitem" href="/settings" data-page="/settings">⚙️ Instellingen</a>
+            <a class="nav-item" role="menuitem" href="/manipulation" data-page="/manipulation">🎮 Spel mechanica</a>
+            <div class="nav-sep" aria-hidden="true"></div>
+            <a class="nav-item" role="menuitem" href="#" onclick="logout();return false;" style="color:#ef4444">🚪 Uitloggen</a>
+        </div>
+    </div>
+</header>
+
+<div class="container">
+  <!-- LEFT: Order pad -->
+  <section class="card">
+    <h2>Bestellingen</h2>
+    <div id="orderButtons" class="grid"></div>
+    <div class="row" style="margin-top:8px">
+      <span id="orderStatus" class="muted">Klaar</span>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div class="pill">Totaal verkocht per drankje:</div>
+      <div id="totals" class="row"></div>
+    </div>
+  </section>
+
+  <!-- RIGHT: Financial overview -->
+  <section class="card">
+    <h2>💶 Financieel overzicht</h2>
+    <div class="row" style="align-items:flex-end; gap:16px; margin-bottom:8px">
+      <div class="kpi"><div class="lab">Totale omzet</div><div class="val" id="k_total">—</div></div>
+      <div class="kpi"><div class="lab">Omzet bij bar prijs</div><div class="val" id="k_p0">—</div></div>
+      <div class="kpi"><div class="lab">Totaal aantal drankjes</div><div class="val" id="k_qty">—</div></div>
+      <a id="dl_earnings" class="pill" href="#" target="_blank" rel="noopener">Download bestand</a>
+      <span class="muted" id="sales_count">(— verkopen)</span>
+    </div>
+    <div class="row" id="revPills"></div>
+    <div class="row" id="revP0Pills"></div>
+    <div style="margin-top:8px">
+      <canvas id="revChart" height="130"></canvas>
+    </div>
+  </section>
+</div>
+
+<script>
+async function logout(){await fetch('/auth/logout',{method:'POST'});location.href='/login';}
+const API = window.location.origin;
+let state=null, revChart=null;
+let localOrders = []; // {name, qty, price, barPrice, ts} — client-side only, no engine link
+
+/* ----- Navigation ----- */
+(function(){
+  const nav = document.getElementById('appNav');
+  if (!nav) return;
+  const btn = nav.querySelector('.nav-btn');
+  const panel = nav.querySelector('.nav-panel');
+
+  // Hide nav items not accessible to the current role
+  const ROLE_PAGES = {
+    display: new Set(['/koers']),
+    bar:     new Set(['/bar', '/manipulation']),
+    admin:   new Set(['/', '/koers', '/bar', '/manipulation', '/settings']),
+  };
+  fetch('/auth/me').then(r=>r.json()).then(data=>{
+    if (!data.ok) return;
+    const allowed = ROLE_PAGES[data.role];
+    if (!allowed) return;
+    panel.querySelectorAll('[data-page]').forEach(el=>{
+      if (!allowed.has(el.dataset.page)) el.style.display = 'none';
+    });
+  }).catch(()=>{});
+
+  function open(){ nav.classList.add('open'); btn.setAttribute('aria-expanded','true'); }
+  function close(){ nav.classList.remove('open'); btn.setAttribute('aria-expanded','false'); }
+
+  btn.addEventListener('click', (e)=>{ e.stopPropagation(); nav.classList.toggle('open'); 
+    btn.setAttribute('aria-expanded', nav.classList.contains('open')); });
+
+  // Close on outside click / Escape
+  document.addEventListener('click', (e)=>{ if (!nav.contains(e.target)) close(); });
+  document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') close(); });
+
+  // Basic focus trapping: move focus to first/last item with Arrow keys
+  const items = Array.from(panel.querySelectorAll('.nav-item'));
+  btn.addEventListener('keydown', (e)=>{ if(e.key==='ArrowDown'){ e.preventDefault(); open(); items[0]?.focus(); }});
+  panel.addEventListener('keydown', (e)=>{
+    if(!['ArrowDown','ArrowUp','Home','End'].includes(e.key)) return;
+    e.preventDefault();
+    const i = items.indexOf(document.activeElement);
+    if(e.key==='Home') return items[0]?.focus();
+    if(e.key==='End') return items[items.length-1]?.focus();
+    const n = e.key==='ArrowDown' ? (i+1)%items.length : (i-1+items.length)%items.length;
+    items[n]?.focus();
+  });
+})();
+
+// NEW: buffering + scheduler
+let pendingState = null;          // last message received (WS/poll)
+let appliedState = null;          // last message rendered
+let applyTimer = null;
+let applyMs = 60_000;             // default; updated from params.refresh_minutes
+
+const el = id => document.getElementById(id);
+const EUR = new Intl.NumberFormat('nl-NL',{ style:'currency', currency:'EUR', minimumFractionDigits:2 });
+const euro = x => EUR.format(Number(x||0));
+
+/* ---------- LOCAL EARNINGS (computed from displayed prices, no engine link) ---------- */
+function computeLocalEarnings(){
+  const names = appliedState?.names || [];
+  let total = 0, p0Total = 0, totalQty = 0;
+  const perDrink = Object.fromEntries(names.map(n => [n, 0]));
+  const perDrinkP0 = Object.fromEntries(names.map(n => [n, 0]));
+  let cum = 0;
+  const series = localOrders.map(o => {
+    const rev = o.price * o.qty;
+    const rev0 = o.barPrice * o.qty;
+    total += rev; p0Total += rev0; totalQty += o.qty;
+    if (o.name in perDrink){ perDrink[o.name] += rev; perDrinkP0[o.name] += rev0; }
+    cum += rev;
+    return { ts: o.ts, cum };
+  });
+  return {
+    total, p0_total: p0Total, total_qty: totalQty, count: localOrders.length,
+    per_drink: perDrink, p0_per_drink: perDrinkP0, series,
+    file_url: appliedState?.earnings?.file_url,  // download link still comes from server tick
+  };
+}
+
+/* ---------- ORDERS ---------- */
+async function orderDrink(name){
+  el("orderStatus").textContent = `Bestellen…`;
+  try{
+    const res = await fetch(API+"/order", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ orders: [{ drink:name, qty:1 }], snapshot_version: snapshotVersion })
+    });
+    if(res.ok){
+      el("orderStatus").textContent = `1x ${name} besteld`;
+      setTimeout(()=>el("orderStatus").textContent="Klaar", 900);
+      const names = appliedState?.names || [];
+      const i = names.indexOf(name);
+      const prices = snapPrices(appliedState || {});
+      localOrders.push({
+        name, qty: 1,
+        price:    i >= 0 ? (prices[i] || 0) : 0,
+        barPrice: i >= 0 ? ((appliedState?.bar_price || [])[i] || 0) : 0,
+        ts: Date.now(),
+      });
+      renderTotals();
+      renderEarnings(computeLocalEarnings());
+    }else if(res.status === 409){
+      // Price changed between render and order; refresh state and retry
+      const body = await res.json();
+      if(body?.error === "stale_snapshot"){
+        el("orderStatus").textContent = "Prijs gewijzigd, probeer opnieuw";
+        await loadState(); applyNow();
+      }else{
+        el("orderStatus").textContent = "Conflict bij bestellen";
+      }
+    }else{
+      el("orderStatus").textContent = "Fout bij bestellen";
+    }
+  }catch{
+    el("orderStatus").textContent = "Server onbereikbaar";
+  }
+}
+
+/* ---------- SNAPSHOT-DRIVEN RENDERING ---------- */
+function snapPrices(s){
+  const h = s && Array.isArray(s.history) ? s.history : [];
+  return h.length ? h[h.length - 1].prices : (s.prices_quant || []);
+}
+
+function renderOrderButtons(){
+  const cont = el("orderButtons"); cont.innerHTML = "";
+  const names = appliedState?.names || [];
+  const p = snapPrices(appliedState||{});
+  names.forEach((nm,i)=>{
+    const btn = document.createElement("button");
+    btn.textContent = `+1 ${nm} — ${euro(p[i])}`;
+    btn.onclick = () => orderDrink(nm);
+    cont.appendChild(btn);
+  });
+}
+
+function renderTotals(){
+  const cont = el("totals"); cont.innerHTML = "";
+  const totals = appliedState?.totals_ordered || [];
+  (appliedState?.names||[]).forEach((nm,i)=>{
+    const s = document.createElement("span");
+    s.className = "pill";
+    s.textContent = `${nm}: ${totals[i]??0}`;
+    cont.appendChild(s);
+  });
+}
+
+function renderEarnings(earn){
+  // unchanged, but read from appliedState
+  el("k_total").textContent = euro(earn.total||0);
+  el("k_p0").textContent    = euro(earn.p0_total||0);
+  el("k_qty").textContent   = String(earn.total_qty||0);
+  el("sales_count").textContent = `(${earn.count||0} verkopen)`;
+  const a = el("dl_earnings");
+  if (earn.file_url){ a.href = earn.file_url; a.classList.remove("muted"); a.textContent="Download bestand"; }
+  else { a.href="#"; a.classList.add("muted"); a.textContent="Geen bestand"; }
+
+  const pills = el("revPills"); pills.innerHTML="";
+  (appliedState?.names||[]).forEach(nm=>{
+    const v = earn.per_drink?.[nm] ?? 0;
+    const span = document.createElement("span");
+    span.className = "pill";
+    span.textContent = `${nm}: ${euro(v)}`;
+    pills.appendChild(span);
+  });
+
+  const pills0 = el("revP0Pills"); pills0.innerHTML="";
+  (appliedState?.names||[]).forEach(nm=>{
+    const v = earn.p0_per_drink?.[nm] ?? 0;
+    const span = document.createElement("span");
+    span.className = "pill";
+    span.textContent = `${nm} bij bar prijs: ${euro(v)}`;
+    pills0.appendChild(span);
+  });
+
+  const ctx = document.getElementById("revChart").getContext("2d");
+  const labels = (earn.series||[]).map(p=>new Date(p.ts));
+  const data = (earn.series||[]).map(p=>p.cum);
+  if (revChart) revChart.destroy();
+  revChart = new Chart(ctx,{
+    type:"line",
+    data:{ labels, datasets:[{ label:"Cumulatieve omzet", data, tension:.2, fill:false }]},
+    options:{
+      responsive:true, plugins:{ legend:{ display:false }},
+      scales:{
+        x:{ type:"time", time:{ unit:"minute" }, grid:{ color:"#1a2744" }, ticks:{ color:"#9aa7bd" } },
+        y:{ grid:{ color:"#1a2744" }, ticks:{ color:"#9aa7bd", callback:v=>EUR.format(v) } }
+      }
+    }
+  });
+}
+
+/* ---------- APPLY LOOP (UNIFIES WS + POLL CADENCE) ---------- */
+function applyNow(){
+  if (!pendingState) return;
+  appliedState = pendingState;       // single point of truth for rendering
+  state = appliedState;              // keep your existing variable populated
+  renderOrderButtons();
+  renderTotals();
+  renderEarnings(appliedState.earnings || computeLocalEarnings());
+  // Recompute cadence if server changed it
+  const mins = Number(appliedState?.params?.refresh_minutes);
+  const wanted = Number.isFinite(mins) ? Math.max(2_000, Math.min(600_000, mins*60_000)) : 60_000;
+  if (wanted !== applyMs){
+    applyMs = wanted;
+    startApplyLoop(true);
+  }
+}
+
+function startApplyLoop(reset=false){
+  if (reset && applyTimer){ clearInterval(applyTimer); applyTimer = null; }
+  if (!applyTimer){
+    applyTimer = setInterval(applyNow, applyMs);
+  }
+}
+
+/* ---------- INPUTS: WS + POLLING feed only pendingState ---------- */
+let snapshotVersion = null;
+function onStateRaw(msg){
+  pendingState = msg;
+  snapshotVersion = msg?.snapshot_version
+    ?? (Array.isArray(msg?.history) && msg.history.length ? msg.history[msg.history.length-1].ts : null);
+}
+
+async function loadState(){
+  try{
+    const r = await fetch(API+"/state", { cache:"no-store" });
+    const js = await r.json();
+    onStateRaw(js);
+    if (!appliedState) applyNow();   // <-- render first snapshot immediately
+  }catch{}
+}
+
+/* ---------- Polling (same cadence as koers via refresh_minutes) ---------- */
+function startPolling(){
+  if (window._statePoll) return;
+  async function tick(){
+    await loadState();
+    // polling period tracks applyMs to align arrivals with applies
+    const ms = applyMs || 60_000;
+    if (window._statePoll) clearInterval(window._statePoll);
+    window._statePoll = setInterval(loadState, ms);
+  }
+  tick();
+}
+
+/* ---------- WS ---------- */
+(function initWS(){
+  const url = (location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws";
+  let ws, backoff=500, maxBackoff=8000;
+  function connect(){
+    ws = new WebSocket(url);
+    ws.onopen = ()=>{
+      backoff = 500;
+      try{ ws.send("state"); }catch{}
+      // keep polling as a fallback; WS only feeds pendingState
+    };
+    ws.onmessage = (ev)=>{
+      if (ev.data==="pong") return;
+      try{
+        const msg = JSON.parse(ev.data);
+        if (msg?.type === "state"){ onStateRaw(msg); applyNow(); }
+      }catch{}
+    };
+    ws.onclose = ()=>{ setTimeout(connect, backoff); backoff = Math.min(maxBackoff, (backoff*1.7)|0); };
+    ws.onerror = ()=>{ try{ ws.close(); }catch{} };
+  }
+  window._wsPing = setInterval(()=>{ if (ws?.readyState===1) ws.send("ping"); }, 30000);
+  window.addEventListener("beforeunload", ()=>{ try{ ws?.close(); }catch{}; clearInterval(window._wsPing); });
+  connect();
+})();
+
+// kick off
+loadState();            // fetch initial pending
+startPolling();         // keep feeding pending
+startApplyLoop(true);   // render on cadence only
+</script>

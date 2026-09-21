@@ -1,0 +1,12 @@
+.git
+.gitignore
+*.tar
+*.pdf
+docs/
+static/earnings/
+static/uploads/
+config/keys.json
+__pycache__/
+*.pyc
+.venv/
+config/.jwt_secret

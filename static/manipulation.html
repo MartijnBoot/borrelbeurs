@@ -1,0 +1,434 @@
+<!-- ======= manipulation.html (restructured) ======= -->
+ <!DOCTYPE html>
+<html lang="nl">
+<head>
+<link rel="icon" href="/logo/logo_klein.png" type="image/jpeg">
+<link rel="apple-touch-icon" href="/logo/logo_klein.png">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Beurs Borrel — Spel mechanica</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<script src="/static/theme.js"></script>
+<style>
+  :root{--bg:#0b1220;--panel:#0f172a;--panel2:#0c1326;--grid:#1f2a44;--text:#e6edf3;--muted:#94a3b8;--accent:#60a5fa;--pill:#111827;--pillb:#374151;--primary:#2563eb;--ok:#059669;--header-top:#0b1325;--header-bot:#090f1c;--input-bg:#091226;--input-border:#243253}
+  *{box-sizing:border-box}
+  body{font-family:Inter,system-ui,Arial,sans-serif;margin:0;background:var(--bg);color:var(--text)}
+  a{color:#60a5fa;text-decoration:none}
+  header{position:sticky;top:0;z-index:20;display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-bottom:1px solid var(--grid);background:linear-gradient(180deg,var(--header-top),var(--header-bot))}
+  header .right{display:flex;gap:8px;align-items:center}
+  button{padding:10px 14px;border:0;border-radius:8px;background:var(--primary);color:#fff;font-weight:600;cursor:pointer;touch-action:manipulation}
+  .pill{padding:2px 6px;border-radius:999px;border:1px solid var(--pillb);background:var(--pill);font-size:12px}
+  .layout{display:grid;grid-template-columns:260px 1fr;gap:16px;max-width:1400px;margin:0 auto;padding:16px}
+  .sidebar{position:sticky; top:70px; align-self:start;background:var(--panel); border:1px solid var(--grid); border-radius:12px; padding:12px}
+  .navsec{display:flex;flex-direction:column;gap:6px}
+  .navsec a{padding:8px 10px;border-radius:8px;border:1px solid transparent}
+  .navsec a:hover{background:#0b162b;border-color:#223357}
+  .navsec .title{font-size:12px;color:var(--muted);margin:6px 0 4px}
+  .content{display:flex;flex-direction:column;gap:16px}
+  .card{background:var(--panel);border:1px solid var(--grid);border-radius:12px;padding:14px}
+  .card h2{margin:0 0 8px 0;font-size:18px}
+  .row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin:6px 0}
+  label{display:block;margin:6px 0 4px}
+  input,select{width:100%;padding:11px 12px;border-radius:8px;border:1px solid #243253;background:#091226;color:var(--text)}
+  table{width:100%;border-collapse:collapse}
+  th,td{border-bottom:1px solid var(--grid);padding:8px;text-align:left}
+  .brand{display:flex;gap:12px;align-items:center}
+  .brand .logo{height:36px;width:auto;display:block}
+  .muted{color:var(--muted);font-size:12px}
+  .switch{position:relative;display:inline-block;width:48px;height:26px}
+  .switch input{opacity:0;width:0;height:0}
+  .slider{position:absolute;cursor:pointer;inset:0;background:#1f2a44;border:1px solid #2b3b63;border-radius:999px;transition:background .2s,border-color .2s}
+  .slider:before{content:"";position:absolute;height:20px;width:20px;left:3px;top:2px;background:#cbd5e1;border-radius:50%;transition:transform .2s,background .2s}
+  .switch input:checked + .slider{background:var(--ok);border-color:var(--ok)}
+  .switch input:checked + .slider:before{transform:translateX(22px);background:#0b1220}
+  .nav { position:relative; }
+  .nav-btn{
+    display:flex; align-items:center; gap:6px;
+    padding:10px 14px; border-radius:8px; border:1px solid #1e3a8a;
+    background:transparent; color:var(--accent); font:inherit; cursor:pointer;
+    touch-action:manipulation;
+  }
+  @media(max-width:768px){
+    .layout{grid-template-columns:1fr;padding:12px}
+    .sidebar{display:none}
+    .card{padding:12px}
+    .mobile-fab{display:flex !important}
+  }
+  .nav-panel{
+    position:absolute; right:0; top:calc(100% + 8px); z-index:40;
+    background:var(--panel); border:1px solid var(--grid); border-radius:10px;
+    min-width:220px; box-shadow:0 10px 30px rgba(0,0,0,.35); padding:6px;
+    display:none;
+  }
+  .nav.open .nav-panel{ display:block; }
+  .nav-item{
+    display:flex; align-items:center; gap:8px;
+    padding:8px 10px; border-radius:8px; color:var(--text); text-decoration:none;
+  }
+  .nav-item:hover{ background:#0b162b; }
+  .nav-sep{ height:1px; background:var(--grid); margin:6px 0; }
+  .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .mobile-fab{
+    display:none;position:fixed;bottom:20px;right:20px;z-index:50;
+    background:var(--primary);color:#fff;font-weight:600;
+    padding:12px 18px;border-radius:999px;cursor:pointer;
+    box-shadow:0 4px 16px rgba(0,0,0,.4);touch-action:manipulation;
+    align-items:center;gap:8px;border:0;font:inherit;
+  }
+  .mobile-drawer{display:none;position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5)}
+  .mobile-drawer.open{display:flex;align-items:flex-end}
+  .mobile-drawer-inner{
+    background:var(--panel);border-top:1px solid var(--grid);
+    border-radius:16px 16px 0 0;width:100%;padding:20px;
+    display:flex;flex-direction:column;gap:4px;max-height:70vh;overflow-y:auto
+  }
+  .mobile-drawer-title{font-weight:600;font-size:16px;margin-bottom:8px;color:var(--text)}
+  .mobile-drawer-link{
+    display:block;padding:12px 14px;border-radius:10px;
+    color:var(--text);text-decoration:none;font-size:15px
+  }
+  .mobile-drawer-link:hover,.mobile-drawer-link:active{background:#0b162b}
+  .mobile-drawer-close{
+    margin-top:8px;background:var(--grid);color:var(--muted);
+    padding:12px;border-radius:8px;width:100%;font-size:14px;
+    font-weight:600;cursor:pointer;border:0;font-family:inherit
+  }
+  @media(max-width:480px){
+    .card h2{font-size:16px}
+    .row{gap:8px}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <img src="/logo/logo_medium.png" alt="Bier Beurs" class="logo">
+    <h1>Spel mechanica</h1>
+  </div>
+    <div class="nav" id="appNav">
+        <button class="nav-btn" aria-haspopup="true" aria-expanded="false">
+            Menu <span aria-hidden="true">▾</span>
+        </button>
+        <div class="nav-panel" role="menu">
+            <a class="nav-item" role="menuitem" href="/" data-page="/">🏠 Home</a>
+            <div class="nav-sep" aria-hidden="true"></div>
+            <a class="nav-item" role="menuitem" href="/koers" data-page="/koers">📈 Live koersbord</a>
+            <a class="nav-item" role="menuitem" href="/bar" data-page="/bar">🍺 Bar</a>
+            <a class="nav-item" role="menuitem" href="/settings" data-page="/settings">⚙️ Instellingen</a>
+            <a class="nav-item" role="menuitem" href="/manipulation" data-page="/manipulation">🎮 Spel mechanica</a>
+            <div class="nav-sep" aria-hidden="true"></div>
+            <a class="nav-item" role="menuitem" href="#" onclick="logout();return false;" style="color:#ef4444">🚪 Uitloggen</a>
+        </div>
+    </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="navsec">
+      <div class="title">Acties</div>
+      <a href="#sec-news">📰 Nieuws</a>
+      <a href="#sec-crash">💥 Market events</a>
+      <a href="#sec-jump">⚡ Price jump</a>
+      <a href="#sec-idle">⏳ Idle</a>
+    </div>
+  </aside>
+
+  <main class="content">
+    <!-- News -->
+    <section id="sec-news" class="card">
+      <h2>📰 Nieuwsberichten</h2>
+      <div class="row" style="align-items:flex-end">
+        <div><label>Niveau</label>
+          <select id="news_level">
+            <option value="Info">Info</option>
+            <option value="Success">Success</option>
+            <option value="Warning">Warning</option>
+            <option value="Danger">Danger</option>
+          </select>
+        </div>
+        <div style="flex:1;min-width:0"><label>Bericht</label><input id="news_text" placeholder="Typ je nieuws…"/></div>
+        <button id="news_add">➕ Plaatsen</button>
+        <span id="news_status" class="muted"></span>
+      </div>
+      <div class="row" style="height:1px;background:var(--grid)"></div>
+      <div class="table-scroll"><table><thead><tr><th>Tijd</th><th>Niveau</th><th>Bericht</th><th></th></tr></thead><tbody id="news_table"></tbody></table></div>
+    </section>
+
+    <!-- Market Events -->
+    <section id="sec-crash" class="card">
+      <h2>💥 Market events</h2>
+      <div class="row">
+        <div style="min-width:200px"><label>Duur (seconden)</label><input id="crash_secs" type="number" step="1" min="1" value="30"></div>
+        <span id="crash_status" class="muted" style="align-self:flex-end"></span>
+      </div>
+      <div class="row">
+        <button id="crash_min" style="background:#dc2626">💥 Market Crash</button>
+        <button id="crash_mid" style="background:#6b7280">🔄 Terug naar start</button>
+        <button id="crash_max" style="background:#059669">🚀 Price Bubble</button>
+      </div>
+      <p class="muted">Beweegt alle drankprijzen gelijktijdig naar het doel (min / startprijs / max) via een vloeiende animatie.</p>
+    </section>
+
+    <!-- Price Jump -->
+    <section id="sec-jump" class="card">
+      <h2>⚡ Price jump</h2>
+      <div class="row">
+        <div style="min-width:220px"><label>Drankje</label><select id="jump_drink"></select></div>
+        <div style="min-width:160px"><label>Doelprijs</label><input id="jump_target" type="number" step="0.1" min="0"></div>
+        <div style="min-width:200px"><label>Duur (seconden)</label><input id="jump_secs" type="number" step="0.1" min="0.1" value="5"></div>
+        <button id="jump_go">Start jump</button>
+        <span id="jump_status" class="muted"></span>
+      </div>
+      <p class="muted">Gaat soepel naar de doelprijs en daarna verder zoals normaal.</p>
+    </section>
+
+    <!-- Idle settings -->
+    <section id="sec-idle" class="card">
+      <h2>⏳ Idle instellingen</h2>
+
+      <h3>Idle decay (prijs omlaag)</h3>
+      <div class="row">
+        <div style="min-width:160px"><label>🕒 Idle-decay (min)</label><input id="idle_decay_minutes" type="number" step="0.5" min="0.5"></div>
+        <div style="min-width:160px"><label>⬇️ Decay-sterkte</label><input id="idle_strength" type="number" step="0.1" min="0"></div>
+      </div>
+      <div class="row">
+        <label style="display:flex;align-items:center;gap:10px">
+          <span>Decay targets</span>
+          <span id="idle_targets_box" class="row" style="gap:14px"></span>
+        </label>
+      </div>
+
+      <div class="row" style="height:1px;background:var(--grid)"></div>
+
+      <h3>Idle rise (prijs omhoog)</h3>
+      <div class="row">
+        <div style="min-width:160px"><label>🕒 Idle-rise (min)</label><input id="idle_rise_minutes" type="number" step="0.5" min="0.5"></div>
+        <div style="min-width:160px"><label>⬆️ Rise-sterkte</label><input id="idle_rise_strength" type="number" step="0.1" min="0"></div>
+      </div>
+      <div class="row">
+        <label style="display:flex;align-items:center;gap:10px">
+          <span>Rise targets</span>
+          <span id="idle_rise_targets_box" class="row" style="gap:14px"></span>
+        </label>
+      </div>
+
+      <div class="row">
+        <button id="apply-idle">💾 Opslaan idle</button>
+        <span id="status-idle" class="muted"></span>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<button class="mobile-fab" id="mobile-nav-fab" aria-label="Ga naar sectie">☰ Ga naar…</button>
+<div class="mobile-drawer" id="mobile-nav-drawer" role="dialog" aria-modal="true" aria-label="Secties">
+  <div class="mobile-drawer-inner">
+    <div class="mobile-drawer-title">Ga naar sectie</div>
+    <a href="#sec-news" class="mobile-drawer-link">📰 Nieuws</a>
+    <a href="#sec-crash" class="mobile-drawer-link">💥 Market events</a>
+    <a href="#sec-jump" class="mobile-drawer-link">⚡ Price jump</a>
+    <a href="#sec-idle" class="mobile-drawer-link">⏳ Idle</a>
+    <button id="mobile-nav-close" class="mobile-drawer-close">✕ Sluiten</button>
+  </div>
+</div>
+
+<script>
+async function logout(){await fetch('/auth/logout',{method:'POST'});location.href='/login';}
+const API = window.location.origin;
+let state=null;
+const el=id=>document.getElementById(id);
+const fmtTime = ts => new Date(ts).toLocaleTimeString();
+
+/* ----- Navigation ----- */
+(function(){
+  const nav = document.getElementById('appNav');
+  if (!nav) return;
+  const btn = nav.querySelector('.nav-btn');
+  const panel = nav.querySelector('.nav-panel');
+
+  // Hide nav items not accessible to the current role
+  const ROLE_PAGES = {
+    display: new Set(['/koers']),
+    bar:     new Set(['/bar', '/manipulation']),
+    admin:   new Set(['/', '/koers', '/bar', '/manipulation', '/settings']),
+  };
+  fetch('/auth/me').then(r=>r.json()).then(data=>{
+    if (!data.ok) return;
+    const allowed = ROLE_PAGES[data.role];
+    if (!allowed) return;
+    panel.querySelectorAll('[data-page]').forEach(el=>{
+      if (!allowed.has(el.dataset.page)) el.style.display = 'none';
+    });
+  }).catch(()=>{});
+
+  function open(){ nav.classList.add('open'); btn.setAttribute('aria-expanded','true'); }
+  function close(){ nav.classList.remove('open'); btn.setAttribute('aria-expanded','false'); }
+
+  btn.addEventListener('click', (e)=>{ e.stopPropagation(); nav.classList.toggle('open'); 
+    btn.setAttribute('aria-expanded', nav.classList.contains('open')); });
+
+  // Close on outside click / Escape
+  document.addEventListener('click', (e)=>{ if (!nav.contains(e.target)) close(); });
+  document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') close(); });
+
+  // Basic focus trapping: move focus to first/last item with Arrow keys
+  const items = Array.from(panel.querySelectorAll('.nav-item'));
+  btn.addEventListener('keydown', (e)=>{ if(e.key==='ArrowDown'){ e.preventDefault(); open(); items[0]?.focus(); }});
+  panel.addEventListener('keydown', (e)=>{
+    if(!['ArrowDown','ArrowUp','Home','End'].includes(e.key)) return;
+    e.preventDefault();
+    const i = items.indexOf(document.activeElement);
+    if(e.key==='Home') return items[0]?.focus();
+    if(e.key==='End') return items[items.length-1]?.focus();
+    const n = e.key==='ArrowDown' ? (i+1)%items.length : (i-1+items.length)%items.length;
+    items[n]?.focus();
+  });
+})();
+
+/* ----- IDLE ----- */
+function buildIdleTargets(){
+  const box = el("idle_targets_box"); box.innerHTML = "";
+  const cur = new Set(state.params.idle_targets || []);
+  state.names.forEach(nm => {
+    const id = "idle_" + nm;
+    const label = document.createElement("label");
+    label.style.display = "flex"; label.style.alignItems = "center"; label.style.gap = "10px";
+    label.innerHTML = `
+      <span>${nm}</span>
+      <span class="switch">
+        <input type="checkbox" id="${id}" data-name="${nm}" ${cur.has(nm) ? "checked" : ""}>
+        <span class="slider"></span>
+      </span>`;
+    box.appendChild(label);
+  });
+}
+function buildIdleRiseTargets(){
+  const box = el("idle_rise_targets_box"); box.innerHTML = "";
+  const cur = new Set(state.params.idle_rise_targets || []);
+  state.names.forEach(nm => {
+    const id = "idlerise_" + nm;
+    const label = document.createElement("label");
+    label.style.display = "flex"; label.style.alignItems = "center"; label.style.gap = "10px";
+    label.innerHTML = `
+      <span>${nm}</span>
+      <span class="switch">
+        <input type="checkbox" id="${id}" data-name="${nm}" ${cur.has(nm) ? "checked" : ""}>
+        <span class="slider"></span>
+      </span>`;
+    box.appendChild(label);
+  });
+}
+function setIdleInputs(p){
+  ["idle_decay_minutes","idle_strength","idle_rise_minutes","idle_rise_strength"].forEach(k=>{
+    if(el(k) && p[k]!==undefined) el(k).value = p[k];
+  });
+}
+async function applyIdle(){
+  const idle_targets = Array.from(document.querySelectorAll("#idle_targets_box input[type=checkbox]"))
+    .filter(c=>c.checked).map(c=>c.dataset.name);
+  const idle_rise_targets = Array.from(document.querySelectorAll("#idle_rise_targets_box input[type=checkbox]"))
+    .filter(c=>c.checked).map(c=>c.dataset.name);
+  const payload = {
+    idle_decay_minutes:+el("idle_decay_minutes").value, idle_strength:+el("idle_strength").value, idle_targets,
+    idle_rise_minutes:+el("idle_rise_minutes").value, idle_rise_strength:+el("idle_rise_strength").value, idle_rise_targets
+  };
+  const res=await fetch(API+"/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  if(res.ok){ el("status-idle").textContent="Opgeslagen"; setTimeout(()=>el("status-idle").textContent="",1200); }
+}
+el("apply-idle").addEventListener("click", applyIdle);
+
+/* ----- JUMP ----- */
+function buildJumpSelect(){
+  const sel=el("jump_drink"); sel.innerHTML="";
+  state.names.forEach(nm=>{ const o=document.createElement("option"); o.value=nm; o.textContent=nm; sel.appendChild(o); });
+}
+async function triggerJump(){
+  const drink=el("jump_drink").value;
+  const target=+el("jump_target").value;
+  const secs=+el("jump_secs").value;
+  const out=el("jump_status");
+  if(!drink||Number.isNaN(target)||Number.isNaN(secs)||secs<=0){ out.textContent="Vul velden in"; return; }
+  const res=await fetch(API+"/price-jump",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({drink,target_price:target,duration_ms:Math.round(secs*1000)})});
+  const js=await res.json().catch(()=>({}));
+  out.textContent = res.ok && js.ok!==false ? "Jump gestart" : ("Fout: "+(js.error||res.status));
+  setTimeout(()=>out.textContent="",1500);
+}
+el("jump_go").addEventListener("click", triggerJump);
+
+/* ----- MARKET CRASH ----- */
+async function triggerMarketEvent(target){
+  const secs=+el("crash_secs").value;
+  const out=el("crash_status");
+  if(Number.isNaN(secs)||secs<=0){ out.textContent="Vul duur in"; return; }
+  const res=await fetch(API+"/market-crash",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({duration_ms:Math.round(secs*1000),target})});
+  const js=await res.json().catch(()=>({}));
+  const label={min:"crash",max:"bubble",mid:"reset"}[target]||target;
+  out.textContent=res.ok&&js.ok!==false?`${label} gestart!`:("Fout: "+(js.error||res.status));
+  setTimeout(()=>out.textContent="",2000);
+}
+el("crash_min").addEventListener("click",()=>triggerMarketEvent("min"));
+el("crash_mid").addEventListener("click",()=>triggerMarketEvent("mid"));
+el("crash_max").addEventListener("click",()=>triggerMarketEvent("max"));
+
+/* ----- NEWS ----- */
+async function loadNewsIntoTable(){
+  const res=await fetch(API+"/news"); if(!res.ok) return;
+  const data=await res.json(); const rows=data.news||[];
+  const tb=el("news_table"); tb.innerHTML="";
+  rows.slice().reverse().forEach(n=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${fmtTime(n.ts_ms)}</td>
+      <td><span class="pill">${n.level||"info"}</span></td>
+      <td>${(n.text||"").replace(/</g,"&lt;")}</td>
+      <td><button data-id="${n.id}" class="pill" style="border:none">Verwijderen</button></td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll("button.pill").forEach(btn=>{
+    btn.addEventListener("click",async e=>{
+      const id=e.currentTarget.getAttribute("data-id");
+      const r=await fetch(API+"/news/"+encodeURIComponent(id),{method:"DELETE"});
+      if(r.ok) loadNewsIntoTable();
+    });
+  });
+}
+el("news_add").addEventListener("click", async ()=>{
+  const text=el("news_text").value.trim(); const level=el("news_level").value;
+  if(!text){ el("news_status").textContent="Leeg bericht"; return; }
+  const res=await fetch(API+"/news",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,level})});
+  if(res.ok){ el("news_status").textContent="Geplaatst"; el("news_text").value=""; setTimeout(()=>el("news_status").textContent="",1200); loadNewsIntoTable(); }
+});
+
+/* ----- LOAD & WS ----- */
+async function loadState(){
+  const res=await fetch(API+"/state"); state=await res.json();
+  setIdleInputs(state.params); buildIdleTargets(); buildIdleRiseTargets(); buildJumpSelect(); loadNewsIntoTable();
+}
+(function initWS(){
+  const url=(location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws";
+  let ws; try{
+    ws=new WebSocket(url);
+    ws.onopen=()=>ws.send("state");
+    ws.onmessage=(ev)=>{ if(ev.data==="pong")return; try{ const msg=JSON.parse(ev.data); if(msg?.type==="state"){ state=msg; } }catch{} };
+  }catch{}
+})();
+loadState();
+
+/* ----- Mobile nav FAB ----- */
+(function(){
+  const fab=document.getElementById('mobile-nav-fab');
+  const drawer=document.getElementById('mobile-nav-drawer');
+  const closeBtn=document.getElementById('mobile-nav-close');
+  if(!fab||!drawer) return;
+  fab.addEventListener('click',()=>drawer.classList.add('open'));
+  closeBtn.addEventListener('click',()=>drawer.classList.remove('open'));
+  drawer.addEventListener('click',e=>{
+    if(e.target===drawer) drawer.classList.remove('open');
+    if(e.target.classList.contains('mobile-drawer-link')) setTimeout(()=>drawer.classList.remove('open'),100);
+  });
+})();
+</script>
+</body>
+</html>

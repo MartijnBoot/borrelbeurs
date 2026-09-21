@@ -1,0 +1,80 @@
+<!DOCTYPE html><html lang="nl">
+<head>
+<link rel="icon" href="/logo/logo_klein.png" type="image/png">
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Inloggen — Beurs Borrel</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700&display=swap" rel="stylesheet">
+<script src="/static/theme.js"></script>
+<style>
+  :root{--bg:#070b16;--panel:#0b1220;--grid:#1a2744;--text:#e6edf3;--muted:#9aa7bd;--accent:#60a5fa;--ok:#10b981;--warn:#f59e0b;--err:#ef4444}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Arial,sans-serif}
+  .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .card{background:var(--panel);border:1px solid var(--grid);border-radius:16px;width:100%;max-width:380px;padding:32px}
+  .logo{height:72px;width:auto;display:block;margin:0 auto 20px}
+  h1{margin:0 0 4px;font-size:20px;text-align:center}
+  .sub{color:var(--muted);font-size:14px;text-align:center;margin-bottom:24px}
+  label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+  input{width:100%;background:#0e1628;border:1px solid var(--grid);border-radius:10px;color:var(--text);
+        font-size:16px;padding:12px 14px;outline:none;font-family:inherit;letter-spacing:.05em}
+  input:focus{border-color:var(--accent)}
+  button{width:100%;margin-top:16px;padding:13px;border:none;border-radius:10px;
+         background:var(--accent);color:#0b1220;font-size:16px;font-weight:700;
+         cursor:pointer;font-family:inherit}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .err{margin-top:14px;padding:10px 14px;background:rgba(239,68,68,.15);
+       border:1px solid var(--err);border-radius:10px;font-size:14px;color:var(--err);display:none}
+  @media(max-width:480px){
+    .wrap{padding:16px}
+    .card{padding:24px 18px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap"><div class="card">
+  <img src="/logo/logo_groot.png" alt="Beurs Borrel" class="logo">
+  <h1>Welkom</h1>
+  <div class="sub">Voer je toegangscode in.</div>
+
+  <label for="key">Toegangscode</label>
+  <input id="key" type="text" placeholder="BORREL-XXXX-XXXX" autocomplete="off"
+         autocorrect="off" autocapitalize="characters" spellcheck="false">
+
+  <button id="btn" onclick="login()">Inloggen</button>
+  <div class="err" id="err"></div>
+</div></div>
+
+<script>
+  document.getElementById('key').addEventListener('keydown', e => {
+    if (e.key === 'Enter') login();
+  });
+
+  async function login() {
+    const key = document.getElementById('key').value.trim();
+    if (!key) return;
+    const btn = document.getElementById('btn');
+    const err = document.getElementById('err');
+    btn.disabled = true;
+    err.style.display = 'none';
+    try {
+      const res = await fetch('/auth/login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({key}),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        window.location.href = data.redirect;
+      } else {
+        err.textContent = data.error || 'Ongeldige toegangscode.';
+        err.style.display = 'block';
+        btn.disabled = false;
+      }
+    } catch {
+      err.textContent = 'Verbindingsfout. Probeer opnieuw.';
+      err.style.display = 'block';
+      btn.disabled = false;
+    }
+  }
+</script>
+</body></html>

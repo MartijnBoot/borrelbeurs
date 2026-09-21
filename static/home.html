@@ -1,0 +1,153 @@
+<!-- ======= home.html (restructured) ======= -->
+<!DOCTYPE html><html lang="nl">
+<head>
+<link rel="icon" href="/logo/logo_klein.png" type="image/jpeg">
+<link rel="apple-touch-icon" href="/logo/logo_klein.png">
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Beurs Borrel — Home</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;700&display=swap" rel="stylesheet">
+<script src="/static/theme.js"></script>
+<style>
+  :root{--bg:#070b16;--panel:#0b1220;--grid:#1a2744;--text:#e6edf3;--muted:#9aa7bd;--accent:#60a5fa;--ok:#10b981;--warn:#f59e0b;--err:#ef4444}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Arial,sans-serif}
+  .main-logo{height:100px;width:auto;display:block;margin-bottom:8px}
+  .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+  .card{background:var(--panel);border:1px solid var(--grid);border-radius:16px;max-width:1000px;width:100%;padding:24px}
+  h1{margin:0 0 6px 0;font-size:22px}
+  .muted{color:var(--muted)}
+  .top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+  .status{display:flex;gap:10px;align-items:center}
+  .dot{width:10px;height:10px;border-radius:50%}
+  .dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.err{background:var(--err)}
+  .kpis{display:flex;gap:12px;flex-wrap:wrap}
+  .kpi{border:1px solid var(--grid);background:var(--panel2, #0e1628);border-radius:12px;padding:8px 10px}
+  .kpi .lab{font-size:12px;color:var(--muted)} .kpi .val{font-size:18px;font-weight:800}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  .tile{position:relative;border:1px solid var(--grid);border-radius:14px;padding:18px;background:var(--panel2, #0e1628);display:flex;flex-direction:column;gap:8px;cursor:pointer;transition:transform .05s ease;touch-action:manipulation}
+  .tile:active{transform:scale(.995)}
+  .tile h2{margin:0;font-size:18px}
+  .tile p{margin:0;color:var(--muted);font-size:14px}
+  .tile .cta{margin-top:auto;display:inline-block;text-decoration:none;color:#0b1220;background:var(--accent);padding:10px 12px;border-radius:10px;font-weight:700}
+  .tile a.abs{position:absolute;inset:0;z-index:1;/* whole card click target */}
+  @media (max-width:800px){.grid{grid-template-columns:1fr}}
+  @media (max-width:480px){
+    .wrap{padding:16px}
+    .card{padding:16px}
+    .top{align-items:flex-start}
+    h1{font-size:18px}
+    .main-logo{height:72px}
+  }
+
+  /* ── Oudgeld theme overrides ── */
+  [data-theme="oudgeld"] .tile{
+    border-color:#4a3f1a;
+    box-shadow:inset 0 0 0 1px rgba(201,168,76,.08), 0 2px 8px rgba(0,0,0,.5);
+  }
+  [data-theme="oudgeld"] .kpi{
+    border-color:#4a3f1a;
+  }
+  [data-theme="oudgeld"] .card{
+    border-color:#4a3f1a;
+  }
+  [data-theme="oudgeld"] .tile .cta{
+    color:var(--bg);
+  }
+</style>
+</head><body>
+<div class="wrap"><div class="card">
+  <div class="top">
+    <div>
+        <img src="/logo/logo_groot.png" alt="Bier Beurs" class="main-logo">
+        <h1>Welkom bij de Beurs Borrel</h1>
+        <div class="muted">Kies een onderdeel.</div>
+    </div>
+    <button onclick="logout()" style="background:transparent;border:1px solid #334155;color:#94a3b8;font-weight:600;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:14px">🚪 Uitloggen</button>
+  </div>
+  <div class="grid">
+    <div class="tile" data-href="/koers">
+      <a class="abs" href="/koers?v="></a>
+      <h2>Live koersbord</h2>
+      <p>Bekijk live prijzen en grafiek.</p>
+      <span class="cta">Open koers</span>
+    </div>
+
+    <div class="tile" data-href="/bar">
+      <a class="abs" href="/bar?v="></a>
+      <h2>Bar</h2>
+      <p>Snel bestellingen plaatsen.</p>
+      <span class="cta">Open bar</span>
+    </div>
+
+    <div class="tile" data-href="/settings">
+      <a class="abs" href="/settings?v="></a>
+      <h2>Instellingen</h2>
+      <p>Globale instellingen, grenzen, vraag/aanbod.</p>
+      <span class="cta">Open instellingen</span>
+    </div>
+
+    <div class="tile" data-href="/manipulation">
+      <a class="abs" href="/manipulation?v="></a>
+      <h2>Spel mechanica</h2>
+      <p>Price jumps, nieuws, drankjes, idle, reset/afsluiten.</p>
+      <span class="cta">Open spel mechanica</span>
+    </div>
+  </div>
+</div></div>
+
+<script>
+  async function logout(){await fetch('/auth/logout',{method:'POST'});location.href='/login';}
+  // cache-bust the links and make whole tile clickable
+  const v = Date.now();
+  document.querySelectorAll('.tile a.abs').forEach(a => a.href = a.href + v);
+  document.querySelectorAll('.tile').forEach(t => {
+    t.addEventListener('click', e => {
+      const href = t.getAttribute('data-href');
+      if (href) location.href = href + '?v=' + v;
+    });
+  });
+
+  const API = window.location.origin;
+  const wsDot = document.getElementById('wsDot'), wsTxt = document.getElementById('wsTxt');
+  const apiDot = document.getElementById('apiDot'), apiTxt = document.getElementById('apiTxt');
+
+  // quick API + state probe for KPIs
+  async function probe(){
+    try{
+      const hz = await fetch(API + '/healthz', {cache:'no-store'});
+      apiDot.className = 'dot ' + (hz.ok ? 'ok' : 'warn');
+      apiTxt.textContent = 'API: ' + (hz.ok ? 'online' : 'bereikbaar');
+    }catch{ apiDot.className='dot err'; apiTxt.textContent='API: offline'; }
+
+    try{
+      const st = await fetch(API + '/state', {cache:'no-store'}).then(r=>r.json());
+      document.getElementById('kpis').hidden = false;
+      document.getElementById('k_names').textContent = (st.names||[]).length;
+      document.getElementById('k_rev').textContent = new Intl.NumberFormat('nl-NL',{style:'currency',currency:'EUR',minimumFractionDigits:0}).format(st.earnings?.total||0);
+      document.getElementById('k_cnt').textContent = st.earnings?.count ?? 0;
+    }catch{}
+  }
+
+  // lightweight WS probe (no permanent connection)
+  (function probeWS(){
+    const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+    try{
+      const ws = new WebSocket(url);
+      let ok = false;
+      const timer = setTimeout(()=>{ try{ws.close();}catch{} }, 1500);
+      ws.onopen = ()=>{ ok = true; ws.send('ping'); };
+      ws.onmessage = (ev)=>{ if(ev.data==='pong'){ ws.close(); } };
+      ws.onclose = ()=>{
+        clearTimeout(timer);
+        wsDot.className = 'dot ' + (ok ? 'ok' : 'err');
+        wsTxt.textContent = 'WS: ' + (ok ? 'online' : 'offline');
+      };
+      ws.onerror = ()=>{ try{ ws.close(); }catch{} };
+    }catch{
+      wsDot.className='dot err'; wsTxt.textContent='WS: offline';
+    }
+  })();
+
+  probe();
+</script>
+</body></html>

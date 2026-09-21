@@ -1,0 +1,5 @@
+bierbeurs-image.tar
+*.tar
+static/earnings
+config/keys.json
+config/.jwt_secret

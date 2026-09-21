@@ -1,0 +1,803 @@
+<!-- ======= settings.html (restructured) ======= -->
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<link rel="icon" href="/logo/logo_klein.png" type="image/jpeg">
+<link rel="apple-touch-icon" href="/logo/logo_klein.png">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Bier Beurs — Instellingen</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<script src="/static/theme.js"></script>
+<style>
+  :root{--bg:#0b1220;--panel:#0f172a;--panel2:#0c1326;--grid:#1f2a44;--text:#e6edf3;--muted:#94a3b8;--accent:#60a5fa;--pill:#111827;--pillb:#374151;--primary:#2563eb;--danger:#dc2626;--ok:#059669;--input-bg:#091226;--input-border:#243253;--header-top:#0b1325;--header-bot:#090f1c}
+  *{box-sizing:border-box}
+  body{font-family:Inter,system-ui,Arial,sans-serif;margin:0;background:var(--bg);color:var(--text)}
+  a{color:#60a5fa;text-decoration:none}
+  header{position:sticky;top:0;z-index:20;display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-bottom:1px solid var(--grid);background:linear-gradient(180deg,var(--header-top),var(--header-bot))}
+  header .right{display:flex;gap:8px;align-items:center}
+  button{padding:10px 14px;border:0;border-radius:8px;background:var(--primary);color:#fff;font-weight:600;cursor:pointer;touch-action:manipulation}
+  button.danger{background:var(--danger)} button.ok{background:var(--ok)}
+  .pill{padding:2px 6px;border-radius:999px;border:1px solid var(--pillb);background:var(--pill);font-size:12px}
+  .layout{display:grid;grid-template-columns:260px 1fr;gap:16px;max-width:1400px;margin:0 auto;padding:16px}
+  .sidebar{position:sticky; top:70px; align-self:start;background:var(--panel); border:1px solid var(--grid); border-radius:12px; padding:12px}
+  .navsec{display:flex;flex-direction:column;gap:6px}
+  .navsec a{padding:8px 10px;border-radius:8px;border:1px solid transparent}
+  .navsec a:hover{background:#0b162b;border-color:#223357}
+  .navsec .title{font-size:12px;color:var(--muted);margin:6px 0 4px}
+  .content{display:flex;flex-direction:column;gap:16px}
+  .card{background:var(--panel);border:1px solid var(--grid);border-radius:12px;padding:14px}
+  .card h2{margin:0 0 8px 0;font-size:18px}
+  .card h3{margin:8px 0 8px 0;font-size:15px;color:#c7d2fe}
+  .row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin:6px 0}
+  header { display:flex; align-items:center; justify-content:space-between; padding:12px 18px; }
+  .brand { display:flex; align-items:center; gap:12px; }
+  .brand .logo { height:36px; width:auto; display:block; }
+
+  /* critical: make the title identical to bar */
+  header h1 { margin:0; font-size:18px; line-height:1.2; }
+
+  /* optional hard cap in case something else bleeds in */
+  header > * { margin:0; }
+  label{display:block;margin:6px 0 4px}
+  input,select{width:100%;padding:11px 12px;border-radius:8px;border:1px solid var(--input-border);background:var(--input-bg);color:var(--text)}
+  table{width:100%;border-collapse:collapse}
+  th,td{border-bottom:1px solid var(--grid);padding:8px;text-align:left}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .muted{color:var(--muted);font-size:12px}
+  /* --- Unified header nav --- */
+  .nav { position:relative; }
+  .nav-btn{
+    display:flex; align-items:center; gap:6px;
+    padding:10px 14px; border-radius:8px; border:1px solid var(--input-border);
+    background:transparent; color:var(--accent); font:inherit; cursor:pointer;
+    touch-action:manipulation;
+  }
+  @media(max-width:768px){
+    .layout{grid-template-columns:1fr;padding:12px}
+    .sidebar{display:none}
+    .card{padding:12px}
+    .mobile-fab{display:flex !important}
+    .grid-4{grid-template-columns:1fr 1fr}
+    .theme-grid{grid-template-columns:repeat(2,1fr)}
+    .custom-editor .fields{grid-template-columns:repeat(2,1fr)}
+    table{font-size:13px}
+    td input{padding:8px 6px}
+  }
+  /* Theme picker */
+  .theme-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .theme-tile{cursor:pointer;border-radius:10px;overflow:hidden;border:2px solid transparent;transition:border-color .2s}
+  .theme-tile:hover{border-color:var(--muted)}
+  .theme-tile.active{border-color:var(--accent)}
+  .theme-tile .preview{height:44px;display:grid;grid-template-columns:1fr 1fr}
+  .theme-tile .swatch{height:100%}
+  .theme-tile .name{padding:6px 8px;font-size:13px;font-weight:600;background:var(--panel2);color:var(--text)}
+  /* Image upload slots */
+  .img-slot{background:var(--panel2);border:1px solid var(--grid);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px}
+  .img-slot .slot-label{font-size:13px;font-weight:600}
+  .img-slot .slot-preview{width:100%;height:80px;object-fit:cover;border-radius:6px;display:none}
+  .img-slot .slot-preview.visible{display:block}
+  .img-slot .slot-placeholder{width:100%;height:80px;border-radius:6px;background:var(--input-bg);border:1px dashed var(--grid);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted)}
+  .img-slot .slot-actions{display:flex;gap:6px}
+  .img-slot input[type="file"]{display:none}
+  .img-slot .btn-upload{flex:1;padding:10px 14px;font-size:13px;background:var(--primary)}
+  .img-slot .btn-remove{padding:10px 14px;font-size:13px;background:var(--danger);display:none}
+  .img-slot .btn-remove.visible{display:block}
+  /* Custom theme editor */
+  .custom-editor{margin-top:14px;border-top:1px solid var(--grid);padding-top:12px}
+  .custom-editor summary{cursor:pointer;color:var(--accent);font-weight:600;list-style:none;user-select:none}
+  .custom-editor summary::-webkit-details-marker{display:none}
+  .custom-editor .fields{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}
+  .custom-editor .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  .custom-editor .field input[type="color"]{width:100%;height:34px;padding:2px 3px;border-radius:6px;border:1px solid var(--input-border);background:var(--input-bg);cursor:pointer}
+  .nav-panel{
+    position:absolute; right:0; top:calc(100% + 8px); z-index:40;
+    background:var(--panel); border:1px solid var(--grid); border-radius:10px;
+    min-width:220px; box-shadow:0 10px 30px rgba(0,0,0,.35); padding:6px;
+    display:none;
+  }
+  .nav.open .nav-panel{ display:block; }
+  .nav-item{
+    display:flex; align-items:center; gap:8px;
+    padding:8px 10px; border-radius:8px; color:var(--text); text-decoration:none;
+  }
+  .nav-item:hover{ background:#0b162b; }
+  .nav-sep{ height:1px; background:var(--grid); margin:6px 0; }
+  .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .mobile-fab{
+    display:none;position:fixed;bottom:20px;right:20px;z-index:50;
+    background:var(--primary);color:#fff;font-weight:600;
+    padding:12px 18px;border-radius:999px;cursor:pointer;
+    box-shadow:0 4px 16px rgba(0,0,0,.4);touch-action:manipulation;
+    align-items:center;gap:8px;border:0;font:inherit;
+  }
+  .mobile-drawer{display:none;position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5)}
+  .mobile-drawer.open{display:flex;align-items:flex-end}
+  .mobile-drawer-inner{
+    background:var(--panel);border-top:1px solid var(--grid);
+    border-radius:16px 16px 0 0;width:100%;padding:20px;
+    display:flex;flex-direction:column;gap:4px;max-height:70vh;overflow-y:auto
+  }
+  .mobile-drawer-title{font-weight:600;font-size:16px;margin-bottom:8px;color:var(--text)}
+  .mobile-drawer-link{
+    display:block;padding:12px 14px;border-radius:10px;
+    color:var(--text);text-decoration:none;font-size:15px
+  }
+  .mobile-drawer-link:hover,.mobile-drawer-link:active{background:#0b162b}
+  .mobile-drawer-close{
+    margin-top:8px;background:var(--grid);color:var(--muted);
+    padding:12px;border-radius:8px;width:100%;font-size:14px;
+    font-weight:600;cursor:pointer;border:0;font-family:inherit
+  }
+  @media(max-width:480px){
+    .card h2{font-size:16px}
+    .grid-2{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <img src="/logo/logo_medium.png" alt="Bier Beurs" class="logo">
+    <h1>⚙️ Instellingen</h1>
+  </div>
+      <div class="nav" id="appNav">
+        <button class="nav-btn" aria-haspopup="true" aria-expanded="false">
+          Menu <span aria-hidden="true">▾</span>
+        </button>
+        <div class="nav-panel" role="menu">
+          <a class="nav-item" role="menuitem" href="/" data-page="/">🏠 Home</a>
+          <div class="nav-sep" aria-hidden="true"></div>
+          <a class="nav-item" role="menuitem" href="/koers" data-page="/koers">📈 Live koersbord</a>
+          <a class="nav-item" role="menuitem" href="/bar" data-page="/bar">🍺 Bar</a>
+          <a class="nav-item" role="menuitem" href="/settings" data-page="/settings">⚙️ Instellingen</a>
+          <a class="nav-item" role="menuitem" href="/manipulation" data-page="/manipulation">🎮 Spel mechanica</a>
+          <div class="nav-sep" aria-hidden="true"></div>
+          <a class="nav-item" role="menuitem" href="#" onclick="logout();return false;" style="color:#ef4444">🚪 Uitloggen</a>
+        </div>
+      </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="navsec">
+      <div class="title">Instellingen</div>
+      <a href="#sec-system">🧹 Systeemacties</a>
+      <a href="#sec-params">⚙️ Globale instellingen</a>
+      <a href="#sec-theme">🎨 Kleurenschema</a>
+      <a href="#sec-images">🖼️ Afbeeldingen</a>
+      <a href="#sec-drinks">🥤 Drankjes beheren</a>
+      <a href="#sec-bounds">🔒 Min/Max/Startprijs</a>
+      <a href="#sec-vdsc">📈 Vraag/Aanbod</a>
+    </div>
+  </aside>
+
+  <main class="content">
+
+    <!-- System -->
+    <section id="sec-system" class="card">
+      <h2>🧹 Systeemacties</h2>
+      <div class="row">
+        <button id="reset" class="danger">🧹 Reset spel</button>
+        <button id="shutdown" class="danger">⛔ Sluit app</button>
+        <button id="anchor_s0_now" class="pill" style="border:none;background:#203353;color:#cfe1ff">📌 Zet huidige prijs als evenwicht, s0, wanneer vraag/aanbod actief is</button>
+        <span id="sys_status" class="muted"></span>
+      </div>
+    </section>
+
+    <!-- Global -->
+    <section id="sec-params" class="card">
+      <h2>⚙️ Globale instellingen</h2>
+      <div class="grid-4">
+        <div><label>🧱 Tickgrootte</label><input id="step_quant" type="number" step="0.1" min="0.1"/></div>
+        <div><label>⚡ Snelheid</label><input id="eta" type="number" step="0.05"/></div>
+        <div><label>🎚️ Drempel</label><input id="K" type="number" step="0.5"/></div>
+        <div><label>⚔️ Rivaliteit</label><input id="lambda_orders" type="number" step="0.05"/></div>
+        <div><label>🧭 Aantrekking naar gemiddelde</label><input id="alpha_price" type="number" step="0.01"/></div>
+        <div><label>📈 Na-ijlen</label><input id="phi_persist" type="number" step="0.005"/></div>
+        <div><label>🧠 Geheugen (ρ)</label><input id="decay_rho" type="number" step="0.01" min="0" max="1"/></div>
+        <div><label>🗂️ Historie (min)</label><input id="history_window_minutes" type="number" step="1" min="1"/></div>
+        <div><label>🔁 Update-interval (min)</label><input id="refresh_minutes" type="number" step="0.1" min="0.1"/></div>
+        <div><label>🕯️ Kaarseninterval (sec)</label><input id="candle_interval_s" type="number" step="5" min="5" max="3600"/></div>
+      </div>
+      <div class="row">
+        <button id="apply-params">💾 Opslaan instellingen</button>
+        <span id="status-params" class="muted"></span>
+      </div>
+    </section>
+
+    <!-- Theme -->
+    <section id="sec-theme" class="card">
+      <h2>🎨 Kleurenschema</h2>
+      <div class="theme-grid" id="theme-grid"></div>
+      <details class="custom-editor" id="custom-editor">
+        <summary>✏️ Eigen thema aanpassen ▾</summary>
+        <div class="row" style="margin-top:12px;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="font-size:13px;color:var(--muted)">Beginnen vanaf:</span>
+          <select id="custom-base" style="width:auto">
+            <option value="blauw">Blauw</option>
+            <option value="groen">Groen</option>
+            <option value="paars">Paars</option>
+            <option value="rood">Rood</option>
+          </select>
+          <button id="custom-copy-btn" style="padding:6px 10px;font-size:13px">Kopieer kleuren</button>
+        </div>
+        <div class="fields" id="custom-fields"></div>
+        <div class="row" style="margin-top:10px">
+          <button id="custom-save-btn" class="ok">💾 Opslaan als eigen thema</button>
+          <span id="custom-status" class="muted"></span>
+        </div>
+      </details>
+    </section>
+
+    <!-- Images -->
+    <section id="sec-images" class="card">
+      <h2>🖼️ Thema afbeeldingen</h2>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 14px">Upload afbeeldingen om het thema te verrijken. Max 5 MB per afbeelding (png, jpg, webp, gif, svg).</p>
+      <div class="grid-2" id="image-slots">
+        <!-- slots injected by JS -->
+      </div>
+    </section>
+
+    <!-- Drinks manage -->
+    <section id="sec-drinks" class="card">
+      <h2>🥤 Drankjes beheren</h2>
+      <div class="grid-2">
+        <div>
+          <h3>Nieuw drankje</h3>
+          <label>Naam</label><input id="new_name" />
+          <label>Minimum prijs</label><input id="new_min" type="number" step="0.1" min="0" />
+          <label>Maximum prijs</label><input id="new_max" type="number" step="0.1" min="0" />
+          <label>Startprijs</label><input id="new_p0" type="number" step="0.1" min="0" />
+          <label>Bar prijs </label><input id="new_bar" type="number" step="0.1" min="0" />
+          <label>a / d / s0 / c (optioneel)</label>
+          <div class="row" style="align-items:center">
+            <input id="new_a" type="number" step="0.1" placeholder="a=10"/>
+            <input id="new_d" type="number" step="0.1" placeholder="d=0.6"/>
+            <input id="new_s0" type="number" step="0.1" placeholder="s0=8"/>
+            <input id="new_c" type="number" step="0.1" placeholder="c=0.4"/>
+          </div>
+          <div class="row">
+            <button id="btn-add" class="ok">➕ Toevoegen</button>
+            <span id="status-add" class="muted"></span>
+          </div>
+        </div>
+        <div>
+          <h3>Verwijderen</h3>
+          <label>Kies drankje</label>
+          <select id="remove_select"></select>
+          <div class="row">
+            <button id="btn-remove" class="danger">🗑️ Verwijderen</button>
+            <span id="status-remove" class="muted"></span>
+          </div>
+          <p class="muted">Let op: historie wordt gewist en nieuw logbestand gestart.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bounds -->
+    <section id="sec-bounds" class="card">
+      <h2>🔒 Min / Max / Startprijs</h2>
+      <div class="table-scroll"><table id="bounds">
+        <thead><tr><th>Drankje</th><th>Min</th><th>Max</th><th>Startprijs</th><th>Bar prijs</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div class="row" style="margin-top:10px">
+        <button id="apply-bounds">💾 Opslaan min/max/startprijs</button>
+        <span id="status-bounds" class="muted"></span>
+      </div>
+    </section>
+
+    <!-- VDSC -->
+    <section id="sec-vdsc" class="card">
+      <h2>📈 Vraag/Aanbod</h2>
+      <div class="row" style="gap:16px;flex-wrap:wrap;margin-bottom:8px">
+        <label style="display:flex;align-items:center;gap:10px">
+          <span>Vraag/aanbod actief</span>
+          <span class="switch">
+            <input id="demand_enabled" type="checkbox" />
+            <span class="slider"></span>
+          </span>
+        </label>
+        <label style="display:flex;align-items:center;gap:10px">
+          <span>Evenwicht, s0, auto-kalibreren bij init/reset</span>
+          <span class="switch">
+            <input id="auto_calibrate_s0" type="checkbox" />
+            <span class="slider"></span>
+          </span>
+        </label>
+      </div>
+      <div class="table-scroll"><table id="vdsc">
+        <thead><tr><th>Drankje</th><th>a</th><th>d</th><th>s0</th><th>c</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div class="row" style="margin-top:10px">
+        <button id="apply-vdsc">💾 Opslaan a/d/s0/c</button>
+        <span id="status-vdsc" class="muted"></span>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<button class="mobile-fab" id="mobile-nav-fab" aria-label="Ga naar sectie">☰ Ga naar…</button>
+<div class="mobile-drawer" id="mobile-nav-drawer" role="dialog" aria-modal="true" aria-label="Secties">
+  <div class="mobile-drawer-inner">
+    <div class="mobile-drawer-title">Ga naar sectie</div>
+    <a href="#sec-system" class="mobile-drawer-link">🧹 Systeemacties</a>
+    <a href="#sec-params" class="mobile-drawer-link">⚙️ Globale instellingen</a>
+    <a href="#sec-theme" class="mobile-drawer-link">🎨 Kleurenschema</a>
+    <a href="#sec-images" class="mobile-drawer-link">🖼️ Afbeeldingen</a>
+    <a href="#sec-drinks" class="mobile-drawer-link">🥤 Drankjes beheren</a>
+    <a href="#sec-bounds" class="mobile-drawer-link">🔒 Min/Max/Startprijs</a>
+    <a href="#sec-vdsc" class="mobile-drawer-link">📈 Vraag/Aanbod</a>
+    <button id="mobile-nav-close" class="mobile-drawer-close">✕ Sluiten</button>
+  </div>
+</div>
+
+<script>
+async function logout(){await fetch('/auth/logout',{method:'POST'});location.href='/login';}
+const API = window.location.origin;
+let state=null;
+const el=id=>document.getElementById(id);
+
+/* ----- Navigation ----- */
+(function(){
+  const nav = document.getElementById('appNav');
+  if (!nav) return;
+  const btn = nav.querySelector('.nav-btn');
+  const panel = nav.querySelector('.nav-panel');
+
+  // Hide nav items not accessible to the current role
+  const ROLE_PAGES = {
+    display: new Set(['/koers']),
+    bar:     new Set(['/bar', '/manipulation']),
+    admin:   new Set(['/', '/koers', '/bar', '/manipulation', '/settings']),
+  };
+  fetch('/auth/me').then(r=>r.json()).then(data=>{
+    if (!data.ok) return;
+    const allowed = ROLE_PAGES[data.role];
+    if (!allowed) return;
+    panel.querySelectorAll('[data-page]').forEach(el=>{
+      if (!allowed.has(el.dataset.page)) el.style.display = 'none';
+    });
+  }).catch(()=>{});
+
+  function open(){ nav.classList.add('open'); btn.setAttribute('aria-expanded','true'); }
+  function close(){ nav.classList.remove('open'); btn.setAttribute('aria-expanded','false'); }
+
+  btn.addEventListener('click', (e)=>{ e.stopPropagation(); nav.classList.toggle('open'); 
+    btn.setAttribute('aria-expanded', nav.classList.contains('open')); });
+
+  // Close on outside click / Escape
+  document.addEventListener('click', (e)=>{ if (!nav.contains(e.target)) close(); });
+  document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') close(); });
+
+  // Basic focus trapping: move focus to first/last item with Arrow keys
+  const items = Array.from(panel.querySelectorAll('.nav-item'));
+  btn.addEventListener('keydown', (e)=>{ if(e.key==='ArrowDown'){ e.preventDefault(); open(); items[0]?.focus(); }});
+  panel.addEventListener('keydown', (e)=>{
+    if(!['ArrowDown','ArrowUp','Home','End'].includes(e.key)) return;
+    e.preventDefault();
+    const i = items.indexOf(document.activeElement);
+    if(e.key==='Home') return items[0]?.focus();
+    if(e.key==='End') return items[items.length-1]?.focus();
+    const n = e.key==='ArrowDown' ? (i+1)%items.length : (i-1+items.length)%items.length;
+    items[n]?.focus();
+  });
+})();
+
+/* ---- THEME PICKER ---- */
+(function(){
+  const grid = document.getElementById('theme-grid');
+  if(!grid || !window.THEME_META) return;
+  function renderThemes(){
+    const cur = window._currentTheme || localStorage.getItem('theme') || 'blauw';
+    grid.innerHTML = '';
+    window.THEME_NAMES.forEach(function(name){
+      const meta = window.THEME_META[name];
+      const tile = document.createElement('div');
+      tile.className = 'theme-tile' + (name === cur ? ' active' : '');
+      tile.title = meta.label;
+      const preview = document.createElement('div');
+      preview.className = 'preview';
+      meta.swatches.forEach(function(color){
+        const s = document.createElement('div');
+        s.className = 'swatch';
+        s.style.background = color;
+        preview.appendChild(s);
+      });
+      const label = document.createElement('div');
+      label.className = 'name';
+      label.textContent = meta.label;
+      tile.appendChild(preview);
+      tile.appendChild(label);
+      tile.addEventListener('click', function(){
+        window.applyTheme(name);
+        renderThemes();
+      });
+      grid.appendChild(tile);
+    });
+  }
+  renderThemes();
+})();
+
+/* ---- CUSTOM THEME EDITOR ---- */
+(function(){
+  const FIELDS = [
+    { key: '--bg',         label: 'Achtergrond' },
+    { key: '--panel',      label: 'Paneel' },
+    { key: '--panel2',     label: 'Paneel 2' },
+    { key: '--grid',       label: 'Randen' },
+    { key: '--text',       label: 'Tekst' },
+    { key: '--muted',      label: 'Subtekst' },
+    { key: '--accent',     label: 'Accent' },
+    { key: '--primary',    label: 'Primair knop' },
+    { key: '--ok',         label: 'Succes' },
+    { key: '--danger',     label: 'Gevaar' },
+    { key: '--header-top', label: 'Header boven' },
+    { key: '--header-bot', label: 'Header onder' },
+    { key: '--sma-line',   label: 'Trendlijn' },
+  ];
+
+  function buildFields(vars) {
+    const container = document.getElementById('custom-fields');
+    container.innerHTML = '';
+    FIELDS.forEach(function(f) {
+      const div = document.createElement('div');
+      div.className = 'field';
+      const id = 'cf_' + f.key.replace(/^--/, '');
+      div.innerHTML = '<label for="' + id + '">' + f.label + '</label>'
+        + '<input type="color" id="' + id + '" value="' + (vars[f.key] || '#000000') + '">';
+      container.appendChild(div);
+    });
+  }
+
+  // Initialize pickers from current theme
+  buildFields(window.getThemeVars(window._currentTheme || 'blauw'));
+
+  document.getElementById('custom-copy-btn').addEventListener('click', function() {
+    buildFields(window.getThemeVars(document.getElementById('custom-base').value));
+  });
+
+  document.getElementById('custom-save-btn').addEventListener('click', function() {
+    // Start from the selected base so all variables are filled
+    const base = Object.assign({}, window.getThemeVars(document.getElementById('custom-base').value));
+    FIELDS.forEach(function(f) {
+      const input = document.getElementById('cf_' + f.key.replace(/^--/, ''));
+      if (input) base[f.key] = input.value;
+    });
+    window.saveCustomTheme(base);
+    // Re-render tiles so the "Eigen" tile appears / updates
+    const grid = document.getElementById('theme-grid');
+    if (grid && window.THEME_META && window.THEME_NAMES) {
+      const cur = window._currentTheme || 'custom';
+      grid.innerHTML = '';
+      window.THEME_NAMES.forEach(function(name) {
+        const meta = window.THEME_META[name];
+        const tile = document.createElement('div');
+        tile.className = 'theme-tile' + (name === cur ? ' active' : '');
+        const preview = document.createElement('div');
+        preview.className = 'preview';
+        meta.swatches.forEach(function(color) {
+          const s = document.createElement('div');
+          s.className = 'swatch'; s.style.background = color;
+          preview.appendChild(s);
+        });
+        const label = document.createElement('div');
+        label.className = 'name'; label.textContent = meta.label;
+        tile.appendChild(preview); tile.appendChild(label);
+        tile.addEventListener('click', function() {
+          window.applyTheme(name);
+          document.querySelectorAll('.theme-tile').forEach(function(t) { t.classList.remove('active'); });
+          tile.classList.add('active');
+        });
+        grid.appendChild(tile);
+      });
+    }
+    const status = document.getElementById('custom-status');
+    status.textContent = 'Eigen thema opgeslagen!';
+    setTimeout(function() { status.textContent = ''; }, 1500);
+  });
+})();
+
+/* ---- IMAGE UPLOAD ---- */
+(function(){
+  const SLOTS = [
+    { key: '--bg-image',     label: 'Achtergrond',    hint: 'Subtiele textuur over de pagina' },
+    { key: '--header-image', label: 'Header',          hint: 'Vervangt de header achtergrond' },
+    { key: '--logo-url',     label: 'Logo',            hint: 'Vervangt het BorrelBeurs logo' },
+    { key: '--promo-image',  label: 'Promotie tegel', hint: 'Extra tegel rechts op het koersbord' },
+  ];
+
+  const container = document.getElementById('image-slots');
+  if (!container) return;
+
+  var images = window.loadThemeImages ? window.loadThemeImages() : {};
+
+  function filenameFromUrl(url) {
+    return url ? url.split('/').pop() : null;
+  }
+
+  function buildSlot(slot) {
+    const div = document.createElement('div');
+    div.className = 'img-slot';
+    div.id = 'slot-' + slot.key.replace(/^--/, '');
+
+    const currentUrl = images[slot.key] || null;
+
+    div.innerHTML =
+      '<div class="slot-label">' + slot.label + '</div>'
+    + '<div style="font-size:11px;color:var(--muted)">' + slot.hint + '</div>'
+    + '<img class="slot-preview' + (currentUrl ? ' visible' : '') + '" src="' + (currentUrl || '') + '" alt="">'
+    + '<div class="slot-placeholder"' + (currentUrl ? ' style="display:none"' : '') + '>Geen afbeelding</div>'
+    + '<div class="slot-actions">'
+    +   '<input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" id="file-' + slot.key + '">'
+    +   '<button class="btn-upload">📁 Kiezen</button>'
+    +   '<button class="btn-remove' + (currentUrl ? ' visible' : '') + '">✕ Verwijderen</button>'
+    + '</div>'
+    + '<span class="muted" style="font-size:11px" id="status-' + slot.key + '"></span>';
+
+    const fileInput  = div.querySelector('input[type="file"]');
+    const preview    = div.querySelector('.slot-preview');
+    const placeholder = div.querySelector('.slot-placeholder');
+    const btnUpload  = div.querySelector('.btn-upload');
+    const btnRemove  = div.querySelector('.btn-remove');
+    const status     = div.querySelector('[id^="status-"]');
+
+    btnUpload.addEventListener('click', function() { fileInput.click(); });
+
+    fileInput.addEventListener('change', async function() {
+      const file = fileInput.files[0];
+      if (!file) return;
+      status.textContent = 'Uploaden…';
+      const form = new FormData();
+      form.append('file', file);
+      try {
+        const res = await fetch('/upload/theme-image', { method: 'POST', body: form });
+        if (!res.ok) { const e = await res.json(); status.textContent = e.detail || 'Fout'; return; }
+        const data = await res.json();
+        // Delete old file if present
+        const oldUrl = images[slot.key];
+        if (oldUrl) {
+          const old = filenameFromUrl(oldUrl);
+          if (old) fetch('/upload/theme-image/' + old, { method: 'DELETE' }).catch(()=>{});
+        }
+        images[slot.key] = data.url;
+        window.saveThemeImages(images);
+        preview.src = data.url;
+        preview.classList.add('visible');
+        placeholder.style.display = 'none';
+        btnRemove.classList.add('visible');
+        status.textContent = 'Opgeslagen!';
+        setTimeout(function() { status.textContent = ''; }, 1500);
+      } catch(e) {
+        status.textContent = 'Upload mislukt';
+      }
+      fileInput.value = '';
+    });
+
+    btnRemove.addEventListener('click', async function() {
+      const url = images[slot.key];
+      if (url) {
+        const fn = filenameFromUrl(url);
+        if (fn) fetch('/upload/theme-image/' + fn, { method: 'DELETE' }).catch(()=>{});
+      }
+      delete images[slot.key];
+      window.saveThemeImages(images);
+      preview.src = '';
+      preview.classList.remove('visible');
+      placeholder.style.display = '';
+      btnRemove.classList.remove('visible');
+    });
+
+    return div;
+  }
+
+  SLOTS.forEach(function(slot) { container.appendChild(buildSlot(slot)); });
+})();
+
+/* ---- PARAMS (no idle here) ---- */
+function setParamsInputs(p){
+  ["step_quant","eta","K","lambda_orders","alpha_price","phi_persist","decay_rho",
+   "history_window_minutes","refresh_minutes"].forEach(k=>{
+    if(el(k) && p[k]!==undefined) el(k).value = p[k];
+  });
+  el("demand_enabled").checked = !!p.demand_enabled;
+  el("auto_calibrate_s0").checked = !!p.auto_calibrate_s0;
+  const ci = el("candle_interval_s");
+  if(ci) ci.value = localStorage.getItem('candle_interval_s') || 60;
+}
+async function applyParams(){
+  const ci = el("candle_interval_s");
+  if(ci){ const v=parseInt(ci.value); if(!isNaN(v) && v>=5) localStorage.setItem('candle_interval_s', v); }
+  const payload = {
+    step_quant:+el("step_quant").value, eta:+el("eta").value, K:+el("K").value,
+    lambda_orders:+el("lambda_orders").value, alpha_price:+el("alpha_price").value,
+    phi_persist:+el("phi_persist").value, decay_rho:+el("decay_rho").value,
+    history_window_minutes:+el("history_window_minutes").value, refresh_minutes:+el("refresh_minutes").value,
+    demand_enabled: el("demand_enabled").checked, auto_calibrate_s0: el("auto_calibrate_s0").checked
+  };
+  const res=await fetch(API+"/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  if(res.ok){ el("status-params").textContent="Opgeslagen"; setTimeout(()=>el("status-params").textContent="",1200); }
+}
+el("apply-params").addEventListener("click", applyParams);
+
+/* ---- BOUNDS ---- */
+function buildBoundsTable(){
+  const tb=document.querySelector("#bounds tbody"); tb.innerHTML="";
+  const bar = state.bar_price || state.p0 || [];
+  state.names.forEach((nm,i)=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML = `<td>${nm}</td>
+      <td><input id="min_${i}" type="number" step="0.1" min="0" value="${state.p_min[i]}"></td>
+      <td><input id="max_${i}" type="number" step="0.1" min="0" value="${state.p_max[i]}"></td>
+      <td><input id="p0_${i}"  type="number" step="0.1" min="0" value="${state.p0[i]}"></td>
+      <td><input id="bp_${i}"  type="number" step="0.1" min="0" value="${bar[i] ?? state.p0[i]}"></td>`;
+    tb.appendChild(tr);
+  });
+}
+
+async function applyBounds(){
+  const p_min={}, p_max={}, p0={}, bar_price={};
+  state.names.forEach((nm,i)=>{
+    const mn=+el("min_"+i).value, mx=+el("max_"+i).value, p0v=+el("p0_"+i).value, bp=+el("bp_"+i).value;
+    if(!Number.isNaN(mn)) p_min[nm]=mn;
+    if(!Number.isNaN(mx)) p_max[nm]=mx;
+    if(!Number.isNaN(p0v)) p0[nm]=p0v;
+    if(!Number.isNaN(bp))  bar_price[nm]=bp;
+  });
+  const payload={};
+  if(Object.keys(p_min).length) payload.p_min=p_min;
+  if(Object.keys(p_max).length) payload.p_max=p_max;
+  if(Object.keys(p0).length)   payload.p0=p0;
+  if(Object.keys(bar_price).length) payload.bar_price=bar_price;
+  const res=await fetch(API+"/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  if(res.ok){ el("status-bounds").textContent="Opgeslagen"; setTimeout(()=>el("status-bounds").textContent="",1500); await loadState(); }
+}
+
+el("apply-bounds").addEventListener("click", applyBounds);
+
+/* ---- VDSC ---- */
+function buildVDSCTable(){
+  const tb=document.querySelector("#vdsc tbody"); tb.innerHTML="";
+  state.names.forEach((nm,i)=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${nm}</td>
+      <td><input id="a_${i}" type="number" step="0.1" placeholder="${state.a[i]}"></td>
+      <td><input id="d_${i}" type="number" step="0.1" placeholder="${state.d[i]}"></td>
+      <td><input id="s0_${i}" type="number" step="0.1" placeholder="${state.s0[i]}"></td>
+      <td><input id="c_${i}" type="number" step="0.1" placeholder="${state.c[i]}"></td>`;
+    tb.appendChild(tr);
+  });
+}
+async function applyVDSC(){
+  const a={},d={},s0={},c={};
+  state.names.forEach((nm,i)=>{
+    const av=+el("a_"+i).value, dv=+el("d_"+i).value, s0v=+el("s0_"+i).value, cv=+el("c_"+i).value;
+    if(!Number.isNaN(av)) a[nm]=av; if(!Number.isNaN(dv)) d[nm]=dv;
+    if(!Number.isNaN(s0v)) s0[nm]=s0v; if(!Number.isNaN(cv)) c[nm]=cv;
+  });
+  const payload={}; if(Object.keys(a).length) payload.a=a;
+  if(Object.keys(d).length) payload.d=d;
+  if(Object.keys(s0).length) payload.s0=s0;
+  if(Object.keys(c).length) payload.c=c;
+  if(!Object.keys(payload).length){ el("status-vdsc").textContent="Niets te wijzigen"; return; }
+  const res=await fetch(API+"/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  if(res.ok){ el("status-vdsc").textContent="Opgeslagen"; setTimeout(()=>el("status-vdsc").textContent="",1200); }
+}
+el("apply-vdsc").addEventListener("click", applyVDSC);
+
+/* ---- DRINKS ---- */
+function buildRemoveSelect(){
+  const sel=el("remove_select"); sel.innerHTML="";
+  state.names.forEach(nm=>{ const o=document.createElement("option"); o.value=nm; o.textContent=nm; sel.appendChild(o); });
+}
+async function addDrink(){
+  const name = el("new_name").value.trim();
+  const pmin = +el("new_min").value, pmax = +el("new_max").value, p0 = +el("new_p0").value;
+  const bar  = el("new_bar") ? +el("new_bar").value : NaN;   // NEW (optional)
+  const a = +el("new_a").value, d = +el("new_d").value, s0 = +el("new_s0").value, c = +el("new_c").value;
+
+  if (!name || Number.isNaN(pmin) || Number.isNaN(pmax) || Number.isNaN(p0)) {
+    el("status-add").textContent = "Naam, min, max, p0 verplicht";
+    return;
+  }
+
+  const payload = { op: "add", drink: { name, p_min: pmin, p_max: pmax, p0 } };
+
+  // optional fields
+  if (!Number.isNaN(bar)) payload.drink.bar_price = bar; // NEW (server falls back to p0 if omitted)
+  if (!Number.isNaN(a))   payload.drink.a = a;
+  if (!Number.isNaN(d))   payload.drink.d = d;
+  if (!Number.isNaN(s0))  payload.drink.s0 = s0;
+  if (!Number.isNaN(c))   payload.drink.c = c;
+
+  const res = await fetch(API + "/drinks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  if (res.ok) {
+    el("status-add").textContent = "Toegevoegd";
+    setTimeout(() => el("status-add").textContent = "", 1200);
+    await loadState();
+    ["new_name","new_min","new_max","new_p0","new_bar","new_a","new_d","new_s0","new_c"]
+      .forEach(id => { const x = el(id); if (x) x.value = ""; });
+  }
+}
+
+async function removeDrink(){
+  const name=el("remove_select").value; if(!name) return;
+  if(!confirm(`'${name}' verwijderen?`)) return;
+  const res=await fetch(API+"/drinks",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({op:"remove",name})});
+  if(res.ok){ el("status-remove").textContent="Verwijderd"; setTimeout(()=>el("status-remove").textContent="",1200); await loadState(); }
+}
+el("btn-add").addEventListener("click", addDrink);
+el("btn-remove").addEventListener("click", removeDrink);
+
+/* ---- SYSTEM handlers ---- */
+async function downloadEarnings(){
+  try{
+    const r=await fetch(API+"/finalize-earnings",{method:"POST"});
+    const d=await r.json();
+    if(d.file_url){ const a=document.createElement("a"); a.href=API+d.file_url; a.download=d.filename||"earnings.xlsx"; document.body.appendChild(a); a.click(); document.body.removeChild(a); }
+  }catch(e){ console.warn("downloadEarnings failed",e); }
+}
+el("reset").addEventListener("click", async ()=>{
+  if(!confirm("Reset spel?")) return;
+  await downloadEarnings();
+  const r=await fetch(API+"/reset",{method:"POST"}); if(r.ok){ el("sys_status").textContent="Gerest"; setTimeout(()=>el("sys_status").textContent="",1200); await loadState(); }
+});
+el("anchor_s0_now").addEventListener("click", async ()=>{
+  const r=await fetch(API+"/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({anchor_s0:true})});
+  if(r.ok){ el("sys_status").textContent="s0 geankerd"; setTimeout(()=>el("sys_status").textContent="",1200); }
+});
+el("shutdown").addEventListener("click", async ()=>{
+  if(!confirm("Applicatie nu afsluiten?")) return;
+  await downloadEarnings();
+  try{
+    const r=await fetch(API+"/shutdown",{method:"POST"});
+    if(r.ok){ alert("App sluit nu af…"); document.querySelectorAll("button").forEach(b=>b.disabled=true); }
+  }catch{ alert("Geen verbinding met server."); }
+});
+
+/* ---- LOAD & WS ---- */
+async function loadState(){
+  const res=await fetch(API+"/state"); state=await res.json();
+  setParamsInputs(state.params);
+  buildBoundsTable(); buildVDSCTable(); buildRemoveSelect();
+}
+
+const reloadBtn = document.getElementById("reload");
+if (reloadBtn) reloadBtn.addEventListener("click", loadState);
+
+
+(function initWS(){
+  const url=(location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws";
+  let ws; try{
+    ws=new WebSocket(url);
+    ws.onopen=()=>ws.send("state");
+    ws.onmessage=(ev)=>{ if(ev.data==="pong")return; try{ const msg=JSON.parse(ev.data); if(msg?.type==="state"){ state=msg; } }catch{} };
+  }catch{}
+})();
+loadState();
+
+/* ----- Mobile nav FAB ----- */
+(function(){
+  const fab=document.getElementById('mobile-nav-fab');
+  const drawer=document.getElementById('mobile-nav-drawer');
+  const closeBtn=document.getElementById('mobile-nav-close');
+  if(!fab||!drawer) return;
+  fab.addEventListener('click',()=>drawer.classList.add('open'));
+  closeBtn.addEventListener('click',()=>drawer.classList.remove('open'));
+  drawer.addEventListener('click',e=>{
+    if(e.target===drawer) drawer.classList.remove('open');
+    if(e.target.classList.contains('mobile-drawer-link')) setTimeout(()=>drawer.classList.remove('open'),100);
+  });
+})();
+</script>
+</body>
+</html>
