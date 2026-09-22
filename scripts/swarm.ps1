@@ -98,8 +98,15 @@ Push-Location $RepoRoot
 try {
     $branch = (& git rev-parse --abbrev-ref HEAD).Trim()
     if ($branch -ne 'main') {
-        Write-Host "The swarm integrates into main and must be started from it. You are on '$branch'." -ForegroundColor Red
-        exit 5
+        # A leftover task branch is what a killed run looks like, and reconciling that is the
+        # orchestrator's first job - refusing to start would make a human do it instead.
+        if ($branch -like 'feature/phase-*') {
+            Write-Host "Starting on leftover task branch '$branch'; the orchestrator will reconcile it against the ledger." -ForegroundColor Yellow
+        }
+        else {
+            Write-Host "The swarm integrates into main and must be started from it. You are on '$branch'." -ForegroundColor Red
+            exit 5
+        }
     }
     if (& git status --porcelain) {
         Write-Host 'Working tree is dirty. Commit or stash first - the swarm reconciles the ledger against git and a dirty tree makes that ambiguous.' -ForegroundColor Red
@@ -124,6 +131,21 @@ try {
     }
 
     $state = 'CONTINUE'
+
+    # Progress is commits on main plus writes to the ledger. A run that produces neither has
+    # achieved nothing, and three of those in a row is a livelock - the swarm shipping nothing
+    # for 200 runs is the expensive failure this catches, not a blocked one.
+    function Get-Progress {
+        $head = (& git rev-parse HEAD).Trim()
+        $stamp = if (Test-Path -LiteralPath $Ledger) {
+            (Get-FileHash -LiteralPath $Ledger -Algorithm MD5).Hash
+        } else { 'no-ledger' }
+        return "$head/$stamp"
+    }
+
+    $progress = Get-Progress
+    $idleRuns = 0
+    $unknownRetries = 0
 
     for ($run = 1; $run -le $MaxRuns; $run++) {
 
@@ -169,12 +191,37 @@ try {
                 exit 2
             }
             'CONTINUE' {
+                $now = Get-Progress
+                if ($now -eq $progress) {
+                    $idleRuns++
+                    Write-Host ("No new commit and no ledger write this run ({0} in a row)." -f $idleRuns) -ForegroundColor Yellow
+                    if ($idleRuns -ge 3) {
+                        Write-Banner "Safety stop: three runs in a row changed nothing."
+                        Write-Host 'The swarm is looping without progressing. Read the last three logs in'
+                        Write-Host "$LogDir and the ledger's Now section." -ForegroundColor Yellow
+                        exit 3
+                    }
+                }
+                else {
+                    $progress = $now
+                    $idleRuns = 0
+                }
+                $unknownRetries = 0
                 Start-Sleep -Seconds 5
             }
             default {
-                Write-Banner "Unreadable swarm state after run $run."
-                Write-Host "Check $log and the ledger by hand before restarting." -ForegroundColor Yellow
-                exit 4
+                # One unreadable state is usually a run that died before writing its header.
+                # Re-invoking costs a few minutes; stopping costs however long until a human looks.
+                $unknownRetries++
+                if ($unknownRetries -le 2) {
+                    Write-Host "Unreadable swarm state after run $run; re-invoking (retry $unknownRetries of 2). Log: $log" -ForegroundColor Yellow
+                    Start-Sleep -Seconds 5
+                }
+                else {
+                    Write-Banner "Unreadable swarm state three runs running."
+                    Write-Host "Check $log and the ledger by hand before restarting." -ForegroundColor Yellow
+                    exit 4
+                }
             }
         }
     }

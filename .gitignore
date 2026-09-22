@@ -7,5 +7,6 @@ config/.jwt_secret
 # Swarm driver run logs (scripts/swarm.ps1)
 .swarm-logs/
 
-# Swarm task worktrees (git worktree add, see .claude/commands/rebuild.md)
+# Swarm task worktrees. Unused since ADR 0010 (builders work on a branch in the primary
+# checkout); kept so a stray worktree can never be committed.
 /.worktrees/

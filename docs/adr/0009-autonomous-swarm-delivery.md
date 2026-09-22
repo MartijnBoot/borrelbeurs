@@ -1,6 +1,7 @@
 # ADR 0009: The rebuild runs as an autonomous agent swarm; the human gates become agent gates
 
-Date: 2026-09-21 · Status: Accepted
+Date: 2026-09-21 · Status: Accepted · Amended 2026-09-22 by
+[ADR 0010](0010-the-swarm-owns-its-own-delivery-mechanics.md) (§5 and the hard-stop list)
 
 ## Context
 
@@ -37,8 +38,11 @@ declared hard-stop list.
    merge. Risk and Optional findings are recorded and deliberately not chased.
 4. **Gate D (phase exit)** is run by the orchestrator itself, with real command output, and
    published as a phase digest for the human to read afterwards.
-5. Work is **parallelised** across the audited plan's task dependency graph, capped at three
-   concurrent builder–verifier–reviewer triads, each in its own git worktree and branch.
+5. ~~Work is **parallelised** across the audited plan's task dependency graph, capped at three
+   concurrent builder–verifier–reviewer triads, each in its own git worktree and branch.~~
+   **Amended by [ADR 0010](0010-the-swarm-owns-its-own-delivery-mechanics.md):** a subagent
+   cannot run `git` against any non-primary worktree, so isolation is **per branch in the
+   primary checkout, one triad at a time**.
 6. The swarm may commit, push, open PRs and squash-merge into `main` of
    `MartijnBoot/borrelbeurs`.
 7. A **driver** (`scripts/swarm.ps1`) re-invokes the orchestrator headlessly until the ledger
@@ -74,10 +78,16 @@ a revert cannot undo stays with the human, and that is precisely what the hard-s
 ## Hard stops — what the swarm may never decide
 
 Spec ambiguity that changes user-visible behaviour · any ambiguity in the pricing maths · a
-golden-fixture divergence · a new third-party dependency · reversing an ADR or changing
-`docs/design/` · anything needing a credential, secret or external account · three failed
-attempts on one task · a cross-phase invariant it cannot restore · any history rewrite,
-force-push, or touching the `borrelbeurs-v1` repository.
+golden-fixture divergence · a new third-party dependency · reversing a **product** ADR
+(0001–0008) or changing `docs/design/` · anything needing a credential, secret or external
+account · a cross-phase invariant it cannot restore · any history rewrite, force-push, or
+touching the `borrelbeurs-v1` repository.
+
+**Amended by [ADR 0010](0010-the-swarm-owns-its-own-delivery-mechanics.md).** Two entries left
+this list. *Delivery mechanics* — isolation, dispatch, the agent prompts, the allowlist, the
+driver, and §5 and §7 above — are the swarm's own to change and continue on. *Three failed
+attempts on one task* now parks that task, and the run carries on with everything that does not
+depend on it.
 
 On a hard stop the swarm writes the question, the evidence and its recommended answer into the
 ledger and exits.
