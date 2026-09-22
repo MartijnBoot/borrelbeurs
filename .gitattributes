@@ -1,0 +1,24 @@
+# Line-ending conversion: OFF, for every file, deliberately.
+#
+# `* -text` tells git never to convert end-of-line markers. Every blob is stored
+# and checked out byte-for-byte as it was committed, on every platform and at any
+# value of core.autocrlf.
+#
+# Why not the conventional `* text=auto` (or `*.py text`):
+#
+# v1 was imported with a mixed CRLF/LF index. `exchange/engine.py`, v1's backend
+# modules, its Dockerfile, requirements.txt and the .bat files are all stored
+# CRLF; everything else is LF. Any `text` attribute would renormalise those blobs
+# to LF on the next checkout and change their bytes. Phase 1's golden fixtures
+# are captured from v1's engine and replayed against v2's, so that byte-identity
+# is the safety net the whole rebuild rests on. Losing it silently is the
+# expensive failure, and it would have shipped unnoticed under the obvious
+# formulation. `* -text` is the only formulation that provably renormalises
+# nothing.
+#
+# Textual diffing is unaffected: that is the `diff` attribute, not `text`.
+#
+# Normalising the repository to LF remains possible. It is a deliberate, separate
+# change -- its own commit, after Phase 1's fixtures are captured and green --
+# never a side effect of a move, a checkout or a fresh clone on a Windows default.
+* -text

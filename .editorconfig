@@ -1,0 +1,56 @@
+# EditorConfig -- https://editorconfig.org
+#
+# Line endings are governed by .gitattributes (`* -text`: git converts nothing,
+# ever). This file must not fight that, so `end_of_line` is set only for trees
+# that are v2-native and already uniformly LF. It is deliberately NOT set at the
+# root, and deliberately unset under legacy/v1/, exchange/ and .claude/, which
+# carry CRLF blobs imported from v1.
+#
+# Normalising those to LF stays possible; it is a deliberate, separate commit,
+# not a side effect of opening a file in an editor. See .gitattributes.
+
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 2
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.{py,pyi}]
+indent_size = 4
+
+# Two trailing spaces are a hard line break in Markdown.
+[*.md]
+trim_trailing_whitespace = false
+
+[Makefile]
+indent_style = tab
+
+# --- v2-native source: LF ----------------------------------------------------
+
+[{app,db,docker,docs,scripts,tests,web}/**]
+end_of_line = lf
+
+[.{gitignore,gitattributes,editorconfig,nvmrc,python-version,dockerignore,env.example}]
+end_of_line = lf
+
+# --- imported from v1: leave every byte alone --------------------------------
+# Phase 1's golden fixtures rest on byte-identity with v1.
+
+[legacy/v1/**]
+charset = unset
+indent_style = unset
+indent_size = unset
+end_of_line = unset
+trim_trailing_whitespace = unset
+insert_final_newline = unset
+
+[exchange/**]
+end_of_line = unset
+trim_trailing_whitespace = unset
+insert_final_newline = unset
+
+[.claude/**]
+end_of_line = unset
