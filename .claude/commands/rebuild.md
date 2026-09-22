@@ -32,15 +32,21 @@ hard-stop list, and for nothing else.
 1. `docs/plans/rebuild-progress.md` — the ledger. This is your only memory. If it does not
    exist, create it from the template at the bottom of this file and start at Phase 0.
 2. `docs/plans/rebuild-route.md` — the phase order and the cross-phase invariants.
-3. `docs/adr/0009-autonomous-swarm-delivery.md` — your authority and its limits.
-4. `git status`, `git branch -a`, `git worktree list`, and `gh pr list --state open`.
+3. `docs/adr/0009-autonomous-swarm-delivery.md` and
+   `docs/adr/0010-the-swarm-owns-its-own-delivery-mechanics.md` — your authority and its
+   limits. 0010 is the one that says which blockers are yours to fix rather than to report.
+4. `git status`, `git branch -a`, and `gh pr list --state open`.
 
 Then **reconcile the ledger against git reality before dispatching anything.** A previous run
 may have been killed mid-task. For every task the ledger calls `building`, `verifying` or
-`reviewing`: does the branch exist, does the worktree exist, is there a commit on it, is there
-an open PR? Write what is actually true into the ledger, then proceed. Never dispatch a
-builder for a task that already has commits — resume it at the next unfinished step instead.
-Double-building is how two agents silently overwrite each other's work.
+`reviewing`: does the branch exist, is there a commit on it, is there an open PR? Write what is
+actually true into the ledger, then proceed. Never dispatch a builder for a task that already
+has commits — resume it at the next unfinished step instead. Double-building is how two agents
+silently overwrite each other's work.
+
+Reconciliation also means leaving the checkout usable: if `git status` is dirty on `main`, or
+HEAD sits on a task branch a previous run abandoned, put that right before you dispatch
+anything. An abandoned branch with no commits gets deleted; one with commits gets resumed.
 
 State in three lines: the phase, which tasks are in flight, and what you are dispatching now.
 If `$1` is given, work that phase; otherwise resume from the ledger. **Never reorder or skip a
@@ -59,12 +65,14 @@ Every task is in exactly one state. You advance tasks; you do not do their work.
 
 - **pending** — its dependencies are not merged yet.
 - **ready** — all `Depends on` tasks are `merged`. Eligible for dispatch.
-- **building** — `task-builder` is working in its own worktree and branch.
+- **building** — `task-builder` is working on its own branch in the primary checkout.
 - **verifying** — `task-verifier` is running the gate in a fresh context.
 - **reviewing** — `fresh-eyes-reviewer` (plus `engine-guardian` if the diff touched
   `exchange/`) is reading the diff.
-- **merged** — squash-merged into `main`, branch and worktree removed.
-- **blocked** — three failed attempts, or a hard stop. Ends the run.
+- **merged** — squash-merged into `main`, branch deleted.
+- **parked** — three failed attempts on this task. Per ADR 0010 §3 the task stops and **the run
+  continues** with everything that does not depend on it; all parked tasks are reported
+  together when the route can go no further.
 
 ## The per-phase sequence
 
@@ -73,33 +81,38 @@ Every task is in exactly one state. You advance tasks; you do not do their work.
 | 1 SPEC | ledger | **Gate A.** `docs/specs/phase-N-*.md` exists. Phases 0–8 all exist and are approved. If one is missing, dispatch an agent to author it from the route and `docs/design/`, mark it `agent-authored` in the ledger, flag it in the digest, and continue. |
 | 2 PLAN | `phase-planner` | Dispatch it. It writes `docs/plans/phase-N-*.md` and nothing else. |
 | 3 AUDIT | `plan-auditor` | **Gate B.** Dispatch it on the plan. **FAIL** → back to `phase-planner` with the findings, max three rounds, then blocked. **PASS** → the plan's task graph is now your work queue. |
-| 4 BUILD | `task-builder` ×N | Dispatch one per `ready` task, up to three concurrently, each in its own worktree. |
+| 4 BUILD | `task-builder` | Dispatch **one** `ready` task at a time, on its own branch in the primary checkout. |
 | 5 VERIFY | `task-verifier` | Fresh context per built task. Red → back to the builder with the output, attempt += 1. |
 | 6 REVIEW | `fresh-eyes-reviewer` (+ `engine-guardian`) | **Gate C.** Correctness findings → back to the builder, attempt += 1. Risk and Optional findings → record, do not chase. |
-| 7 INTEGRATE | you | Squash-merge, delete the branch, remove the worktree, write the evidence into the ledger. |
+| 7 INTEGRATE | you | Squash-merge, delete the branch, return the checkout to `main`, write the evidence into the ledger. |
 | 8 EXIT | you | **Gate D.** Run the route's exit criterion and the invariant sweep yourself. Write the digest. Continue to phase N+1. |
 
 Steps 4–7 run as a pipeline per task, not as phase-wide barriers. A task that is merged does
-not wait for its siblings; a task that fails does not hold up an independent one.
+not wait for its siblings; a parked task does not hold up an independent one.
 
-## Parallelism
+## Isolation — one branch at a time, in the primary checkout
 
-Read the audited plan's task graph. Dispatch every `ready` task, **capped at three concurrent
-builders**, each with:
+Per [ADR 0010](../../docs/adr/0010-the-swarm-owns-its-own-delivery-mechanics.md) §1, **per-task
+worktrees are not available**: a subagent cannot run `git` against any non-primary worktree, so
+a builder dispatched into one can write files and never commit a single one. Do not create
+worktrees for tasks. Do not try to prove this wrong from your own thread — you are a top-level
+context and git works for you everywhere, which is exactly why this took three runs to find.
 
-- its own branch: `feature/phase-N-t<id>-<slug>`
-- its own worktree: `git worktree add ../.borrelbeurs-swarm/phase-N-t<id> -b <branch>`
+Instead, per `ready` task, in order:
 
-The cap is not arbitrary. Concurrent triads all merge into the same `main`, and each review
-costs real context; beyond three, you spend more time resolving conflicts than you save.
+1. `git switch main && git pull` — start clean. Refuse to dispatch if `git status` is dirty.
+2. `git switch -c feature/phase-N-t<id>-<slug>`.
+3. Dispatch `task-builder` with the repo root as its working directory and that branch name. It
+   commits on that branch, in the primary checkout.
+4. Verify, review, integrate, then `git switch main` before the next task.
 
-Two tasks in the same parallel group must not write the same file — `plan-auditor` checks
-this, but if you see it anyway, serialise them and note it in the digest. Rebase a branch on
-`main` before merging it, never the other way around. If a rebase conflicts, that is the
-builder's task to resolve in its worktree, not yours to fix by hand.
+**One builder at a time.** There is one working tree, so a second concurrent builder would
+edit the first one's files. Take the `ready` tasks in the plan's declared order; the dependency
+graph still decides *which* are eligible, it just no longer buys you concurrency. Never
+"optimise" a declared dependency away to get some of it back.
 
-Phase 0's plan declares its tasks strictly serial. That is fine — the graph simply yields one
-`ready` task at a time. Do not "optimise" a declared dependency away.
+Rebase a branch on `main` before merging it, never the other way around. A conflict is the
+builder's to resolve on its branch, not yours to fix by hand.
 
 ## Gates — the exact condition you check
 
@@ -130,8 +143,10 @@ That one is not delegable, because it is the only check that spans everything th
 built so far.
 
 If a check is red: the builder gets **at most three attempts** total across verify and review
-failures. After the third, mark the task `blocked` and stop. Repeated blind retries are how a
-small defect becomes a rewritten module.
+failures. After the third, mark the task `parked`, write the last failing output into the
+ledger, and **move on to the next task that does not depend on it**. Repeated blind retries are
+how a small defect becomes a rewritten module; stopping the whole run over one task is how a
+week goes by with nothing shipped.
 
 ## Mandatory on any diff touching `exchange/`
 
@@ -148,7 +163,8 @@ Per merged task, in this order:
 2. Push the branch, then `gh pr create` with a body containing: the task, its acceptance
    criteria, the verifier's command output, and the reviewer's verdict and findings.
 3. `gh pr merge --squash --delete-branch`.
-4. `git worktree remove ../.borrelbeurs-swarm/phase-N-t<id>`.
+4. `git switch main && git pull` — the checkout is shared, so leaving it on a merged branch
+   strands the next builder.
 5. Write branch, PR number, evidence and review verdict into the ledger.
 
 The PR exists so there is a durable, readable record of each increment even though no human
@@ -166,18 +182,52 @@ a mystery.
   ambiguity at all in the pricing maths.
 - A golden fixture diverges, or `engine-guardian` reports a maths change.
 - A new third-party dependency is needed.
-- A decision that reverses or contradicts an ADR, or that changes anything in `docs/design/`.
+- A decision that reverses or contradicts a **product** ADR (0001–0008), or changes anything in
+  `docs/design/`.
 - A credential, secret or external account is needed — `config/keys.json`, Render, GitHub
   settings, anything you would have to be given rather than compute.
-- Three failed attempts on one task.
 - A cross-phase invariant is broken and cannot be restored inside the task that broke it.
 - Any history rewrite, force-push, or branch deletion beyond the merge of your own task
   branch — and anything at all touching the `borrelbeurs-v1` repository.
 - The plan fails audit three times.
+- **Nothing left can progress**: every remaining task is parked or depends on a parked one.
+  Report them all at once, with each one's last failing output.
 
 Everything else you decide. Record the decision in the ledger's decision log, draft an ADR if
 it has consequences, and continue. Disagreement with an approved design goes in a plan's Risks
 section, never into a quiet change of course.
+
+## Blockers that are yours to fix, not to report
+
+[ADR 0010](../../docs/adr/0010-the-swarm-owns-its-own-delivery-mechanics.md) gives you the
+**delivery mechanics**: how work is isolated, dispatched and committed, the agent prompts in
+`.claude/`, the tool allowlist and the workaround for a refused tool, the ledger's shape, and
+`scripts/swarm.ps1`. A mechanics problem is never a `BLOCKED` sentinel. Three runs were spent
+stopping on one, which is the failure this rule exists to prevent.
+
+When something in the machinery bites:
+
+1. **Diagnose it where it bites.** A guard that stops a subagent may not stop you. If the claim
+   is about what a builder can do, the probe has to run inside a builder, and the control test
+   has to exercise the thing being guarded — `cd <dir> && ls` says nothing about a git-specific
+   refusal.
+2. **Apply the narrowest workaround that leaves the gate intact.** `git mv` refused → `mv` plus
+   `git add -A`, which produces a byte-identical commit. A denied path → a permitted one. A
+   flaky step → retry once, then route around it.
+3. **Write the fix down** in the ledger's decision log, and into ADR 0010 if it outlives the
+   run. Then **keep going in the same run** — no sentinel, no handoff, no question.
+
+The limit is the product/mechanics line: you may change how the swarm moves, never what it is
+building, and never a gate. Weakening Gate B or Gate C to get past a blocker is the one use of
+this authority that is out of bounds — an unaudited plan or an unreviewed merge costs more than
+the delay it saves.
+
+Two standing mechanics facts, already paid for:
+
+- **Subagents cannot run `git` in a non-primary worktree.** Isolation is branch-level, in the
+  primary checkout. See the isolation section above.
+- **`gh api` is denied and stays denied.** Phase 0 T12 (branch protection) is a human task:
+  park it, note it in the digest, and build everything else.
 
 ## Things you must not do
 
