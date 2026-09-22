@@ -1,8 +1,52 @@
+# --- carried over from the v1 import -----------------------------------------
+# These five are anchored at the repo root, where v1 used to live.
 bierbeurs-image.tar
 *.tar
 static/earnings
 config/keys.json
 config/.jwt_secret
+
+# T2 moved v1 to legacy/v1/, so the same files now have a different path.
+# Unanchored, so a re-add stays ignored in either place.
+keys.json
+.jwt_secret
+**/static/earnings/
+**/static/uploads/
+
+# --- secrets and local environment -------------------------------------------
+.env
+.env.*
+!.env.example
+# scripts/setup.sh (T8) generates a real JWT_SECRET into this file.
+.env.local
+
+# --- build output, caches and dependencies -----------------------------------
+node_modules/
+web/dist/
+dist/
+build/
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage/
+htmlcov/
+
+# --- documents that are not source -------------------------------------------
+*.pdf
+
+# --- editor, OS and agent-local overrides ------------------------------------
+.vscode/settings.local.json
+.claude/settings.local.json
+.idea/
+.DS_Store
+Thumbs.db
 
 # Swarm driver run logs (scripts/swarm.ps1)
 .swarm-logs/
