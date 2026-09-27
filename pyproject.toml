@@ -1,0 +1,75 @@
+# Project metadata and the entire Python toolchain, in one file (plan D6-D8).
+#
+# uv is the package manager and resolver (D6); uv.lock beside this file is the
+# committed lockfile and every install is frozen (way-of-working 5.1:661).
+# ruff is formatter and linter in one (D7); mypy is the type checker (D8).
+#
+# There is deliberately no [build-system] table and `package = false` below:
+# this repository is an application, never a distributable. uv therefore
+# installs the dependencies without trying to build `app/`, and pytest imports
+# `app` from the repository root via `pythonpath` below.
+
+[project]
+name = "borrelbeurs"
+version = "0.0.0"
+description = "A drink stock exchange for student borrels."
+requires-python = "==3.11.*"
+
+dependencies = [
+    # Web layer. ADR 0001, ADR 0002.
+    "fastapi>=0.115,<1.0",
+    "uvicorn[standard]>=0.32,<1.0",
+    # Validated configuration. pydantic-settings is what turns the environment
+    # from unvalidated strings into a schema that can fail at boot (AC2).
+    "pydantic>=2.9,<3",
+    "pydantic-settings>=2.6,<3",
+    # Persistence. docs/design/architecture.md:211, docs/design/data-model.md:3.
+    "sqlalchemy>=2.0,<3",
+    "asyncpg>=0.30,<1.0",
+    "alembic>=1.14,<2",
+    # The pricing engine. Pinned exactly: Phase 1 replays v1's golden fixtures
+    # and numpy's random stream is what they rest on (plan D2).
+    "numpy==1.26.4",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8,<1.0",
+    "mypy>=1.13,<2",
+    "pytest>=8.3,<9",
+    "testcontainers>=4.8,<5",
+]
+
+[tool.uv]
+package = false
+
+# --- format and lint (D7) ----------------------------------------------------
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+# legacy/ is v1, frozen. exchange/ enters the gate in Phase 1, not before.
+extend-exclude = ["legacy", "exchange"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+
+# --- types (D8) --------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_configs = true
+exclude = "^(legacy|exchange)/"
+# The pydantic mypy plugin is deliberately not enabled: it rewrites model
+# __init__ signatures, which would make the `Settings()` call in
+# app/core/config.py an error even though populating a BaseSettings from the
+# environment is exactly what it is for.
+
+# --- tests -------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --strict-markers --strict-config"
+testpaths = ["tests"]
+pythonpath = ["."]
