@@ -11,8 +11,41 @@ that is not written down did not happen.
 
 ## Now
 
-Phase 0. In flight: **T2 — Gate C re-review (retroactive)**; **T3 — next to dispatch**. Blocked
-on: **nothing.**
+Phase 0. In flight: **nothing.** Blocked on: **nothing.** **T3 merged** (squash `58a4187`) after
+Gate C PASS on attempt 2. **Next: T4, T5, T7 are all `ready`** — dispatch them one at a time, in
+that order (ADR 0010 §1 caps builders at one; the graph decides eligibility, not concurrency).
+
+`main` is at `58a4187`; `git status` clean apart from this ledger; task branch deleted; suite green
+on `main` (`uv run pytest -q` → `5 passed`).
+
+**What T3 cost and what it bought.** Attempt 1 passed every prescribed check and still shipped a
+credential defect — a 44-character `.env.example` placeholder that satisfied `min_length=32` and
+therefore *booted*, leaving a repo-public JWT signing key one hand-copy away from a running app.
+**No verifier could have caught it**: all four plan cases passed, ruff and mypy were clean, the diff
+was in scope. It took a fresh context reading the artifact against `plan:221`. Attempt 2 fixed it
+and pinned it with a guard that was then mutation-probed rather than merely watched to pass.
+
+**The lesson worth carrying to every later phase:** a green verifier makes Gate C look like a
+formality precisely when it is not. The gate earns its cost on the diffs that pass every check. T2 is merged and its Gate C
+is signed (retroactively, PASS, zero Correctness).
+
+**T3 attempt 1: verified GREEN, then failed Gate C on one Correctness finding** — the shipped
+`.env.example` `JWT_SECRET` placeholder was 44 characters, so it *passed* validation and booted a
+public signing key. The verifier could not have caught this: every prescribed check passed. It took
+a reviewer reading the artifact against `plan:221` to see that the diff had silently inverted the
+plan's safety net. **That is the case for Gate C existing**, and it is worth remembering the next
+time a green verifier makes the review look like a formality.
+
+After the fix lands: re-verify (the gate must be green *again* after a Correctness fix, not merely
+green before it), then re-review, then integrate.
+
+**⚠ A resuming run must not re-dispatch T3 — it has commits.** Resume at review, then integrate.
+Only a branch with *no* commits and no live builder gets deleted and cut fresh. Double-building is
+how two agents silently overwrite each other.
+
+**⚠ The ledger is uncommitted while T3 is in flight.** It is modified in the working tree on T3's
+branch, deliberately: it belongs on `main`, not in T3's diff. Commit it to `main` *after* T3
+integrates. Both the builder and the verifier correctly reported it as not theirs.
 
 ### Run 5 reconciliation, 2026-09-27 — the ledger was stale; git was right
 
@@ -104,11 +137,11 @@ T1 ─► T2 ─► T3 ─┬─► T4 ─┐
 |---|---|---|---|---|---|---|
 | T1 fresh repo | merged | 1 | `main` (founding commits `aaf1e3b`, `d6c10a9`) | none — pre-swarm | `git count-objects -vH` → `size-pack: 457.37 KiB`, `in-pack: 122`, `packs: 1` < 5 MiB · `git rev-list --max-parents=0 HEAD` → `aaf1e3b` (sole root) · `git log --all --oneline --` for `config/keys.json`, `config/.jwt_secret`, `*.tar`, `static/earnings`, `static/uploads`, `*__pycache__*`, `*.pyc`, `*.pdf` → all empty · largest blob in repo is `docs/way-of-working.md` at 112,691 B < 200 kB · `git diff --name-status d6c10a9 HEAD` → no imported v1 file modified after import | **Gate C PASS** — `fresh-eyes-reviewer`, run 1, 2026-09-21. Zero Correctness findings. 5 Risk + 3 Optional recorded below |
 | T2 skeleton + pins + legacy move | **merged** (squash `7f4df16`, branch deleted) | 1 | `feature/phase-0-t2-skeleton-pins-legacy` (`fd31da9`, `d990436`, `3d8756c`) | **#3** | **verified GREEN, fresh context, 2026-09-22.** `test -d app -a -d web -a -d db -a -d scripts -a -d tests` → exit 0 · `git ls-files \| grep -c '\.pyc$'` → `0` · `git ls-files legacy/v1 \| wc -l` → `26` (>20) · `git log --follow --oneline exchange/engine.py` → `aaf1e3b chore: import v1 as reference baseline` · EOL: `i/crlf` 11, `i/-text` 6 unchanged; `exchange/engine.py` still `i/crlf`; 26 moves all `R100`, `26 files changed, 0 insertions(+), 0 deletions(-)`; `.gitattributes` absent from `main`, `core.autocrlf=false`, so `* -text` is a provable no-op · ignore behaviour re-verified GREEN by a second fresh context after `git check-ignore` was denied: 9 probe paths absent from `git status --porcelain` and from `git ls-files -o --exclude-standard`, all 9 present in `git ls-files -o -i --exclude-standard` (positive control), tree returned to baseline · `git diff main...HEAD --stat` → `38 files changed, 191 insertions(+), 1 deletion(-)`; no `exchange/` path in the diff | **`engine-guardian` 2026-09-22: NO MATHS CHANGE.** `exchange` *tree* hash identical `main`↔`HEAD` (`01e0f21d…`) — stronger than per-file equality; `engine.py` blob `740fdbd9…` unchanged (15703 B, 383 CRLF, 0 bare LF); `exchange_config.json` blob `e5d66e19…` unchanged; `.gitattributes` absent on `main`, `core.autocrlf=false`, `core.eol`/`safecrlf`/`attributesFile` unset. Fixtures **not** run — Phase 1 has not created them; certification is bytes-only. · **Gate C PASS** — `fresh-eyes-reviewer`, run 5, 2026-09-27, **retroactive** (merged without a signed verdict; see reconciliation). Zero Correctness findings. Both swarm decisions verified *empirically*, not by reading: `.gitattributes` holds one attribute line (`* -text`), `git ls-files --eol` shows every path `attr/-text` with the CRLF/LF mix intact and `exchange/engine.py` still `i/crlf` — Phase 1's byte-identity precondition confirmed on the merged tree. `.gitignore` de-anchoring complete: 8 secret-bearing placeholders under `legacy/v1/` all absent from `git status --porcelain` and `ls-files -o --exclude-standard`, all listed by `ls-files -o -i`, while `.env.example` stays trackable per AC1; tree restored. 3 Risk + 3 Optional recorded below |
-| T3 config module, fail-fast | **ready** — dispatch now | 0 | — | — | — | — |
-| T4 config boundary test | pending | 0 | — | — | — | — |
-| T5 FastAPI shell + health | pending | 0 | — | — | — | — |
+| T3 config module, fail-fast | **merged** (squash `58a4187`, branch deleted) | 2 | `feature/phase-0-t3-config-fail-fast` (`7789245`, `16752b0`, `c6687f3`) | **no-PR (gh wrong account)** | **GREEN, fresh context, 2026-09-27.** `uv run pytest tests/unit/test_config.py -v` → `4 passed in 0.24s`, Python 3.11.15 — all four plan cases (missing `DATABASE_URL`, 10-char `JWT_SECRET`, `PORT=banana`, complete env) · all three failure cases assert on the **variable name**, not merely that an exception raised — AC2's actual requirement · fail-fast re-run uncaught: `ConfigError: … 2 environment variables missing or malformed. - DATABASE_URL: Field required - JWT_SECRET: Field required … The application will not start.`, `EXIT_CODE_IS=1` · **no filesystem side effects at import** re-proved independently via `sys.addaudithook` over `os.mkdir`/`os.makedirs`/write-mode `open` → `IMPORT COMPLETE - no filesystem side effects detected` (v1's `legacy/v1/backend/config.py:11-13` mkdir-on-import anti-pattern avoided) · **secret-leak check independently confirmed:** 10-char `JWT_SECRET` rejected with `String should have at least 32 characters`, `secret leaked in message: False` · AC3 grep across `app/**` + `db/**` → only hit is the docstring inside `app/core/config.py` itself · `git ls-files --eol` → all 7 added files `i/lf attr/-text` · `git diff main...HEAD --stat` → `7 files changed, 1081 insertions(+)`, **no `exchange/` and no `legacy/v1/` path** · `ruff format --check` → `4 files already formatted` · `ruff check` → `All checks passed!` · `mypy app tests` → `Success: no issues found in 4 source files` · `uv sync --frozen` → `Checked 44 packages`. `scripts/check.sh` absent — T9 owns it, not a T3 failure | **Gate C PASS** — attempt 2, `fresh-eyes-reviewer`, 2026-09-27. **Attempt 1 FAILED on 1 Correctness:** `.env.example:20` shipped `JWT_SECRET=replace-me-with-32-or-more-random-characters` — **44 chars, so it passed `min_length=32` and booted.** A hand-copy to `.env.local`, or a paste into a Render env group, yields a running app whose session-JWT signing key is public in the repo → forgeable admin sessions. It inverted `plan:221`, which defines T8 as generating a real secret *"rather than shipping a placeholder that T3's validation would reject."* Fixed in `c6687f3`. **Re-review closed it on the artifact, not the test:** placeholder now 11 chars; the guard test was mutation-probed (reorder, CRLF, quoting, empty value → still green *and* correct; inline comment, `export ` prefix, 44-char value → **fail loudly**), so no mutation makes it silently pass while shipping a fixed repo-public key; no consumer of `.env.example` breaks (`setup.sh`/`compose` do not exist yet, `SettingsConfigDict` declares no `env_file`). **`DATABASE_URL` ruled on and accepted** — see R19. Zero Correctness at attempt 2. 7 Risk + Optional recorded below. No `engine-guardian`: no `exchange/` path (`GOLDEN_FIXTURES: n/a`) |
+| T4 config boundary test | **ready** | 0 | — | — | — | — |
+| T5 FastAPI shell + health | **ready** (decide `httpx` first — see open items) | 0 | — | — | — | — |
 | T6 web shell, same origin | pending | 0 | — | — | — | — |
-| T7 Postgres + Compose + Alembic baseline | pending | 0 | — | — | — | — |
+| T7 Postgres + Compose + Alembic baseline | **ready** (must match `.env.example` credentials — R19) | 0 | — | — | — | — |
 | T8 `scripts/setup.sh` | pending | 0 | — | — | — | — |
 | T9 `scripts/check.sh` | pending | 0 | — | — | — | — |
 | T10 Dockerfile + build context | pending | 0 | — | — | — | — |
@@ -194,6 +227,24 @@ the old wording actually broke.
   unreachable — so a builder can write but cannot commit, which is no better than useless.
 
 Taken by the swarm:
+
+- **2026-09-27, run 5, T3 — R1's `ADMIN_TOKEN` does not join T3's `Settings`; it re-homes to
+  Phase 3.** T3's builder escalated a genuine conflict rather than guessing, which was the right
+  call. Finding R1 says "`ADMIN_TOKEN` joins `JWT_SECRET` in T3's `Settings`", but the audited plan
+  names exactly five variables, and **v2 has no admin-token-gated route** — v1's `/shutdown`, the
+  only thing `ADMIN_TOKEN` ever gated, does not exist here.
+
+  Adding a sixth *required* variable would fail every boot, for an endpoint nobody has written.
+  Under AC2 that is not a harmless precaution; it is a guaranteed outage in exchange for nothing.
+
+  **What is deferred and what is not.** The mechanism moves to **Phase 3 (API + auth)**, the phase
+  that first introduces an authorized admin surface and can add the variable alongside the route
+  that needs it. R1's *security* substance does **not** defer and is not conditional: **`TestTest`
+  is burned.** It is in v1's git history, nothing at an event may use it, and no v2 code may
+  reintroduce the literal. That constraint stands today regardless of where the variable lands.
+
+  **No plan amendment needed** — R1 is a review finding carried to a task, not a term of the
+  audited plan, so re-homing it does not reopen Gate B.
 
 - **2026-09-27, run 5 — the remote is unreachable; integration goes local-only, no PRs.** `gh`
   and git both authenticate as the wrong GitHub account. `gh auth status` shows **two** logged-in
@@ -386,11 +437,63 @@ v1 entries are now dead weight subsumed by `:11-14` plus `*.tar` — harmless, d
 for `legacy/v1/**`; a no-op today (`engine.py:64`'s `√` U+221A is valid UTF-8) and the two save-time
 mutators that could break byte-identity are correctly unset.
 
+### Carried out of T3's Gate C review, 2026-09-27 — recorded, not chased
+
+The reviewer also confirmed two things worth keeping: the **dependency gate holds** (declared set is
+`alembic, asyncpg, fastapi, numpy==1.26.4, pydantic, pydantic-settings, sqlalchemy, uvicorn[standard]`
++ dev `mypy, pytest, ruff, testcontainers` — every one pre-approved at `plan:375-381` or approved at
+`:416`, lock and `pyproject.toml` agree, `requires-python == 3.11.*` matches D1), and the **no-echo
+design holds across 13 failure modes**, each probed with a password-bearing `DATABASE_URL`: no
+rejected value appears in the message *or* in `traceback.format_exception`, `__cause__` is `None`,
+`__suppress_context__` is `True`.
+
+| # | Finding | Carried to | Why not chased in T3 |
+|---|---|---|---|
+| R12 | **`uvicorn[standard]` pulls `python-dotenv` into the runtime** (`uv.lock:470`, alongside `httptools`, `uvloop`, `watchfiles`, `websockets`, `pyyaml`). Not a gate violation — `uvicorn` is pre-approved and extras are normal — but it enables `uvicorn --env-file`, a second environment source reading the very file the config module refuses to read (`app/core/config.py:19-23`) | **T5 + T9** | The launch command and `check.sh` must **never** use `--env-file`. T4's AST ban on `dotenv` covers the *import*, not the launch *flag* — T4 should say so explicitly, or the boundary has a hole no test can see |
+| R13 | **`DATABASE_URL` accepts any non-empty string** (`app/core/config.py:57`, `Field(min_length=1)`); `DATABASE_URL=x` boots cleanly. AC2 says "missing **or malformed**" — a sync `postgresql://` URL or a typo surfaces as an asyncpg dialect error at first query, not at boot | **T7** | The builder's reason is sound: a scheme constraint would pre-judge T7's driver and Alembic/testcontainers URLs. When T7 creates the engine, the constraint belongs **in this field**, not in `db/` |
+| R14 | **The `lru_cache` clear is airtight only inside `tests/unit/test_config.py`** (`:36-48`, both directions traced). T5's integration tests and T7's Alembic `env.py` will call `get_settings()` with no fixture and inherit whatever the process last cached | **T9** | The clear belongs in `tests/conftest.py` as an **autouse** fixture, not in one test file |
+| R15 | **Builder-added behaviour with no test guard** — all three would survive deletion unnoticed: `_describe` listing *all* offending variables (`:80-95`, a deliberate widening of `plan:147`); `_normalise_log_level` (`:71-75`, so `LOG_LEVEL=info` works); and the no-echo property, asserted only for `JWT_SECRET` (`test_config.py:81`) though it also holds for `DATABASE_URL` | **T4 / T9** | Not a missed acceptance criterion — the plan names four cases, all four exist and would genuinely fail if the implementation were wrong. This is coverage debt on behaviour the plan never asked for. **T7's `DATABASE_URL` carries a password**, so pinning the no-echo property there earns its keep |
+| R16 | **"No filesystem side effects at import" has no regression guard.** `plan:148-150` makes it an expected output and `config.py:5-11` makes it a promise, but it was only ever verified by hand — nothing in the suite fails if a future `mkdir` appears at import | **T4** | Precisely how v1 acquired `legacy/v1/backend/config.py:11-13`. T4's AST walk is already the right mechanism; this is one more predicate on it |
+| R17 | **`repr(Settings)` prints the secret** — observed: `Settings(database_url='postgresql+asyncpg://u:p4ssw0rd-probe@…', jwt_secret='…')`. `ConfigError` is clean, but any future `logger.debug("settings=%s", settings)` or a FastAPI debug page leaks both | **T5**, then Phase 3 | Fix is `Field(repr=False)` on the two secrets or `SecretStr`, decided **once** when structured logging lands (`app/core/logging.py`) rather than twice |
+| R19 | **`.env.example:15` hardcodes the dev database credentials, and T7 must match them or AC1 breaks.** It pins `postgresql+asyncpg://borrelbeurs:borrelbeurs@localhost:5432/borrelbeurs` — user, password and database all the literal project name. T7's plan entry (`plan:200-207`) names the service `borrelbeurs-db` but **specifies no credentials** | **T7** | If T7 picks anything else, AC1's "copy `.env.example` → apply migrations, without further manual steps" breaks at the first `alembic upgrade` — **and the failure will look like a T8 bug**, which is what makes this worth writing down. T7's verification must assert the *copied file connects*, not merely that the container is healthy. Distinct from R13, which is about validating the URL's shape rather than matching the compose DB |
+| R18 | **`uvicorn.Server.startup` runs `await self.lifespan.startup()` and `sys.exit(STARTUP_FAILURE)` *before* `create_server`** (verified against the installed version) | **T5 — enabling, not a defect** | Confirms a lazy `get_settings()` called from T5's lifespan fails **before a port is bound**, so T5 can satisfy AC2's "shall not serve traffic" with no workaround. Recorded so T5 does not re-derive it |
+
+Optional, from the same review: `LOG_LEVEL` is case-normalised but `APP_ENV` is not (`:66-75`), so
+`APP_ENV=Production` fails — asymmetric, though the error names the variable and lists permitted
+values. `case_sensitive=False` matches the pydantic-settings default; `extra="ignore"` overrides its
+`forbid` default — both correct, only the second does work. `ConfigError.__context__` still holds the
+`ValidationError`, but `__suppress_context__` is `True` and the probe confirmed nothing escapes; only
+a handler that walked `__context__` explicitly could reach the input, and none exists.
+
 ## Open items the plan does not cover
 
 - **No task asserts `.env.local` is gitignored**, yet T8 generates a real `JWT_SECRET` into it.
   T8 is not built yet. The swarm should fold this into T8's own verification rather than adding
   a task; if that is not possible, it is a plan amendment and needs `plan-auditor` to re-pass.
+
+  **Partly answered by T2's Gate C review, 2026-09-27:** `.env.local` was probed empirically and
+  **is** ignored, while `.env.example` stays trackable via the `!.env.example` negation at
+  `.gitignore:18-19`. T8 still owns asserting it as a *gate* rather than relying on this one-off
+  observation.
+
+- **`httpx` will be needed and is not pre-approved — decide at T5, do not let it ambush the run.**
+  T3's builder left it out deliberately and correctly. The plan's dependency table approves exactly
+  `uv`, `ruff`, `mypy`, `pydantic-settings` (`:416`) plus pre-approved `pytest` and `testcontainers`
+  (`:379`). **`httpx` is on none of those lists**, yet FastAPI's `TestClient` cannot run without it,
+  so T5's or T9's integration tests will want it.
+
+  The orchestrator must decide at T5 whether this is a *new third-party dependency* (hard stop, per
+  the hard-stop list) or merely the transport of an already-approved framework's official test
+  client. **Do not decide it here and do not let a builder add it quietly** — that is exactly the
+  quiet scope creep the dependency gate exists to catch. Flagged now so T5 is not surprised.
+
+- **Nothing loads `.env.local` into the environment — T8 must, or the app cannot boot from it.**
+  T3's `Settings` reads the environment only and deliberately loads no `.env` file, which is what
+  keeps imports independent of the working directory and the unit tests hermetic. The consequence
+  is that **T8's `setup.sh` writing `.env.local` is not by itself enough**: something must export
+  it (`set -a; . ./.env.local; set +a`, `uv run --env-file`, or compose's `env_file:`). `.env.example`
+  and the module docstring both say so. Making `Settings` read the file itself would mean a
+  `python-dotenv` dependency — an orchestrator decision, not a builder's.
 
 ## Standing items, carried until closed
 
