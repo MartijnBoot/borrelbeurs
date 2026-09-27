@@ -3,7 +3,7 @@
 Route: [rebuild-route.md](rebuild-route.md) · Loop: [ADR 0009](../adr/0009-autonomous-swarm-delivery.md)
 + [ADR 0010](../adr/0010-the-swarm-owns-its-own-delivery-mechanics.md)
 Swarm state: CONTINUE
-Updated: 2026-09-22 by run 4 (orchestrator)
+Updated: 2026-09-27 by run 5 (orchestrator)
 
 This file is the swarm's only memory. It is reconciled against git at the start of every run,
 and written after **every** state transition — a run can die at any moment, and a transition
@@ -11,13 +11,37 @@ that is not written down did not happen.
 
 ## Now
 
-Phase 0. In flight: **T2 — reviewing** (run 4). Blocked on: **nothing.** Builder returned 3
-commits on `feature/phase-0-t2-skeleton-pins-legacy` with all four plan checks green;
-`task-verifier` dispatched 2026-09-22 to re-run the gate in a fresh context.
+Phase 0. In flight: **T2 — Gate C re-review (retroactive)**; **T3 — next to dispatch**. Blocked
+on: **nothing.**
+
+### Run 5 reconciliation, 2026-09-27 — the ledger was stale; git was right
+
+Run 4 died between merging T2 and writing the merge down. What git actually shows:
+
+```
+$ git log --oneline -3
+db6f89a progres update                                              ← human, docs-only, today
+7f4df16 Phase 0 T2 — repo skeleton, toolchain pins, v1 moved aside (#3)   ← T2 MERGED 2026-09-22
+8c08216 feat(swarm): branch-level isolation in the orchestrator prompt
+$ git branch -a        → feature/phase-0-t2-… absent (deleted on merge)
+$ git status --short   → clean
+$ git worktree list    → primary checkout only
+```
+
+T2's deliverables are present on `main`: `app/ db/ scripts/ tests/ web/ legacy/v1/` all exist,
+`git ls-files legacy/v1 | wc -l` → `26`, `.gitattributes` is tracked and contains `* -text`.
+**T2 is `merged`, PR #3.** The "reviewing" row was in-flight state that run 4 never got to
+overwrite; the human's `db6f89a "progres update"` committed those stale working-tree edits
+verbatim today, which is why the file looked current while saying something false.
+
+**Gate C for T2 was never signed.** `engine-guardian` passed (identical `exchange` tree hash)
+but `fresh-eyes-reviewer` was recorded "in progress" and no verdict exists, yet the merge
+happened. Run 5 dispatched a retroactive `fresh-eyes-reviewer` on `7f4df16` before building
+anything further. A Correctness finding now becomes a follow-up task — T2 cannot be un-merged.
 
 **The isolation fix is proven in practice, not just on paper.** A subagent builder committed
-three times in the primary checkout. Three runs had produced zero product commits; ADR 0010's
-branch-level isolation produced them on the first attempt.
+three times in the primary checkout, and that work is now on `main`. Three runs had produced
+zero product commits; ADR 0010's branch-level isolation produced them on the first attempt.
 
 **The isolation blocker is closed.** [ADR 0010](../adr/0010-the-swarm-owns-its-own-delivery-mechanics.md)
 amends ADR 0009 §5: per-task worktrees are unreachable for subagent builders, so isolation is
@@ -79,8 +103,8 @@ T1 ─► T2 ─► T3 ─┬─► T4 ─┐
 | Task | State | Attempt | Branch | PR | Verified (command + actual output) | Review |
 |---|---|---|---|---|---|---|
 | T1 fresh repo | merged | 1 | `main` (founding commits `aaf1e3b`, `d6c10a9`) | none — pre-swarm | `git count-objects -vH` → `size-pack: 457.37 KiB`, `in-pack: 122`, `packs: 1` < 5 MiB · `git rev-list --max-parents=0 HEAD` → `aaf1e3b` (sole root) · `git log --all --oneline --` for `config/keys.json`, `config/.jwt_secret`, `*.tar`, `static/earnings`, `static/uploads`, `*__pycache__*`, `*.pyc`, `*.pdf` → all empty · largest blob in repo is `docs/way-of-working.md` at 112,691 B < 200 kB · `git diff --name-status d6c10a9 HEAD` → no imported v1 file modified after import | **Gate C PASS** — `fresh-eyes-reviewer`, run 1, 2026-09-21. Zero Correctness findings. 5 Risk + 3 Optional recorded below |
-| T2 skeleton + pins + legacy move | **reviewing** | 1 | `feature/phase-0-t2-skeleton-pins-legacy` (`fd31da9`, `d990436`, `3d8756c`) | — | **verified GREEN, fresh context, 2026-09-22.** `test -d app -a -d web -a -d db -a -d scripts -a -d tests` → exit 0 · `git ls-files \| grep -c '\.pyc$'` → `0` · `git ls-files legacy/v1 \| wc -l` → `26` (>20) · `git log --follow --oneline exchange/engine.py` → `aaf1e3b chore: import v1 as reference baseline` · EOL: `i/crlf` 11, `i/-text` 6 unchanged; `exchange/engine.py` still `i/crlf`; 26 moves all `R100`, `26 files changed, 0 insertions(+), 0 deletions(-)`; `.gitattributes` absent from `main`, `core.autocrlf=false`, so `* -text` is a provable no-op · ignore behaviour re-verified GREEN by a second fresh context after `git check-ignore` was denied: 9 probe paths absent from `git status --porcelain` and from `git ls-files -o --exclude-standard`, all 9 present in `git ls-files -o -i --exclude-standard` (positive control), tree returned to baseline · `git diff main...HEAD --stat` → `38 files changed, 191 insertions(+), 1 deletion(-)`; no `exchange/` path in the diff | **`engine-guardian` 2026-09-22: NO MATHS CHANGE.** `exchange` *tree* hash identical `main`↔`HEAD` (`01e0f21d…`) — stronger than per-file equality; `engine.py` blob `740fdbd9…` unchanged (15703 B, 383 CRLF, 0 bare LF); `exchange_config.json` blob `e5d66e19…` unchanged; `.gitattributes` absent on `main`, `core.autocrlf=false`, `core.eol`/`safecrlf`/`attributesFile` unset. Fixtures **not** run — Phase 1 has not created them; certification is bytes-only. `fresh-eyes-reviewer` in progress |
-| T3 config module, fail-fast | pending | 0 | — | — | — | — |
+| T2 skeleton + pins + legacy move | **merged** (squash `7f4df16`, branch deleted) | 1 | `feature/phase-0-t2-skeleton-pins-legacy` (`fd31da9`, `d990436`, `3d8756c`) | **#3** | **verified GREEN, fresh context, 2026-09-22.** `test -d app -a -d web -a -d db -a -d scripts -a -d tests` → exit 0 · `git ls-files \| grep -c '\.pyc$'` → `0` · `git ls-files legacy/v1 \| wc -l` → `26` (>20) · `git log --follow --oneline exchange/engine.py` → `aaf1e3b chore: import v1 as reference baseline` · EOL: `i/crlf` 11, `i/-text` 6 unchanged; `exchange/engine.py` still `i/crlf`; 26 moves all `R100`, `26 files changed, 0 insertions(+), 0 deletions(-)`; `.gitattributes` absent from `main`, `core.autocrlf=false`, so `* -text` is a provable no-op · ignore behaviour re-verified GREEN by a second fresh context after `git check-ignore` was denied: 9 probe paths absent from `git status --porcelain` and from `git ls-files -o --exclude-standard`, all 9 present in `git ls-files -o -i --exclude-standard` (positive control), tree returned to baseline · `git diff main...HEAD --stat` → `38 files changed, 191 insertions(+), 1 deletion(-)`; no `exchange/` path in the diff | **`engine-guardian` 2026-09-22: NO MATHS CHANGE.** `exchange` *tree* hash identical `main`↔`HEAD` (`01e0f21d…`) — stronger than per-file equality; `engine.py` blob `740fdbd9…` unchanged (15703 B, 383 CRLF, 0 bare LF); `exchange_config.json` blob `e5d66e19…` unchanged; `.gitattributes` absent on `main`, `core.autocrlf=false`, `core.eol`/`safecrlf`/`attributesFile` unset. Fixtures **not** run — Phase 1 has not created them; certification is bytes-only. · **Gate C PASS** — `fresh-eyes-reviewer`, run 5, 2026-09-27, **retroactive** (merged without a signed verdict; see reconciliation). Zero Correctness findings. Both swarm decisions verified *empirically*, not by reading: `.gitattributes` holds one attribute line (`* -text`), `git ls-files --eol` shows every path `attr/-text` with the CRLF/LF mix intact and `exchange/engine.py` still `i/crlf` — Phase 1's byte-identity precondition confirmed on the merged tree. `.gitignore` de-anchoring complete: 8 secret-bearing placeholders under `legacy/v1/` all absent from `git status --porcelain` and `ls-files -o --exclude-standard`, all listed by `ls-files -o -i`, while `.env.example` stays trackable per AC1; tree restored. 3 Risk + 3 Optional recorded below |
+| T3 config module, fail-fast | **ready** — dispatch now | 0 | — | — | — | — |
 | T4 config boundary test | pending | 0 | — | — | — | — |
 | T5 FastAPI shell + health | pending | 0 | — | — | — | — |
 | T6 web shell, same origin | pending | 0 | — | — | — | — |
@@ -170,6 +194,39 @@ the old wording actually broke.
   unreachable — so a builder can write but cannot commit, which is no better than useless.
 
 Taken by the swarm:
+
+- **2026-09-27, run 5 — the remote is unreachable; integration goes local-only, no PRs.** `gh`
+  and git both authenticate as the wrong GitHub account. `gh auth status` shows **two** logged-in
+  accounts, with the *work* account active:
+
+  ```
+  ✓ Logged in to github.com account MartijnBoot-mvrdw (keyring)  - Active account: true
+  ✓ Logged in to github.com account MartijnBoot        (keyring)  - Active account: false
+
+  $ gh pr list   → GraphQL: Could not resolve Repository name 'MartijnBoot/borrelbeurs'
+  $ git fetch origin → remote: Repository not found.
+                       fatal: repository '.../MartijnBoot/borrelbeurs.git/' not found
+  ```
+
+  The repo is private under `MartijnBoot`; the active token cannot see it, so **fetch, push and
+  every `gh` call fail**. The one-command fix, `gh auth switch --user MartijnBoot`, requires human
+  approval and was refused twice in run 5 — and rightly so, since it changes the user's global
+  git identity for every other project on the machine.
+
+  **Workaround, per the orchestrator's own fallback and ADR 0010 §2:** merge each verified and
+  reviewed task **locally** into `main` with a squash commit, do not push, and record
+  `no-PR (gh wrong account)` against the task. Every gate still runs unchanged — the verifier and
+  the reviewer are local agents and never needed the network. What is lost is the durable remote
+  record, not any check.
+
+  **Not a hard stop.** A missing PR is explicitly "a note, not a reason to stop", and the
+  credential is not one the human must *obtain* — it is already on the machine, one command away.
+  Stopping the route to save a human three seconds later, while T3–T11 and T13 sit buildable,
+  is the worse trade by a wide margin.
+
+  **Carried for the human, and it grows with every merge:** run `gh auth switch --user MartijnBoot`,
+  then `git push origin main`. Until then all swarm work after `db6f89a` exists **only in this
+  local clone and is unbackedup**. Phase 0's digest repeats this.
 
 - **2026-09-22, run 4, T2 — `.vscode/*` is accepted as missing and routed to the human.** T2's
   expected output names `.vscode/*`. Every write under `.vscode/` is refused by the harness's
@@ -299,6 +356,35 @@ unverified because `gh repo` is on the swarm's never-do list — **worth a human
 | R8 | `legacy/v1/` has no README saying "frozen, reference only, nothing imports this" | T9 or T13 | Not in T2's expected output, so adding it would have been scope creep. Cheap and worth folding in |
 | R9 | `tests/engine/.gitkeep` appears in the plan's Files table with **no owning task**, and T9's per-directory exit-5 handling depends on `tests/engine/` existing | T9 | Confirm when T9 is built; if no task creates it, T9's builder does |
 | R10 | The ledger's recorded EOL baseline said `61 i/lf`; the true figure on `main` is `63` (two docs were added after the measurement) | closed here | Corrected. The `11 i/crlf` / `6 i/-text` / `2 i/none` split the byte-identity argument actually rests on was and is correct |
+
+### Added by the retroactive Gate C review of T2, run 5, 2026-09-27
+
+R6 and R7 above were independently re-found by the reviewer, which is corroboration rather than
+new scope. It sharpened both and added one genuinely new risk:
+
+| # | Finding | Carried to | Why not chased now |
+|---|---|---|---|
+| R11 | **`* -text` means nothing normalises line endings, and `.editorconfig` only covers part of the v2 tree.** `.editorconfig:33` scopes `end_of_line = lf` to `{app,db,docker,docs,scripts,tests,web}/**` and `:36` to seven named root dotfiles. Files T3, T7 and T11 will create *outside* that set — `pyproject.toml`, `uv.lock`, `docker-compose.yml`, `.github/**` — have no LF rule and no git-side normalisation. **Already happening, not theoretical:** `.claude/settings.json` and `.claude/agents/task-builder.md` are stored CRLF while every LF sibling in `.claude/` is LF — v2-authored drift under the new policy | **T9** | The fatal case (CRLF in a bash script) *is* covered, because `scripts/**` is in the glob — but by an editor setting, not a gate. Cheapest real fix is one assertion in `tests/meta/test_repo_hygiene.py`: no `\r\n` in any tracked file outside `legacy/` and `exchange/`. Prefer that over widening the `.editorconfig` globs — the assertion is the thing that actually holds |
+
+Sharpened, for the tasks that own them:
+
+- **R6 / T10** — the reviewer confirmed `.dockerignore:6-8,12` still root-anchors `static/earnings/`,
+  `static/uploads/`, `config/keys.json`, `config/.jwt_secret`. T10 already plans `legacy/` in its
+  extension list, which fixes it wholesale. **The thing to watch:** `tests/meta/test_repo_hygiene.py`
+  must assert the *effective* exclusion, not merely that the stale strings are still present —
+  otherwise T10 passes while protecting nothing.
+- **R7 / T13** — root `CLAUDE.md` is now **13 dangling links** (lines 9, 15-18, 22-25, 27-28, 34-35,
+  37, 50), and it is the file every agent session loads. T13 currently depends on T7, so the
+  misdirection persists across five tasks. **Pulling T13 earlier is cheap** and the swarm should
+  consider it once T7 lands.
+
+Optional, from the same review: `phase-0-foundations.md:43` and `:149` cite `Dockerfile` and
+`backend/config.py` at pre-move paths — cosmetic in a frozen plan, **except that T3's builder
+follows the `:149` citation**, so run 5 briefs it explicitly. `.gitignore:3-7`'s five root-anchored
+v1 entries are now dead weight subsumed by `:11-14` plus `*.tar` — harmless, defensible to keep.
+`.editorconfig:50-53` leaves `charset = utf-8` in force for `exchange/**` where `:42-48` unsets it
+for `legacy/v1/**`; a no-op today (`engine.py:64`'s `√` U+221A is valid UTF-8) and the two save-time
+mutators that could break byte-identity are correctly unset.
 
 ## Open items the plan does not cover
 
