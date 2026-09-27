@@ -128,6 +128,26 @@ def test_committed_env_example_cannot_boot(
     assert "JWT_SECRET" in str(excinfo.value)
 
 
+def test_settings_do_not_print_their_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R17 — rendering a `Settings` must not spill `JWT_SECRET` or the DSN password.
+
+    `ConfigError` is careful, but the model itself was not: `repr(settings)`
+    printed both values in full, so one `logger.debug("settings=%s", settings)`
+    would put a forgeable signing key in the log aggregator. Structured logging
+    lands in T5, which is where this is settled.
+    """
+    _set_env(monkeypatch)
+    settings = get_settings()
+
+    for rendered in (repr(settings), str(settings), f"{settings}"):
+        assert COMPLETE_ENV["JWT_SECRET"] not in rendered
+        assert COMPLETE_ENV["DATABASE_URL"] not in rendered
+        # ...while the harmless fields stay visible, or the repr is useless.
+        assert "8123" in rendered
+
+
 def test_complete_environment_constructs_cleanly(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

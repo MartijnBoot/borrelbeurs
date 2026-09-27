@@ -44,6 +44,12 @@ class Settings(BaseSettings):
 
     Field names map to their upper-case environment variable: `database_url`
     reads `DATABASE_URL`.
+
+    The two secret-bearing fields are declared `repr=False`, so neither
+    `repr(settings)` nor `str(settings)` -- and therefore no `%s` in a log call
+    -- can print them (R17). `model_dump()` still returns the real values:
+    serialising the settings on purpose is a different act from logging them by
+    accident, and only the accident is worth designing against here.
     """
 
     model_config = SettingsConfigDict(
@@ -52,12 +58,16 @@ class Settings(BaseSettings):
         frozen=True,
     )
 
-    # Required. Async SQLAlchemy URL for Postgres (ADR 0004).
-    database_url: str = Field(min_length=1)
+    # Required. Async SQLAlchemy URL for Postgres (ADR 0004). `repr=False`
+    # because the DSN carries the database password (R17).
+    database_url: str = Field(min_length=1, repr=False)
 
     # Required. Signing key for session JWTs. 32 characters is the floor below
-    # which a HS256 key is weaker than the hash it feeds.
-    jwt_secret: str = Field(min_length=32)
+    # which a HS256 key is weaker than the hash it feeds. `repr=False` keeps it
+    # out of `repr()`, `str()` and therefore out of `logger.info("%s", settings)`
+    # (R17) -- the leak that costs most, since a leaked JWT_SECRET forges
+    # admin sessions.
+    jwt_secret: str = Field(min_length=32, repr=False)
 
     # Optional. Render injects $PORT; everywhere else this is 8000 (plan D11).
     port: int = Field(default=8000, ge=1, le=65535)
