@@ -3,7 +3,7 @@
 Route: [rebuild-route.md](rebuild-route.md) · Loop: [ADR 0009](../adr/0009-autonomous-swarm-delivery.md)
 + [ADR 0010](../adr/0010-the-swarm-owns-its-own-delivery-mechanics.md)
 Swarm state: CONTINUE
-Updated: 2026-09-22 by the human, unblocking the swarm's isolation model
+Updated: 2026-09-22 by run 4 (orchestrator)
 
 This file is the swarm's only memory. It is reconciled against git at the start of every run,
 and written after **every** state transition — a run can die at any moment, and a transition
@@ -11,9 +11,13 @@ that is not written down did not happen.
 
 ## Now
 
-Phase 0. In flight: **nothing**. Blocked on: **nothing.** Next action: dispatch `task-builder`
-for **T2** on branch `feature/phase-0-t2-skeleton-pins-legacy`, cut fresh from `main` in the
-primary checkout.
+Phase 0. In flight: **T2 — reviewing** (run 4). Blocked on: **nothing.** Builder returned 3
+commits on `feature/phase-0-t2-skeleton-pins-legacy` with all four plan checks green;
+`task-verifier` dispatched 2026-09-22 to re-run the gate in a fresh context.
+
+**The isolation fix is proven in practice, not just on paper.** A subagent builder committed
+three times in the primary checkout. Three runs had produced zero product commits; ADR 0010's
+branch-level isolation produced them on the first attempt.
 
 **The isolation blocker is closed.** [ADR 0010](../adr/0010-the-swarm-owns-its-own-delivery-mechanics.md)
 amends ADR 0009 §5: per-task worktrees are unreachable for subagent builders, so isolation is
@@ -75,7 +79,7 @@ T1 ─► T2 ─► T3 ─┬─► T4 ─┐
 | Task | State | Attempt | Branch | PR | Verified (command + actual output) | Review |
 |---|---|---|---|---|---|---|
 | T1 fresh repo | merged | 1 | `main` (founding commits `aaf1e3b`, `d6c10a9`) | none — pre-swarm | `git count-objects -vH` → `size-pack: 457.37 KiB`, `in-pack: 122`, `packs: 1` < 5 MiB · `git rev-list --max-parents=0 HEAD` → `aaf1e3b` (sole root) · `git log --all --oneline --` for `config/keys.json`, `config/.jwt_secret`, `*.tar`, `static/earnings`, `static/uploads`, `*__pycache__*`, `*.pyc`, `*.pdf` → all empty · largest blob in repo is `docs/way-of-working.md` at 112,691 B < 200 kB · `git diff --name-status d6c10a9 HEAD` → no imported v1 file modified after import | **Gate C PASS** — `fresh-eyes-reviewer`, run 1, 2026-09-21. Zero Correctness findings. 5 Risk + 3 Optional recorded below |
-| T2 skeleton + pins + legacy move | **ready** — dispatch now | 1 | `feature/phase-0-t2-skeleton-pins-legacy` — deleted, cut it fresh from `main` in the primary checkout | — | attempt 1 returned `blocked` with nothing written: git unusable in a worktree for subagents. An environment failure, not a code failure; it does not consume the attempt budget, and the cause is now fixed (ADR 0010) | — |
+| T2 skeleton + pins + legacy move | **reviewing** | 1 | `feature/phase-0-t2-skeleton-pins-legacy` (`fd31da9`, `d990436`, `3d8756c`) | — | **verified GREEN, fresh context, 2026-09-22.** `test -d app -a -d web -a -d db -a -d scripts -a -d tests` → exit 0 · `git ls-files \| grep -c '\.pyc$'` → `0` · `git ls-files legacy/v1 \| wc -l` → `26` (>20) · `git log --follow --oneline exchange/engine.py` → `aaf1e3b chore: import v1 as reference baseline` · EOL: `i/crlf` 11, `i/-text` 6 unchanged; `exchange/engine.py` still `i/crlf`; 26 moves all `R100`, `26 files changed, 0 insertions(+), 0 deletions(-)`; `.gitattributes` absent from `main`, `core.autocrlf=false`, so `* -text` is a provable no-op · ignore behaviour re-verified GREEN by a second fresh context after `git check-ignore` was denied: 9 probe paths absent from `git status --porcelain` and from `git ls-files -o --exclude-standard`, all 9 present in `git ls-files -o -i --exclude-standard` (positive control), tree returned to baseline · `git diff main...HEAD --stat` → `38 files changed, 191 insertions(+), 1 deletion(-)`; no `exchange/` path in the diff | **`engine-guardian` 2026-09-22: NO MATHS CHANGE.** `exchange` *tree* hash identical `main`↔`HEAD` (`01e0f21d…`) — stronger than per-file equality; `engine.py` blob `740fdbd9…` unchanged (15703 B, 383 CRLF, 0 bare LF); `exchange_config.json` blob `e5d66e19…` unchanged; `.gitattributes` absent on `main`, `core.autocrlf=false`, `core.eol`/`safecrlf`/`attributesFile` unset. Fixtures **not** run — Phase 1 has not created them; certification is bytes-only. `fresh-eyes-reviewer` in progress |
 | T3 config module, fail-fast | pending | 0 | — | — | — | — |
 | T4 config boundary test | pending | 0 | — | — | — | — |
 | T5 FastAPI shell + health | pending | 0 | — | — | — | — |
@@ -167,6 +171,54 @@ the old wording actually broke.
 
 Taken by the swarm:
 
+- **2026-09-22, run 4, T2 — `.vscode/*` is accepted as missing and routed to the human.** T2's
+  expected output names `.vscode/*`. Every write under `.vscode/` is refused by the harness's
+  self-modification guard: Write denied twice, Bash heredoc denied, while a control write to
+  `LICENSE` **in the same directory** succeeded — so the refusal is path-specific, not agent- or
+  tool-specific. There is **no deny rule for `.vscode/` in `.claude/settings.json`**; this is a
+  harness guard on editor/agent config, the same class as the `.claude/` blocker already carried
+  below, and no agent of any kind can produce these two files.
+
+  **Not a hard stop and not worth one.** It is not on the hard-stop list, nothing in T2's four
+  verification commands touches it, and no other task depends on it — it is developer editor
+  convenience. Stalling the entire route on two editor config files would be the worse trade by
+  a wide margin. The intended content is captured verbatim in the builder's report and added to
+  [pending-claude-config-edits.md](pending-claude-config-edits.md) for the human to drop in.
+
+  **The load-bearing line, when it is applied:** `"files.eol": "auto"` — *not* `"
+"`. A global
+  `"
+"` would renormalise v1's CRLF files on save, which is the exact failure `* -text` exists
+  to prevent, reached by a different route. Phase 0's digest records this as human-owned.
+
+- **2026-09-22, run 4, T2 — `git check-ignore` is denied; the ignore check is re-expressed in
+  allowlisted commands.** The verifier returned RED on exactly one claim, and was right to: the
+  prescribed command `git check-ignore -v` is refused by the permission system (three attempts,
+  while `status`/`diff`/`show`/`ls-files`/`log` all worked in between), and it **declined to call
+  an unrun check green**. That is the behaviour the gate exists to produce.
+
+  The allowlist lives in `.claude/settings.json`, which the harness guard will not let any agent
+  edit — so the narrowest workaround is to test the same property with allowlisted commands:
+  create **empty** placeholder files at the hypothetical paths, assert `git status --porcelain`
+  and `git ls-files -o --exclude-standard` do not see them while `git ls-files -o -i
+  --exclude-standard` does, then delete them and prove the tree is clean. Identical behavioural
+  question, no secret content, nothing committed.
+
+  **This does not consume T2's attempt budget.** The builder's code was never in question; a
+  denied tool in the verifier's environment is a mechanics fault, and charging it to the builder
+  would park a healthy task after three such accidents.
+
+- **2026-09-22, run 4, T2 — the builder closed a secret-exposure hole the plan did not
+  anticipate.** Moving v1 under `legacy/v1/` silently broke `.gitignore`: `config/keys.json`,
+  `config/.jwt_secret` and `static/earnings` all contain a slash, so git anchors them to the repo
+  root, and after the move they no longer matched the real files. A future
+  `legacy/v1/config/keys.json` would have been trackable. The builder kept the five original
+  lines verbatim and added unanchored equivalents. Nothing was exposed in practice — no untracked
+  file existed at those paths — but the hole was opened *by the move itself*, which is why no
+  task owned it. **The verifier tests this behaviourally with `git check-ignore -v`**, not by
+  reading the file, because the anchoring bug is invisible on a read.
+
+
 - **2026-09-21, run 1 — a tracked `.gitattributes` is folded into T2 (risk R3).** The plan does
   not list one. It is not new scope in spirit: T2 already owns line-ending policy via
   `.editorconfig`, and without a tracked `.gitattributes` the repo's byte-identity with v1
@@ -237,6 +289,16 @@ Optional, for the record: `readme.txt` carries a RFC1918 LAN address (disappears
 it); `docs/plans/phase-0-foundations.md:283` contains `AKIAIOSFODNN7EXAMPLE` as the secret-scan
 fixture, which gitleaks will flag on its own fixture unless T5 allowlists it; repo visibility is
 unverified because `gh repo` is on the swarm's never-do list — **worth a human eyeball.**
+
+### Carried out of T2, 2026-09-22 — observed by the builder, deliberately not fixed there
+
+| # | Finding | Carried to | Why not chased in T2 |
+|---|---|---|---|
+| R6 | **`.dockerignore` is now stale and silently covers nothing.** It still lists `static/earnings/`, `static/uploads/`, `config/keys.json`, `config/.jwt_secret` at root paths that no longer exist — the same anchoring break the builder fixed in `.gitignore` | **T10** | T10 owns `.dockerignore` ("extend, not create"). **T10 will pass its current wording while protecting nothing** — it must re-point these at `legacy/v1/…` or unanchor them, and `tests/meta/test_repo_hygiene.py` must assert the corrected list. Flagged so T10's builder cannot miss it |
+| R7 | Root `CLAUDE.md` now documents `backend/`, `static/`, `config/`, `run.bat`, `rebuild.bat` at root paths that no longer exist — a second defect on top of the "don't introduce a database" line ADR 0004 already flagged | **T13** | T13 replaces it wholesale. Anyone reading it between now and T13 is misled; that window is accepted |
+| R8 | `legacy/v1/` has no README saying "frozen, reference only, nothing imports this" | T9 or T13 | Not in T2's expected output, so adding it would have been scope creep. Cheap and worth folding in |
+| R9 | `tests/engine/.gitkeep` appears in the plan's Files table with **no owning task**, and T9's per-directory exit-5 handling depends on `tests/engine/` existing | T9 | Confirm when T9 is built; if no task creates it, T9's builder does |
+| R10 | The ledger's recorded EOL baseline said `61 i/lf`; the true figure on `main` is `63` (two docs were added after the measurement) | closed here | Corrected. The `11 i/crlf` / `6 i/-text` / `2 i/none` split the byte-identity argument actually rests on was and is correct |
 
 ## Open items the plan does not cover
 
