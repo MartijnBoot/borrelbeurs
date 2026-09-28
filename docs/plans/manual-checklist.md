@@ -43,12 +43,15 @@ Until T9 lands, `scripts/check.sh` does not exist. If `/verify` reports that, ru
 
 ## Step 0 — housekeeping (once, right now)
 
-- [ ] Commit the uncommitted work on the T7 branch (model changes, checklist, last swarm ledger notes):
-  `git add .claude docs/plans/manual-checklist.md docs/plans/rebuild-progress.md` then
-  `git commit -m "chore: manual workflow — cheaper models, checklist, ledger notes"`
-- [x] ~~Stop the swarm for good~~ — superseded 2026-09-28: the swarm is resumed with pinned
-  models (`task-builder`/`task-verifier` sonnet, reviewers opus). This checklist is the fallback
-  if that attempt fails.
+- [x] Commit the uncommitted work on the T7 branch (model changes, checklist, last swarm ledger notes)
+- [x] Stop the swarm for good — 2026-09-28, after run 10 ended `BLOCKED` on `pnpm`. This
+  checklist is now the only workflow; `rebuild-progress.md` is frozen history from here on.
+- [ ] Commit the last swarm ledger notes and this checklist, then publish the 3 unpushed commits
+  on `main` (run 9/10 ledger + T13):
+  `git add docs/plans/rebuild-progress.md docs/plans/manual-checklist.md` then
+  `git commit -m "docs: stop the swarm; checklist caught up"` then `git push origin main`
+- [ ] Delete the merged T7 branch on the remote:
+  `git push origin --delete feature/phase-0-t7-postgres-compose-alembic`
 
 ## Phase −1 — v1 authorization hotfix
 - [x] Done (`b617a56`)
@@ -79,7 +82,11 @@ Exit: `scripts/setup.sh` then one command gives a running shell app; CI green.
 - [x] merge — `git switch main` then `git merge --squash feature/phase-0-t4b-no-fs-side-effects` then `git commit -m "Phase 0 T4b — no filesystem side effects"`
 - [x] clean up — `git branch -D feature/phase-0-t4b-no-fs-side-effects` then `git push origin main`
 
-**T6 web shell, same origin** (needs T5)
+**Prerequisite — Node toolchain** (blocks T6, and so T8–T12)
+- [ ] Switch to Node 22 (per `.nvmrc`), e.g. `nvm install 22` then `nvm use 22`
+- [ ] `corepack enable pnpm` then `pnpm --version` prints a version
+
+**T6 web shell, same origin** (needs T5 + the Node prerequisite)
 - [ ] branch — `git switch main` then `git pull` then `git switch -c feature/phase-0-t6-web-shell`
 - [ ] build — `/clear` then `/build 0 T6`
 - [ ] verify — `/clear` then `/verify`
@@ -87,7 +94,7 @@ Exit: `scripts/setup.sh` then one command gives a running shell app; CI green.
 - [ ] merge — `git switch main` then `git merge --squash feature/phase-0-t6-web-shell` then `git commit -m "Phase 0 T6 — web shell served from the same origin"`
 - [ ] clean up — `git branch -D feature/phase-0-t6-web-shell` then `git push origin main`
 
-**T8 `scripts/setup.sh`** (needs T7)
+**T8 `scripts/setup.sh`** (needs T6 and T7 — it installs the web deps, so it waits for T6)
 - [ ] branch — `git switch main` then `git pull` then `git switch -c feature/phase-0-t8-setup-script`
 - [ ] build — `/clear` then `/build 0 T8`
 - [ ] verify — `/clear` then `/verify`
@@ -95,14 +102,13 @@ Exit: `scripts/setup.sh` then one command gives a running shell app; CI green.
 - [ ] merge — `git switch main` then `git merge --squash feature/phase-0-t8-setup-script` then `git commit -m "Phase 0 T8 — scripts/setup.sh"`
 - [ ] clean up — `git branch -D feature/phase-0-t8-setup-script` then `git push origin main`
 
-**T13 `CLAUDE.md`, agent configuration and the migration hook** (needs T7)
-- [ ] branch — `git switch main` then `git pull` then `git switch -c feature/phase-0-t13-claude-md-agents-hook`
-- [ ] build — `/clear` then `/build 0 T13`
-- [ ] verify — `/clear` then `/verify`
-- [ ] review — `/clear` then `/review 0`
-- [ ] merge — `git switch main` then `git merge --squash feature/phase-0-t13-claude-md-agents-hook` then `git commit -m "Phase 0 T13 — CLAUDE.md, agent configuration and the migration hook"`
-- [ ] clean up — `git branch -D feature/phase-0-t13-claude-md-agents-hook` then `git push origin main`
-- [ ] apply the stale `.claude/` edits by hand from `docs/plans/pending-claude-config-edits.md`, then `git rm docs/plans/pending-claude-config-edits.md` then `git commit -am "chore: apply pending .claude edits"` then `git push origin main`
+**T13 `CLAUDE.md`, agent configuration and the migration hook** (needs T7) — built by the swarm, run 10
+- [x] build
+- [x] verify
+- [x] review — Gate C PASS on attempt 2, zero Correctness findings
+- [x] merge — `9194bef` "Phase 0 T13 — CLAUDE.md, the migration guard hook, and its pending registration"
+- [x] clean up (local branch deleted) — the push happens in Step 0 above
+- [ ] apply the stale `.claude/` edits by hand from `docs/plans/pending-claude-config-edits.md` — **including §8, registering the migration-guard hook in `.claude/settings.json`**; until then nothing enforces it. Then `git rm docs/plans/pending-claude-config-edits.md` then `git commit -am "chore: apply pending .claude edits"` then `git push origin main`
 
 **T9 `scripts/check.sh`** (needs T4, T6, T7)
 - [ ] branch — `git switch main` then `git pull` then `git switch -c feature/phase-0-t9-check-script`
@@ -129,10 +135,23 @@ Exit: `scripts/setup.sh` then one command gives a running shell app; CI green.
 - [ ] clean up — `git branch -D feature/phase-0-t11-ci-workflow` then `git push origin main`
 - [ ] CI green — `gh run list --branch main --limit 1` shows `completed success`
 
-**T12 repository governance** (human, GitHub UI — see plan `docs/plans/phase-0-foundations.md` T12)
-- [ ] branch protection on `main` — github.com/MartijnBoot/borrelbeurs → Settings → Branches
+**T12 repository governance** (needs T11 green — human, GitHub UI — see plan `docs/plans/phase-0-foundations.md` T12)
+
+Don't start before T11's CI has run once: requiring `check` / `secret-scan` / `docker` before
+they exist blocks every PR. The repo is **private on a personal account** — check first
+whether your plan allows branch protection and push protection there:
+- [ ] plan — `gh api user --jq .plan.name` (private-repo branch protection needs Pro)
+- [ ] available security features — `gh api repos/MartijnBoot/borrelbeurs --jq .security_and_analysis`
+- [ ] if push protection is unavailable: decide — make the repo public, or record an AC7 waiver ADR like R5's
+- [ ] branch protection on `main` — github.com/MartijnBoot/borrelbeurs → Settings → Branches: PR required, required checks `check` / `secret-scan` / `docker`, dismiss stale approvals, no force-push, no deletion, linear history (no required review — R5 waiver)
 - [ ] secret scanning + push protection — Settings → Code security
-- [ ] check — `gh api repos/MartijnBoot/borrelbeurs/branches/main/protection`
+- [ ] repo files (can be a normal `/build 0 T12` task): `.github/dependabot.yml`, `CODEOWNERS`, `PULL_REQUEST_TEMPLATE.md`, `ISSUE_TEMPLATE/{bug,feedback}.yml`, review-waiver ADR
+- [ ] check — `gh api repos/MartijnBoot/borrelbeurs/branches/main/protection` shows the three checks and `allow_force_pushes: false`
+- [ ] check — `gh api repos/MartijnBoot/borrelbeurs/secret-scanning/alerts` returns 200
+- [ ] check AC7 — on a throwaway branch, commit a known provider-pattern secret and `git push`; the push is rejected (keep the message)
+
+Run these in PowerShell or Git Bash exactly as written. The `Bash(...:*)` form in
+`rebuild-progress.md` is a Claude Code permission rule, not a command.
 
 **Phase 0 exit**
 - [ ] `bash scripts/setup.sh` then the one run command from the README → app answers on `/healthz`
