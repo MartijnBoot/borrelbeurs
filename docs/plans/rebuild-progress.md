@@ -11,12 +11,67 @@ that is not written down did not happen.
 
 ## Now
 
-Phase 0. In flight: **nothing.** T7 and T4b are both **merged on `main`** — by hand, not by the
-swarm (see the run 9 reconciliation). Six of Phase 0's tasks are done; `uv run pytest -q` on `main`
-→ **`115 passed in 1.59s`**.
+Phase 0. In flight: **T13** (`CLAUDE.md` + agent config + migration hook) — the **only** task in
+the phase that can progress. Six tasks merged; `uv run pytest -q` on `main` → **`115 passed in
+1.49s`** (re-run by run 10, matching run 9's number).
 
-Blocked on: **nothing** — the human answered run 9's question on 2026-09-28: the swarm drives,
-resume at T8 (T6 parks on `pnpm`). See **Blocked — needs a human**.
+Blocked on: **`pnpm`, for everything except T13.** T6 parks on the missing Node toolchain exactly
+as the human's 2026-09-28 answer anticipated — and run 10 found that **T8 parks behind it too**,
+which that answer did not. See the run 10 reconciliation. After T13 merges, nothing in Phase 0
+can move without a human installing `pnpm` on Node 22.
+
+### Run 10 reconciliation, 2026-09-28 — the ready set was wrong: T8 depends on T6, not on T7 alone
+
+Git reality first, checked before dispatching anything:
+
+```
+$ git status --short   → clean, on main at 68d11e9, in sync with origin/main
+$ git branch -a        → no feature/* branch local; stale origin/feature/phase-0-t7-… remains
+$ gh pr list --state open → (empty)
+$ uv run pytest -q     → 115 passed in 1.49s
+```
+
+Nothing was in flight, nothing abandoned, no branch to resume or delete. The ledger's *task
+states* were accurate. Its **ready set was not.**
+
+**The correction: T8 is `pending`, not `ready`.** The plan states
+`- **Depends on:** T6, T7` (`phase-0-foundations.md:229`). Both this ledger's ASCII dependency
+graph and the human's resume note ("T8 and T13 are dispatchable now", `:996`) hang T8 off T7
+alone. The graph carries the note "Verified against the plan's `Depends on` fields by run 1",
+so this is a transcription error made in run 1 and inherited unchallenged for nine runs.
+
+It is not a technicality. T8's own expected output runs
+`pnpm --dir web install --frozen-lockfile` and its verification requires a `web/` tree that only
+T6 creates — `ls web` today returns nothing but a `.gitkeep`. Dispatching T8 now would have sent
+a builder to install dependencies for a package that does not exist, with a package manager that
+is not on the machine. **The plan was right and the graph was wrong**, which is the direction
+that matters: the graph is a convenience, the `Depends on` fields are the contract.
+
+The same check across every task found no other discrepancy. Corrected graph below.
+
+**Toolchain re-measured, run 10** — unchanged from run 9, and now decisive:
+
+```
+$ pnpm --version    → /usr/bin/bash: line 2: pnpm: command not found
+$ node --version    → v24.15.0        ← .nvmrc pins 22
+$ corepack --version → 0.34.6         ← present; the fix is one command
+$ ls web            → (empty but for .gitkeep)
+```
+
+**`corepack enable pnpm` was considered and deliberately not run.** ADR 0010 §4 names "a missing
+binary" as a mechanics blocker to work around rather than stop on, and `pnpm` is not an
+unapproved dependency — D5 already chose it. So the case for the swarm just installing it is
+real. It was declined on two grounds, the second decisive:
+
+1. **Corepack fixes the wrong half.** It would supply `pnpm`, but T6's gate is `build`, `lint`
+   and `tsc` — which would then run on **Node 24, two majors above `.nvmrc`'s pin**. A green T6
+   on Node 24 certifies nothing about the Node 22 that T11's CI and T10's `node:22-slim` image
+   will use, and D4's pin exists precisely so that version is not decided incidentally. Fixing
+   *that* needs a Node major switch, which is a machine change no workaround makes narrow.
+2. **The human already ruled.** The answer that resumed this swarm says, in terms, "T6 parks
+   until `pnpm` is available on Node 22" (`:996`). Mechanics authority under ADR 0010 §2 is for
+   questions a human has not answered. Re-deciding one they answered three days ago is not a
+   workaround, it is an override.
 
 ### Run 9 reconciliation, 2026-09-28 — the ledger was two tasks stale; a human drove the loop
 
@@ -323,7 +378,7 @@ commits) and its branch deleted. `git worktree list` shows the primary checkout 
 | Phase | Spec | Plan audited | Tasks | Exit criterion | State |
 |---|---|---|---|---|---|
 | −1 v1 authorization hotfix | — | — | — | done, commit `b617a56` | ✅ closed |
-| 0 Foundations | ✅ approved | ✅ human, 2026-09-21 | 6/15 merged (T2, T3, T4, T4b, T5, T7) | `setup.sh` then one command gives a running shell app; CI green | ▶ in progress — **T8 and T13 ready; T6 needs `pnpm`** |
+| 0 Foundations | ✅ approved | ✅ human, 2026-09-21 | 6/15 merged (T2, T3, T4, T4b, T5, T7) | `setup.sh` then one command gives a running shell app; CI green | ▶ in progress — **T13 is the only ready task; T6 needs `pnpm` and T8/T9/T10/T11/T12 park behind it** |
 | 1 Engine extraction + golden tests | ✅ exists | — | 0/– | pure engine reproduces v1's outputs exactly | not started |
 | 2 Data model + persistence | ✅ exists | — | 0/– | live config round-trips through Postgres; restart preserves prices | not started |
 | 3 API + auth + realtime | ✅ exists | — | 0/– | every route authorized; integration tests green against real Postgres | not started |
@@ -337,19 +392,22 @@ commits) and its branch deleted. `git worktree list` shows the primary checkout 
 
 Plan: [phase-0-foundations.md](phase-0-foundations.md) · audited by the human, 2026-09-21.
 
-Dependency graph as stated by the plan — **not serial**, despite what the old ledger said.
-Verified against the plan's `Depends on` fields by run 1:
+Dependency graph as stated by the plan. **Corrected by run 10** — the previous drawing hung T8
+off T7 alone; the plan says `Depends on: T6, T7` (`phase-0-foundations.md:229`). Re-verified
+field by field against the plan, every task, 2026-09-28:
 
 ```
-T1 ─► T2 ─► T3 ─┬─► T4 ─┐
-                ├─► T5 ─► T6 ─┼─► T9 ─► T10 ─► T11 ─► T12
-                └─► T7 ─┬─────┘
-                        ├─► T8
+T1 ─► T2 ─► T3 ─┬─► T4 ──────────────┐
+                ├─► T5 ─► T6 ─┬──────┼─► T9 ─► T10 ─► T11 ─► T12
+                └─► T7 ─┬─────┴─► T8 ┘
                         └─► T13
 
 T5 ─┬─► T4b          (swarm-created, run 5 — owns R16; see decision log)
 T7 ─┘
 ```
+
+T8 needs **T6 and T7**; T9 needs **T4, T6 and T7**. So T6 is a cut vertex: everything from T8
+rightward parks behind it. **T13 is the only task not downstream of T6.**
 
 **T4b is not in the audited plan.** It was created by the swarm to give R16 an owner after T4
 legitimately declined it. It adds a test file and changes no product behaviour, so it does not
@@ -373,14 +431,14 @@ path — `plan:232` already collects `tests/meta/`, so `check.sh` and CI pick it
 | T4 config boundary test (**Python half only** — ESLint half re-homed to T6, see decision log) | **merged** (squash `20f7956`, branch deleted) | 1 | `feature/phase-0-t4-config-boundary` (`8a0e61d`, `582fb2f`) | **no-PR (gh wrong account)** | **VERDICT: GREEN, fresh context, 2026-09-27.** `task-verifier` reproduced every claim rather than trusting the builder. `uv run pytest tests/meta/test_config_boundary.py -v` → `21 passed`; whole suite `26 passed` · `ruff format --check` → `All checks passed`; `ruff check` → `All checks passed!`; `mypy app tests` → `Success: no issues found` · `git show --stat 8a0e61d` → `1 file changed, 272 insertions(+)`, sole path `tests/meta/test_config_boundary.py`; **no `exchange/`, no `legacy/v1/`, no `web/` path** · `git ls-files --eol` → `i/lf attr/-text`. **Both failure proofs re-run by the verifier itself**, not copied: a probe in `app/` → `app/__init__.py:4: '.getenv' reads the process environment`, and — the one that matters — a probe in `db/` → `db/_probe_env_read.py:3: '.environ' reads the process environment`, proving the `db/` arm is **live and not vacuously green** while `db/` holds only `.gitkeep` · **anti-vacuity guard confirmed load-bearing**: monkeypatching `SCANNED_ROOTS = ('nonexistent_root',)` makes the scan return `[]` (which would let the AC3 assertion pass on nothing), and `test_the_scan_reaches_the_real_source_tree` then fails as designed · **exemption confirmed to be single-file path equality**, not a directory-wide skip: a sibling `app/core/_probe_sibling.py` correctly trips · four coverage cases fire (aliased `os` module, `from os import *`, `getattr`, dynamic `dotenv` import). **One false positive found, builder had not anticipated it:** a local variable literally named `environ` trips the bare-`Name`/`Load` branch → `app/_probe_benign_localvar.py:2`. A dict key `"environ"` and string/comment mentions correctly did *not*. Passed to Gate C to rule on. Probe tree restored | **Gate C PASS** — `fresh-eyes-reviewer`, run 5, 2026-09-27, attempt 1, **zero Correctness**. Failure path reproduced independently: `2 environment reference(s) outside app/core/config.py: app/_probe_t4.py:2 … db/_probe_t4.py:2 …`; whole suite `26 passed in 0.26s`; no invented API (`ast`, `pathlib`, `pytest` only; `pytest>=8.3` at `pyproject.toml:39`); tree restored. **All three rulings answered:** (a) **false positive → Risk, and the fix is free** — it *measured* the trade by running all 14 `KNOWN_VIOLATIONS` printing every hit: `from-os-import-star` fires via `ImportFrom` (`:147`), `from-os-import-environ` via `ImportFrom` (`:145`), `aliased-os-module` via `Attribute` (`:154`), so the `ENV_NAMES` half of the bare-`Name` branch has **zero unique coverage** and its docstring rationale is false; two innocent shapes fire (WSGI `environ`, local `environ`); `Attribute`'s own FP (`ctx.environ = 1`) **accepted** since that branch catches `import os as system`. (b) `putenv`/`unsetenv` ban **accepted** — no innocent caller, reverses in one line; only the message is wrong ("reads" where it writes). (c) R16 decline **upheld**, rehomed to new **T4b** (see decision log). **Plus two findings I did not ask for:** `dynamic-dotenv-import` is **not mutation-sensitive** (drop `:110-113` and it still passes — two violations on one line, assertion checks only the line); and a second `BaseSettings` subclass under `app/` is a plausible AC3 breach the guard is blind to (`second-basesettings -> CLEAN`) — outside the plan's literal predicate (`plan:160-162`), so **assigned to T4b, not chased here**. **Alembic compatibility pre-checked**: stock `env.py` and the plan-mandated `config.set_main_option(…get_settings()…)` variant both `-> CLEAN`, so T7's verification line will hold. No `engine-guardian`: no `exchange/` path (`GOLDEN_FIXTURES: n/a`). **Post-review polish pass landed as `582fb2f`** (+28 −11, one file) on findings (a), the mutation-sensitivity gap and both Optional nits. Builder's evidence: `26 passed in 0.33s`, `55 files already formatted`, `All checks passed!`, `Success: no issues found in 5 source files`; both false positives (WSGI `environ` param, local `environ`) now `<NONE>` while `from-os-import-star`/`from-os-import-environ`/`aliased-os-module`/`bare-load-dotenv` all still fire; **mutation proof with a control** — commenting out `:110-113` makes `[dynamic-dotenv-import]` fail (`AssertionError: no violation reported for: module = importlib.import_module('dotenv')`), and the *same mutation against the old snippet still passed*, confirming the pre-edit case tested nothing. Deviations declared: snippet lands on line 3 not the reviewer's line 2 (file's `import x\n\n<stmt>` idiom), and `ENV_WRITE_NAMES` added as a constant rather than a helper. **Re-verified GREEN by a third fresh context, 2026-09-27** — dispatched because `582fb2f` *removes detection surface* and no reviewer had seen it. It re-derived the zero-coverage-cost claim from scratch (all 14 cases, every violation printed): `from-os-import-star`/`-environ`/`-aliased` fire from `ImportFrom`, `aliased-os-module` from `Attribute`, `bare-load-dotenv` from the surviving `DOTENV_NAMES` half — **no case's only source was the deleted check**, and all 14 still hit their expected line. Both false positives now `-> []`. **The control reproduced**, which is what justified the change: the old snippet under the same mutation still `PASSED`, so the pre-edit case really did test nothing for its branch; the new snippet yields exactly one violation, at line 3, uniquely from the dynamic-import branch. Both-roots probe correct (`app/_probe_violation.py:3`, `db/_probe_violation.py:1` + `:3`); anti-vacuity test still load-bearing (`AssertionError: does_not_exist_xyz/ is missing; the guard is scanning nothing`). Gate: `21 passed in 0.07s`, `26 passed in 0.30s`, `55 files already formatted`, `All checks passed!`, `Success: no issues found in 5 source files`, `1 file changed, 289 insertions(+)`, `i/lf w/lf attr/-text`. **Post-merge on `main`: `uv run pytest -q` → `26 passed in 0.28s`** |
 | **T4b** no filesystem side effects at import (**swarm-created**, owns R16 + the `BaseSettings` gap — see decision log) | **merged** (squash `02665ce`, branch deleted) — **human loop, evidence not captured** | 1 | `feature/phase-0-t4b-no-fs-side-effects` | — | **No command output was recorded.** Built, verified and reviewed through the manual checklist (`manual-checklist.md:72-78`, all ticked), merged by hand. What run 9 can attest to independently: `git show --stat 02665ce` → `3 files changed, 558 insertions(+), 10 deletions(-)` — `tests/meta/test_import_side_effects.py` (+397, new), `tests/meta/test_config_boundary.py` (+155), `docs/plans/manual-checklist.md`; **no `app/`, no `db/`, no `exchange/`, no `legacy/v1/` path**, so it is test-only as its brief requires · `uv run pytest -q` on `main` → `115 passed in 1.59s` | **Not signed.** `/review 0` was run and ticked but no verdict or findings were written down, and the task cannot be un-merged. Recorded as a bookkeeping gap, not a defect claim. No `engine-guardian` needed: no `exchange/` path |
 | T5 FastAPI shell + health | **merged** (squash `fc5bfe9`, branch deleted) | 1 | `feature/phase-0-t5-fastapi-shell` (`aecdf0b`, `9eafb95`) | **no-PR (gh wrong account)** | Branch re-cut from `main` after run 5 died with a ledger-only commit on it (see reconciliation). **Builder's own evidence:** `uv run ruff format --check .` → `63 files already formatted`; `ruff check .` → `All checks passed!`; `mypy app tests` → `Success: no issues found in 13 source files`; `uv run pytest -q` → `43 passed in 0.71s` (26 on `main`, 17 added, none removed) · `git diff main...HEAD --stat` → `10 files changed, 699 insertions(+), 4 deletions(-)`, **no `exchange/`, no `legacy/v1/`, no `web/`** · all 8 new files `i/lf attr/-text` · test-first shown by `ModuleNotFoundError: No module named 'app.main'` before implementation · **R17 reproduced before fixing** (`jwt_secret='0123…cdef'` visible in `repr`) · real uvicorn on a real port: `/healthz` → 200 `{"status":"ok"}`, `/readyz` → 200 `{"status":"ready"}`, `/api/nope` → **404 JSON** `{"detail":"Not Found"}`, JSON log lines with `correlation_id` · **AC2 proved**: `JWT_SECRET=` → `exit code: 3`, `ConfigError: … - JWT_SECRET: Field required`, then `[WinError 10061]` connection refused — **nothing ever listened on 8000**, which is R18 holding in practice. **Independently verified GREEN, fresh context, 2026-09-27** — every number above reproduced rather than copied: `63 files already formatted`, `All checks passed!`, `Success: no issues found in 13 source files`, `43 passed in 0.75s`. AC2 re-run from scratch with *no* env at all → `ConfigError: … 2 environment variables missing or malformed. - DATABASE_URL … - JWT_SECRET …`, `exited with code 3`, then `WinError 10061` connection refused — **the "shall not serve traffic" half proved, not assumed** · no work at import: `app.main` imports cleanly with the environment stripped, `state.ready=False`, `get_settings()` only inside `lifespan()` and `main()` · **no new dependency**: `git diff main..HEAD -- pyproject.toml uv.lock` → *no output*, `httpx` absent from `uv.lock`, nothing imports `TestClient` · **T4's guard is live on this diff, not vacuous** — `scanned_files()` called directly, enumerates `app\main.py`, `app\api\__init__.py`, `app\api\health.py`; `21 passed` · no `--env-file` in code (only docstrings warning against it) · R17 scope confirmed to be exactly two `Field(repr=False)` + one test; T3's other 5 tests still pass | **Gate C PASS** — `fresh-eyes-reviewer`, run 6, 2026-09-27, attempt 1, **zero Correctness**. Judged by **mutation probe, not by reading**: `/readyz`'s negative half is real (`if not …ready` → `if False:` → RED; deleting the `finally` reset → RED; unregistering the handler → RED), and it returns **503**, the right code for a platform probe. **R17 settled empirically across 13 paths** — `repr`/`str`/`%s`/f-string/`pprint`/`json.dumps(default=str)`/`logger.debug("%s", s)`/`extra={}`/`traceback.format_exc()` with settings in frame locals → all `LEAK=False`; `model_dump()`, `dict(s)`, `list(s)`, `s.__dict__` → `LEAK=True`. So `Field(repr=False)` closes **every path a log line can take**, including the exact one R17 names; reverting either flag turns `test_config.py` RED. **Global handler leaks nothing**: probe route raising `RuntimeError('kaboom-secret-p4ssw0rd-probe')` → `500 text/plain b'Internal Server Error'`, no traceback, no config. **Formatter fails safely** — unserialisable extras stringified by `default=str`, a raising `__str__` contained by `logging.Handler.emit` (`no raise; emitted=''`), same contract as stdlib. **Both rulings answered:** the invented error envelope is accepted as purely-additive scaffolding *on condition* the three-shape problem is booked as one Phase 3 decision (see R-3); `/healthz`+`/readyz` at the root is **upheld** — ADR 0001 row 8 names those paths literally at the root and outranks the plan's `/api/*` line, they are infrastructure not application surface. **R-1 chased in a bounded polish pass** (see decision log); R-2, R-3, R-4 recorded below. **Polish pass landed as `9eafb95`** (+39 −11, one file, **test-only — `app/main.py` byte-identical to `aecdf0b`**): the `/api` test now registers a probe route on the real `api_router` singleton and asserts `/api/probe` → 200 while `/probe` → 404, and it was **renamed** because the old name described only the vacuous assertion. **Re-verified GREEN by a fourth fresh context** — dispatched because the pass mutates a module-level singleton and restores it in a `finally`, which is a genuine test-isolation hazard that a green suite would not reveal. It **re-ran both of the reviewer's mutations itself** rather than copying: `prefix="/totally-wrong"` → `assert 404 == 200`, `1 failed`; deleting `include_router(api_router)` → `1 failed`; `app/main.py` restored and `git diff --stat` empty after each. **Isolation proved directly, not inferred** — `pytest.main(['-q'])` then `assert app.main.api_router.routes == []` **in the same process** → `43 passed`, `ASSERTION PASSED: api_router.routes is empty`. Gate: `43 passed`, `63 files already formatted`, `All checks passed!`, `Success: no issues found in 13 source files`, `i/lf attr/-text`. **Integration:** rebased on `main` (only the two ledger commits moved; no code), `uv run pytest -q` → `43 passed in 0.92s` post-rebase, squash-merged to `fc5bfe9`, branch deleted. **Post-merge on `main`: `uv run pytest -q` → `43 passed in 0.79s`, `git status --short` clean.** No `engine-guardian`: no `exchange/` path (`GOLDEN_FIXTURES: n/a`) |
-| T6 web shell, same origin | pending | 0 | — | — | — | — |
+| T6 web shell, same origin | **parked** — needs a human | 0 | — | — | Not attempted: no build can start. `pnpm --version` → `command not found`; `node --version` → `v24.15.0` against `.nvmrc`'s `22`. T6's entire gate is `pnpm build` / `pnpm lint` / `pnpm exec tsc`, so there is no narrowest-workaround that leaves the gate intact — see the run 10 reconciliation on why `corepack enable pnpm` was declined | — |
 | T7 Postgres + Compose + Alembic baseline | **merged** (squash `9e15d4b`, branch deleted locally; stale remote branch remains) — **attempt 2 fixed in the human loop, evidence not captured** | 2 | `feature/phase-0-t7-postgres-compose-alembic` (`7d263e1`, `cdcc0aa`, `b2ba6dc`, `771d3e4`, then **`e0a524d`**, **`a714c6d`**) | — | **Attempt 2's own re-verification was not recorded**; what follows is attempt 1's output, which stands except where C1 fixed it. The two fix commits are on `main`: `e0a524d` "make `alembic revision` work, and land gate-clean" (C1, the `timezone = UTC` defect) and `a714c6d` "split `prepend_sys_path` on `os.pathsep` only". Run 9 attests independently: `uv run pytest -q` on `main` → `115 passed in 1.59s`. **Attempt 1's evidence — VERDICT: GREEN, fresh context, 2026-09-27.** `docker compose config` → exit 0, image **digest-pinned** `postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea`, named volume `borrelbeurs-db-data`, healthcheck `pg_isready -U borrelbeurs -d borrelbeurs` (5s/5s/10/10s) · `docker compose up -d db` → `Container borrelbeurs-db Started`, `docker compose ps` → `Up 10 seconds (healthy)`; **no attempt to build or pull the `app` image**, so constraint 4 holds and T10's absent Dockerfile does not break the gate · **R19 proved the decisive way** — `.env.example` copied to a scratch file, `DATABASE_URL` regex-extracted verbatim, connected with it: `Connected OK: ('borrelbeurs', 'borrelbeurs')`. Not "the container is healthy"; the copied file connects · **Alembic cycle, each exit code captured**: `upgrade head` → `Running upgrade -> 0001, baseline…`, `EXIT_CODE 0`, then queried: `tables after upgrade head: ['alembic_version']`, rows `[('0001',)]` · `downgrade base` → `EXIT_CODE 0`, rows `[]` — **the down half is tested, not assumed** · re-`upgrade head` → `EXIT_CODE 0`, rows `[('0001',)]`. `psql` not used; queried through `uv run python` + the already-declared SQLAlchemy async engine · **the DSN's source proved behaviourally, not by reading**: `db/alembic.ini` has **no** `sqlalchemy.url` key (only a comment explaining its deliberate absence, `:7`), and pointing `DATABASE_URL` at `nonexistent-host-t7-verify` made `upgrade head` fail with `socket.gaierror: [Errno 11001] getaddrinfo failed`, `EXIT_CODE 1` — Alembic resolved the value handed through `app.core.config`, so AC3 holds · **T4's guard is live on the new files, not vacuous**: `uv run pytest tests/meta/test_config_boundary.py -v` → `21 passed in 0.09s`, and `scanned_files()` called directly enumerates `db\migrations\env.py` and `db\migrations\versions\0001_baseline.py` (`SCANNED_ROOTS: ('app','db')`, 10 files) · **R13 confirmed to live in `app/core/config.py`, not `db/`** — `Settings._check_database_url_shape` rejects a sync `postgresql://` URL (`must use the postgresql+asyncpg:// scheme … got scheme 'postgresql'`) and a nonsense value, accepts `.env.example`'s exact URL, and **echoes neither rejected value** in the message or in `traceback.format_exception` (probed with `supersecretpw123` and `secretvalue`) — T3's no-echo property extended to the one URL that carries a password · `uv run pytest -q` → **`65 passed in 0.86s`** (43 on `main`, 22 added, none removed) · `ruff format --check .` → `67 files already formatted`; `ruff check .` → `All checks passed!`; `mypy app tests` → `Success: no issues found in 14 source files` · `git diff main...HEAD --stat` → `11 files changed, 705 insertions(+), 4 deletions(-)`, **no `exchange/`, no `legacy/v1/`** · all 7 new files `i/lf w/lf attr/-text` · **dependency gate**: the only change is `sqlalchemy` → `sqlalchemy[asyncio]` pulling `greenlet` transitively — no new vendor (see decision log) · cleanup proved: `docker compose down -v` removed container, volume and network, scratch file deleted, `git status --short` → only the ledger | **Attempt 1 FAILED Gate C on one Correctness finding (C1)** — `db/alembic.ini` set `timezone = UTC` and `alembic revision` cannot run on a machine with no tz database, so T7's whole purpose (give Phase 2's first migration a parent) was half-broken: parent fine, child uncreatable. **Attempt 2's Gate C was run through the manual `/review 0` and ticked (`manual-checklist.md:68`) but no verdict was written down.** The fix itself is verifiable on `main` (`e0a524d`). Recorded as a bookkeeping gap. No `engine-guardian`: no `exchange/` path (`GOLDEN_FIXTURES: n/a`) |
-| T8 `scripts/setup.sh` | pending | 0 | — | — | — | — |
-| T9 `scripts/check.sh` | pending | 0 | — | — | — | — |
-| T10 Dockerfile + build context | pending | 0 | — | — | — | — |
-| T11 CI workflow | pending | 0 | — | — | — | — |
-| T12 repository governance | pending | 0 | — | — | — | — |
-| T13 `CLAUDE.md` + agent config + migration hook | pending | 0 | — | — | — | — |
+| T8 `scripts/setup.sh` | **pending — behind parked T6** (was wrongly listed `ready`; see run 10) | 0 | — | — | `Depends on: T6, T7` (`plan:229`). Its expected output runs `pnpm --dir web install --frozen-lockfile` against a `web/` tree only T6 creates — `ls web` today is empty but for `.gitkeep` | — |
+| T9 `scripts/check.sh` | pending — behind parked T6 | 0 | — | — | `Depends on: T4, T6, T7` (`plan:246`); four of its nine steps are `pnpm` | — |
+| T10 Dockerfile + build context | pending — behind parked T6 | 0 | — | — | `Depends on: T9` (`plan:267`) | — |
+| T11 CI workflow | pending — behind parked T6 | 0 | — | — | `Depends on: T10` (`plan:284`) | — |
+| T12 repository governance | pending — behind parked T6, **and human-owned regardless** | 0 | — | — | `Depends on: T11` (`plan:304`); needs `gh api`, denied on purpose. Human task even once T6 clears | — |
+| T13 `CLAUDE.md` + agent config + migration hook | **building** | 1 | `feature/phase-0-t13-claude-md-agent-config` | — | — | — |
 
 ## ⚠ Live inconsistency — `.claude/` edits need the human
 
