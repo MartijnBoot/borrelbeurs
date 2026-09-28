@@ -1,7 +1,7 @@
 ---
 description: Implement ONE task from an audited phase plan, test-first, with evidence
 argument-hint: "[phase number] [task id, e.g. T3]"
-model: opus
+model: sonnet
 ---
 
 Implement task **$2** from `docs/plans/phase-$1-*.md`.

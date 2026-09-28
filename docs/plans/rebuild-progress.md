@@ -3,7 +3,7 @@
 Route: [rebuild-route.md](rebuild-route.md) · Loop: [ADR 0009](../adr/0009-autonomous-swarm-delivery.md)
 + [ADR 0010](../adr/0010-the-swarm-owns-its-own-delivery-mechanics.md)
 Swarm state: CONTINUE
-Updated: 2026-09-27 by run 6 (orchestrator)
+Updated: 2026-09-27 by run 8 (orchestrator)
 
 This file is the swarm's only memory. It is reconciled against git at the start of every run,
 and written after **every** state transition — a run can die at any moment, and a transition
@@ -11,7 +11,97 @@ that is not written down did not happen.
 
 ## Now
 
-Phase 0. In flight: **nothing.** **T5 is merged** (squash `fc5bfe9`, branch deleted) — Gate C PASS
+Phase 0. In flight: **T7 `building`, attempt 2** — Gate C FAILED attempt 1 on one Correctness
+finding. On `feature/phase-0-t7-postgres-compose-alembic` (cut from `main` at `8d83f68`).
+Blocked on: **nothing.**
+
+### T7 attempt 1 — verified GREEN, then failed Gate C. The same shape as T3.
+
+**C1: `db/alembic.ini` sets `timezone = UTC`, and `alembic revision` cannot run on this machine.**
+
+```
+alembic.util.exc.CommandError: Can't locate timezone: UTC
+ZoneInfo('UTC') FAILED: ZoneInfoNotFoundError 'No time zone found with key UTC'
+n available: 0        ← zoneinfo sees zero zones
+tzdata NOT installed  ← and it is absent from uv.lock
+```
+
+Windows ships no system tz database and `tzdata` is not a dependency, so `zoneinfo` has nothing to
+resolve. Alembic's `_generate_create_date` raises **before it writes anything**.
+
+**Why no check caught it, and why that matters more than the defect.** `upgrade` and `downgrade`
+never call `_generate_create_date` — only `revision` does. So the verifier's full up/down/up cycle
+passed while the one command Phase 2 opens with was broken. T7's stated purpose is *"one empty
+baseline revision … so Phase 2's first real migration has a parent"*: **the parent is fine and the
+child cannot be created.** `db/alembic.ini`'s own comments document the failing command verbatim
+(`uv run alembic -c db/alembic.ini revision --rev-id 0002 -m "drinks"`) — it would exit 1 on the
+venue laptop, in Phase 2, with nothing in `tests/` to explain why.
+
+**This is the second time in Phase 0 that a green verifier preceded a real defect** (T3's
+44-character `JWT_SECRET` placeholder was the first). Both were invisible to every prescribed
+check and both took a fresh context reading the artifact against the plan. The pattern is now
+established enough to state plainly: **the prescribed checks test the path the task exercises, and
+the defect lives on the path the *next* task exercises.**
+
+Chaining itself is correct — with the tz line commented out the reviewer generated a child and got
+`revision: str = '0002'` / `down_revision: str | None = '0001'`. The tz line is the sole blocker.
+
+### Run 8 reconciliation, 2026-09-27 — T7 was built; resumed at verify, not rebuilt
+
+Run 7 died after its builder committed. Git reality, checked before dispatching anything:
+
+```
+$ git log --oneline main..HEAD
+771d3e4 feat(phase-0): T7 — async Alembic baseline taking its DSN from the config module
+b2ba6dc feat(phase-0): T7 — Postgres under Compose, pinned to a digest
+cdcc0aa docs(adr): 0011 — migrations run at boot, under ADR 0003's advisory lock
+7d263e1 feat(phase-0): T7 — reject a DATABASE_URL this app cannot connect with
+$ git diff main...HEAD --stat → 11 files changed, 705 insertions(+), 4 deletions(-)
+$ git status --short → M docs/plans/rebuild-progress.md   (the ledger, mine, not T7's)
+```
+
+**Four product commits exist, so T7 is built and must not be re-dispatched.** The diff covers
+every item in T7's expected output (`plan:205-210`): `docker-compose.yml`, Alembic under `db/`
+with an async `env.py`, one baseline revision, plus R13's `DATABASE_URL` constraint in
+`app/core/config.py` and ADR 0011. HEAD was left on the task branch, which is the expected
+resting place mid-triad; nothing to repair. **Resumed at step 5, VERIFY.**
+
+Docker re-confirmed up (`29.2.1`, Compose `v5.1.0`) — T7's gate needs it.
+
+### Run 7 reconciliation, 2026-09-27 — the ledger was accurate; nothing to repair
+
+First run in which git reality matched the ledger with no correction needed. `git status --short`
+→ clean on `main` at `8d83f68`; `git branch -a` → only the two pre-swarm `chore/*` branches, no
+abandoned task branch; `uv run pytest -q` → **`43 passed in 1.02s`**, confirming T5's post-merge
+number independently. T2, T3, T4 and T5 merged and Gate C signed; T7 was `ready` as recorded.
+
+**Docker is present and its daemon is up** — `Docker version 29.2.1`, `Docker Compose version
+v5.1.0`, `docker info` server `29.2.1`. This mattered before dispatching T7, the first task in the
+phase that needs Docker rather than Python; had it been absent, T7 would have parked the way T6
+is expected to on the missing Node toolchain.
+
+**The dependency gate did not fire, and that was checked rather than assumed.** T7 needs
+`sqlalchemy`, `asyncpg` and `alembic`. All three are **already declared in `pyproject.toml`**
+(T2 pinned them) and all three are listed **pre-approved** at `plan:377-378` against
+`architecture.md:211` and `data-model.md:3`. So T7 adds no dependency at all — it installs ones
+the audited plan already sanctioned. This is the opposite of the `httpx` case, which was declined
+precisely because **no task in the phase named it**; the distinction is whether Gate B already
+ruled, not whether the package is popular.
+
+### T7's brief — the four constraints that are not in the plan
+
+The four constraints T7's builder was briefed on, beyond what the plan says — recorded here
+because three of them are orchestrator rulings that a later reader would otherwise mistake for
+builder improvisation:
+
+1. **R19** — credentials must match `.env.example` exactly, and the verification must prove *the
+   copied file connects* rather than that the container is merely healthy.
+2. **R13** — the `DATABASE_URL` shape constraint lands in `Settings`, not in `db/`.
+3. **Service key `db`, container name `borrelbeurs-db`; the app service is declared but not
+   built** — see the decision log.
+4. **The migrate-at-boot ADR is filed as `0011`, not `0009`** — see the decision log.
+
+**T5 is merged** (squash `fc5bfe9`, branch deleted) — Gate C PASS
 with zero Correctness, independently verified GREEN before *and* after its post-review polish pass.
 **`main` is at `fc5bfe9` and `uv run pytest -q` → `43 passed in 0.79s`** (26 before T5).
 
@@ -243,7 +333,7 @@ path — `plan:232` already collects `tests/meta/`, so `check.sh` and CI pick it
 | **T4b** no filesystem side effects at import (**swarm-created**, owns R16 + the `BaseSettings` gap — see decision log) | pending | 0 | — | — | — | — |
 | T5 FastAPI shell + health | **merged** (squash `fc5bfe9`, branch deleted) | 1 | `feature/phase-0-t5-fastapi-shell` (`aecdf0b`, `9eafb95`) | **no-PR (gh wrong account)** | Branch re-cut from `main` after run 5 died with a ledger-only commit on it (see reconciliation). **Builder's own evidence:** `uv run ruff format --check .` → `63 files already formatted`; `ruff check .` → `All checks passed!`; `mypy app tests` → `Success: no issues found in 13 source files`; `uv run pytest -q` → `43 passed in 0.71s` (26 on `main`, 17 added, none removed) · `git diff main...HEAD --stat` → `10 files changed, 699 insertions(+), 4 deletions(-)`, **no `exchange/`, no `legacy/v1/`, no `web/`** · all 8 new files `i/lf attr/-text` · test-first shown by `ModuleNotFoundError: No module named 'app.main'` before implementation · **R17 reproduced before fixing** (`jwt_secret='0123…cdef'` visible in `repr`) · real uvicorn on a real port: `/healthz` → 200 `{"status":"ok"}`, `/readyz` → 200 `{"status":"ready"}`, `/api/nope` → **404 JSON** `{"detail":"Not Found"}`, JSON log lines with `correlation_id` · **AC2 proved**: `JWT_SECRET=` → `exit code: 3`, `ConfigError: … - JWT_SECRET: Field required`, then `[WinError 10061]` connection refused — **nothing ever listened on 8000**, which is R18 holding in practice. **Independently verified GREEN, fresh context, 2026-09-27** — every number above reproduced rather than copied: `63 files already formatted`, `All checks passed!`, `Success: no issues found in 13 source files`, `43 passed in 0.75s`. AC2 re-run from scratch with *no* env at all → `ConfigError: … 2 environment variables missing or malformed. - DATABASE_URL … - JWT_SECRET …`, `exited with code 3`, then `WinError 10061` connection refused — **the "shall not serve traffic" half proved, not assumed** · no work at import: `app.main` imports cleanly with the environment stripped, `state.ready=False`, `get_settings()` only inside `lifespan()` and `main()` · **no new dependency**: `git diff main..HEAD -- pyproject.toml uv.lock` → *no output*, `httpx` absent from `uv.lock`, nothing imports `TestClient` · **T4's guard is live on this diff, not vacuous** — `scanned_files()` called directly, enumerates `app\main.py`, `app\api\__init__.py`, `app\api\health.py`; `21 passed` · no `--env-file` in code (only docstrings warning against it) · R17 scope confirmed to be exactly two `Field(repr=False)` + one test; T3's other 5 tests still pass | **Gate C PASS** — `fresh-eyes-reviewer`, run 6, 2026-09-27, attempt 1, **zero Correctness**. Judged by **mutation probe, not by reading**: `/readyz`'s negative half is real (`if not …ready` → `if False:` → RED; deleting the `finally` reset → RED; unregistering the handler → RED), and it returns **503**, the right code for a platform probe. **R17 settled empirically across 13 paths** — `repr`/`str`/`%s`/f-string/`pprint`/`json.dumps(default=str)`/`logger.debug("%s", s)`/`extra={}`/`traceback.format_exc()` with settings in frame locals → all `LEAK=False`; `model_dump()`, `dict(s)`, `list(s)`, `s.__dict__` → `LEAK=True`. So `Field(repr=False)` closes **every path a log line can take**, including the exact one R17 names; reverting either flag turns `test_config.py` RED. **Global handler leaks nothing**: probe route raising `RuntimeError('kaboom-secret-p4ssw0rd-probe')` → `500 text/plain b'Internal Server Error'`, no traceback, no config. **Formatter fails safely** — unserialisable extras stringified by `default=str`, a raising `__str__` contained by `logging.Handler.emit` (`no raise; emitted=''`), same contract as stdlib. **Both rulings answered:** the invented error envelope is accepted as purely-additive scaffolding *on condition* the three-shape problem is booked as one Phase 3 decision (see R-3); `/healthz`+`/readyz` at the root is **upheld** — ADR 0001 row 8 names those paths literally at the root and outranks the plan's `/api/*` line, they are infrastructure not application surface. **R-1 chased in a bounded polish pass** (see decision log); R-2, R-3, R-4 recorded below. **Polish pass landed as `9eafb95`** (+39 −11, one file, **test-only — `app/main.py` byte-identical to `aecdf0b`**): the `/api` test now registers a probe route on the real `api_router` singleton and asserts `/api/probe` → 200 while `/probe` → 404, and it was **renamed** because the old name described only the vacuous assertion. **Re-verified GREEN by a fourth fresh context** — dispatched because the pass mutates a module-level singleton and restores it in a `finally`, which is a genuine test-isolation hazard that a green suite would not reveal. It **re-ran both of the reviewer's mutations itself** rather than copying: `prefix="/totally-wrong"` → `assert 404 == 200`, `1 failed`; deleting `include_router(api_router)` → `1 failed`; `app/main.py` restored and `git diff --stat` empty after each. **Isolation proved directly, not inferred** — `pytest.main(['-q'])` then `assert app.main.api_router.routes == []` **in the same process** → `43 passed`, `ASSERTION PASSED: api_router.routes is empty`. Gate: `43 passed`, `63 files already formatted`, `All checks passed!`, `Success: no issues found in 13 source files`, `i/lf attr/-text`. **Integration:** rebased on `main` (only the two ledger commits moved; no code), `uv run pytest -q` → `43 passed in 0.92s` post-rebase, squash-merged to `fc5bfe9`, branch deleted. **Post-merge on `main`: `uv run pytest -q` → `43 passed in 0.79s`, `git status --short` clean.** No `engine-guardian`: no `exchange/` path (`GOLDEN_FIXTURES: n/a`) |
 | T6 web shell, same origin | pending | 0 | — | — | — | — |
-| T7 Postgres + Compose + Alembic baseline | **ready — next dispatch** (must match `.env.example` credentials — R19; `DATABASE_URL` shape constraint lands here — R13) | 0 | — | — | — | — |
+| T7 Postgres + Compose + Alembic baseline | **building, attempt 2** (Gate C FAIL on C1, run 8) | 2 | `feature/phase-0-t7-postgres-compose-alembic` (`7d263e1`, `cdcc0aa`, `b2ba6dc`, `771d3e4`) | — | **VERDICT: GREEN, fresh context, 2026-09-27.** `docker compose config` → exit 0, image **digest-pinned** `postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea`, named volume `borrelbeurs-db-data`, healthcheck `pg_isready -U borrelbeurs -d borrelbeurs` (5s/5s/10/10s) · `docker compose up -d db` → `Container borrelbeurs-db Started`, `docker compose ps` → `Up 10 seconds (healthy)`; **no attempt to build or pull the `app` image**, so constraint 4 holds and T10's absent Dockerfile does not break the gate · **R19 proved the decisive way** — `.env.example` copied to a scratch file, `DATABASE_URL` regex-extracted verbatim, connected with it: `Connected OK: ('borrelbeurs', 'borrelbeurs')`. Not "the container is healthy"; the copied file connects · **Alembic cycle, each exit code captured**: `upgrade head` → `Running upgrade -> 0001, baseline…`, `EXIT_CODE 0`, then queried: `tables after upgrade head: ['alembic_version']`, rows `[('0001',)]` · `downgrade base` → `EXIT_CODE 0`, rows `[]` — **the down half is tested, not assumed** · re-`upgrade head` → `EXIT_CODE 0`, rows `[('0001',)]`. `psql` not used; queried through `uv run python` + the already-declared SQLAlchemy async engine · **the DSN's source proved behaviourally, not by reading**: `db/alembic.ini` has **no** `sqlalchemy.url` key (only a comment explaining its deliberate absence, `:7`), and pointing `DATABASE_URL` at `nonexistent-host-t7-verify` made `upgrade head` fail with `socket.gaierror: [Errno 11001] getaddrinfo failed`, `EXIT_CODE 1` — Alembic resolved the value handed through `app.core.config`, so AC3 holds · **T4's guard is live on the new files, not vacuous**: `uv run pytest tests/meta/test_config_boundary.py -v` → `21 passed in 0.09s`, and `scanned_files()` called directly enumerates `db\migrations\env.py` and `db\migrations\versions\0001_baseline.py` (`SCANNED_ROOTS: ('app','db')`, 10 files) · **R13 confirmed to live in `app/core/config.py`, not `db/`** — `Settings._check_database_url_shape` rejects a sync `postgresql://` URL (`must use the postgresql+asyncpg:// scheme … got scheme 'postgresql'`) and a nonsense value, accepts `.env.example`'s exact URL, and **echoes neither rejected value** in the message or in `traceback.format_exception` (probed with `supersecretpw123` and `secretvalue`) — T3's no-echo property extended to the one URL that carries a password · `uv run pytest -q` → **`65 passed in 0.86s`** (43 on `main`, 22 added, none removed) · `ruff format --check .` → `67 files already formatted`; `ruff check .` → `All checks passed!`; `mypy app tests` → `Success: no issues found in 14 source files` · `git diff main...HEAD --stat` → `11 files changed, 705 insertions(+), 4 deletions(-)`, **no `exchange/`, no `legacy/v1/`** · all 7 new files `i/lf w/lf attr/-text` · **dependency gate**: the only change is `sqlalchemy` → `sqlalchemy[asyncio]` pulling `greenlet` transitively — no new vendor (see decision log) · cleanup proved: `docker compose down -v` removed container, volume and network, scratch file deleted, `git status --short` → only the ledger | pending Gate C |
 | T8 `scripts/setup.sh` | pending | 0 | — | — | — | — |
 | T9 `scripts/check.sh` | pending | 0 | — | — | — | — |
 | T10 Dockerfile + build context | pending | 0 | — | — | — | — |
@@ -274,6 +364,67 @@ blocks a build: a builder that stays in the primary checkout can commit, which i
 the old wording actually broke.
 
 ## Decisions the swarm took alone
+
+- **2026-09-27, run 8, T7 — `sqlalchemy[asyncio]` is an extra, not a new dependency; `greenlet`
+  rides in with it and is accepted.** The builder widened `sqlalchemy>=2.0,<3` to
+  `sqlalchemy[asyncio]>=2.0,<3`, which pulls `greenlet` into the lock. That is the only
+  `pyproject.toml`/`uv.lock` change on the branch — checked, not assumed
+  (`git diff main...HEAD -- pyproject.toml uv.lock`, new package names → `greenlet` alone).
+
+  **Ruled not a hard stop, on the precedent already in this ledger.** R12 recorded
+  `uvicorn[standard]` pulling `python-dotenv`, `httptools`, `uvloop`, `watchfiles`, `websockets`
+  and `pyyaml` and concluded "not a gate violation — `uvicorn` is pre-approved and extras are
+  normal". Same shape here: same vendor, same package, same pre-approval at `plan:377`, and the
+  extra is SQLAlchemy's own documented install target for the async engine. Without it
+  `sqlalchemy.ext.asyncio` will not import, which makes the async `env.py` the plan **mandates**
+  unimplementable — so refusing the extra would be refusing T7 itself.
+
+  **What is not being waved through:** the hard-stop rule is about a new *vendor*, and the test
+  applied was "does this introduce a package nobody approved", not "is this package popular".
+  `greenlet` enters as a transitive requirement of an approved package, the way every transitive
+  dep in the lock already did. A builder proposing `greenlet` directly, or any package the phase's
+  tasks do not name, still stops the run — see the `httpx` decline, which held precisely because
+  **no task in the phase required it**.
+
+- **2026-09-27, run 7, T7 — the migrate-at-boot ADR is filed as `0011`, not the `0009` the plan
+  names.** `plan:399` and `plan:413` resolve R3 by accepting D10 (migrate at boot) at the audit and
+  require it written down *before T7 is built*, as `docs/adr/0009-migrate-at-boot.md`, citing ADR
+  0003's advisory lock and the offline laptop's lack of CI as the grounds for departing from
+  way-of-working §5.6:897.
+
+  **The number is taken.** `0009` is `autonomous-swarm-delivery` and `0010` is
+  `the-swarm-owns-its-own-delivery-mechanics` — both written *after* the plan was audited, by the
+  swarm, about the swarm. The collision is an artefact of the delivery ADRs landing in the middle
+  of a phase whose plan was fixed earlier.
+
+  **Filed as `0011`.** This is clerical renumbering of an already-accepted product decision, not a
+  product decision of my own: the swarm records D10, it does not re-decide it. Nothing in the
+  hard-stop list is touched — no product ADR is reversed and no design document changes. Folded
+  into T7's diff rather than dispatched separately, because the plan ties it to T7's build and a
+  separate branch for one doc file would cost a full triad for nothing.
+
+- **2026-09-27, run 7, T7 — the compose app service is declared but not built; `db` is the service
+  key.** Two readings had to be settled before dispatch, neither of them visible from T7's plan
+  entry alone.
+
+  **Service key vs container name.** The plan's expected output names `borrelbeurs-db`
+  (`plan:206-207`) while its own verification line runs `docker compose up -d db` (`plan:211`).
+  Those are only consistent if `db` is the *service key* and `borrelbeurs-db` the *container name*.
+  Briefed as such. Left unstated, a builder naming the service `borrelbeurs-db` would ship
+  something whose own prescribed verification command cannot run.
+
+  **The app service is a sequencing defect, same shape as T4's ESLint half.** T7 is told to declare
+  the app service, but the Dockerfile it would build from is **T10's** deliverable
+  (`docker/Dockerfile`, `plan:251`) and T10 depends on T9. T7 therefore cannot build that image,
+  and must not invent T10's build contract. **Ruling: declare it, referencing the path T10 will
+  create, and verify only `db`.** The two properties that must hold are that `docker compose config`
+  validates and that `docker compose up -d db` works with no app image present; the mechanism is the
+  builder's choice, so T7 does not pre-empt T10's design.
+
+  **This does not reopen Gate B.** No acceptance criterion changes, no task is dropped, the total
+  work is identical — exactly the basis on which T4's split was recorded here rather than argued
+  into a Risks section. T10's builder must be handed this explicitly, or the app service silently
+  never gets its Dockerfile.
 
 - **2026-09-27, run 6, T5 — R-1 is chased, not recorded, and the reason is T6.** Same bounded
   polish pass as T4, same four conditions: a finding about **the file just written, on a still-open

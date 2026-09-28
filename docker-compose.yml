@@ -1,0 +1,94 @@
+# BorrelBeurs -- local development stack (AC1).
+#
+# Per the Phase 0 spec this is "a development tool only, never a deployment
+# artifact". ADR 0004 nonetheless makes the offline venue laptop a real target,
+# so both images are digest-pinned: `docker save` at the venue must bundle the
+# exact image that was tested, not whatever the tag pointed at last (plan D3,
+# R4). Resolving that tension properly is Phase 8's job; pinning keeps the door
+# open without deciding it here.
+#
+# Usage:
+#   docker compose up -d db    # what scripts/setup.sh runs; all migrations need
+#   docker compose down -v     # ...and the way to start from an empty database
+#
+# The `db` credentials below are the ones .env.example's DATABASE_URL dials.
+# They are development credentials, published in this repository on purpose,
+# and they must never be used anywhere reachable from a network. Changing one
+# without changing the other breaks AC1 at the first `alembic upgrade`, which
+# is why tests/meta/test_compose_matches_env_example.py checks that they agree.
+
+services:
+  db:
+    # postgres:16-alpine, pulled 2026-09-27. ADR 0001:42 requires the local
+    # major to equal Render's; 16 is Render's current default (plan D3).
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    container_name: borrelbeurs-db
+    environment:
+      POSTGRES_USER: borrelbeurs
+      POSTGRES_PASSWORD: borrelbeurs
+      POSTGRES_DB: borrelbeurs
+      # Deterministic sort order regardless of the host's locale. Two machines
+      # disagreeing about collation is a whole class of "works on my laptop".
+      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
+    ports:
+      # Host 5432 -- the port .env.example's DATABASE_URL connects to. If a
+      # system Postgres already owns it, override with COMPOSE-level settings
+      # locally rather than editing this line; .env.example depends on it.
+      #
+      # Bound to 127.0.0.1, not to every interface: the credentials above are
+      # published in this repository, and ADR 0004 makes the venue laptop --
+      # which joins whatever network the venue has -- a machine that runs this
+      # file. `0.0.0.0:5432` would offer borrelbeurs/borrelbeurs to that
+      # network. Nothing legitimate loses access: .env.example dials
+      # localhost, the `app` service reaches `db` over the compose network
+      # rather than this published port, and testcontainers does not use
+      # compose at all.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # A named volume, not a bind mount: bind-mounting a Postgres data
+      # directory onto a Windows filesystem is a documented source of
+      # permission and fsync trouble.
+      - borrelbeurs-db-data:/var/lib/postgresql/data
+    healthcheck:
+      # `-U`/`-d` matter: without them pg_isready asks for a database named
+      # after the container's root user, which does not exist, and the service
+      # reports healthy on a server that cannot yet answer a query.
+      test: ["CMD-SHELL", "pg_isready -U borrelbeurs -d borrelbeurs"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  app:
+    # The image this builds from is T10's deliverable (docker/Dockerfile). The
+    # service is declared here because the Phase 0 plan's Files table puts app
+    # + Postgres in one compose file, but nothing in T7 builds it: every T7 and
+    # T8 command names `db` explicitly, so the missing Dockerfile is inert
+    # until T10 lands and then simply starts working. No profile gates it, so
+    # there is nothing to remember to remove afterwards.
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: borrelbeurs-app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Inside the compose network the database is `db`, not localhost. This is
+      # the one value that legitimately differs from .env.example.
+      DATABASE_URL: postgresql+asyncpg://borrelbeurs:borrelbeurs@db:5432/borrelbeurs
+      # Deliberately defaulted to empty rather than to a literal: an unset
+      # JWT_SECRET must fail the boot naming the variable (AC2), and a
+      # committed development signing key is exactly what .env.example refuses
+      # to ship. Export it, or run through scripts/setup.sh.
+      JWT_SECRET: ${JWT_SECRET:-}
+      PORT: "8000"
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      APP_ENV: local
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+volumes:
+  borrelbeurs-db-data:

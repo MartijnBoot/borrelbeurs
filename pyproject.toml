@@ -24,7 +24,12 @@ dependencies = [
     "pydantic>=2.9,<3",
     "pydantic-settings>=2.6,<3",
     # Persistence. docs/design/architecture.md:211, docs/design/data-model.md:3.
-    "sqlalchemy>=2.0,<3",
+    # The `asyncio` extra is SQLAlchemy's own documented install target for the
+    # async engine, and it is what pulls in greenlet. Without it
+    # `sqlalchemy.ext.asyncio` refuses to import, which makes the async
+    # Alembic env.py the plan mandates (T7) unimplementable. Same package, same
+    # approval (plan:377) -- not a new vendor.
+    "sqlalchemy[asyncio]>=2.0,<3",
     "asyncpg>=0.30,<1.0",
     "alembic>=1.14,<2",
     # The pricing engine. Pinned exactly: Phase 1 replays v1's golden fixtures
@@ -53,6 +58,15 @@ extend-exclude = ["legacy", "exchange"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# `op` and `sa` are in every Alembic revision by convention -- the template
+# writes them, --autogenerate emits calls on them, and a hand-written empty or
+# data-only migration uses neither. Without this waiver a freshly generated
+# revision fails `scripts/check.sh` step 2 before its author has typed a
+# character. Scoped to the versions directory: db/migrations/env.py is ordinary
+# code and keeps the full rule set.
+"db/migrations/versions/*.py" = ["F401"]
 
 # --- types (D8) --------------------------------------------------------------
 

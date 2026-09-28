@@ -7,6 +7,7 @@ that says only "validation error" costs an evening at a borrel.
 
 from __future__ import annotations
 
+import traceback
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -101,6 +102,166 @@ def test_non_numeric_port_fails_naming_the_variable(
         get_settings()
 
     assert "PORT" in str(excinfo.value)
+
+
+# --- DATABASE_URL shape (R13) ------------------------------------------------
+#
+# T3 left `database_url` at `min_length=1` so as not to pre-judge the driver.
+# T7 is the task that creates the engine, so the shape lands here. AC2 says
+# "missing **or malformed**": a sync `postgresql://` DSN or a typo'd scheme must
+# fail at boot naming the variable, not surface three layers down as an asyncpg
+# dialect error at the first query.
+
+MALFORMED_DATABASE_URLS = [
+    pytest.param("x", id="not-a-url-at-all"),
+    pytest.param("   ", id="whitespace-only"),
+    pytest.param(
+        "postgresql://borrelbeurs:borrelbeurs@localhost:5432/borrelbeurs",
+        id="sync-driver-no-plus-asyncpg",
+    ),
+    pytest.param(
+        "postgres://borrelbeurs:borrelbeurs@localhost:5432/borrelbeurs",
+        id="heroku-style-postgres-scheme",
+    ),
+    pytest.param(
+        "postgresql+psycopg://borrelbeurs:borrelbeurs@localhost:5432/borrelbeurs",
+        id="wrong-driver",
+    ),
+    pytest.param(
+        "postgresql+asyncpq://borrelbeurs:borrelbeurs@localhost:5432/borrelbeurs",
+        id="typo-in-the-driver",
+    ),
+    pytest.param("postgresql+asyncpg://", id="no-host-no-database"),
+    pytest.param("postgresql+asyncpg://localhost:5432", id="host-but-no-database"),
+    pytest.param("postgresql+asyncpg://localhost:5432/", id="empty-database-name"),
+    pytest.param("postgresql+asyncpg:///borrelbeurs", id="database-but-no-host"),
+    # The two cases `urlsplit` only objects to when the port is *read*. They
+    # passed validation until the reader moved inside the try block: urlsplit
+    # itself is lazy, and `SplitResult.port` is where the ValueError comes
+    # from. asyncpg would have failed on both, far from the typo.
+    pytest.param(
+        "postgresql+asyncpg://borrelbeurs:borrelbeurs@localhost:banana/borrelbeurs",
+        id="non-numeric-port",
+    ),
+    pytest.param(
+        "postgresql+asyncpg://borrelbeurs:borrelbeurs@localhost:99999/borrelbeurs",
+        id="port-out-of-range",
+    ),
+]
+
+
+@pytest.mark.parametrize("value", MALFORMED_DATABASE_URLS)
+def test_malformed_database_url_fails_naming_the_variable(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    _set_env(monkeypatch, DATABASE_URL=value)
+
+    with pytest.raises(ConfigError) as excinfo:
+        get_settings()
+
+    assert "DATABASE_URL" in str(excinfo.value)
+
+
+def test_malformed_database_url_does_not_leak_the_password(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The DSN carries the database password; a rejection message must not.
+
+    The sync-driver case is the realistic one -- someone pastes a hosting
+    provider's `postgresql://` URL, complete with a real password, and the boot
+    failure goes straight into a log.
+    """
+    _set_env(monkeypatch, DATABASE_URL="postgresql://someone:hunter2@db.example.com:5432/prod")
+
+    with pytest.raises(ConfigError) as excinfo:
+        get_settings()
+
+    message = str(excinfo.value)
+    assert "DATABASE_URL" in message
+    assert "hunter2" not in message
+    # The scheme is the thing the operator has to change, and carries no
+    # secret, so naming it is the whole point of the message.
+    assert "postgresql+asyncpg" in message
+
+
+def test_a_malformed_port_is_rejected_without_echoing_the_dsn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T3's no-echo property, on the branch that was previously unreachable.
+
+    The malformed-port rejection is the one message assembled in a different
+    place from the others, so it gets its own proof that nothing from the DSN
+    -- password, host, database, or the bad port itself -- reaches either the
+    message or a rendered traceback. `format_exception` is checked as well as
+    `str()` because `from None` is what keeps pydantic's chained error, which
+    quotes the rejected input, out of the log.
+    """
+    dsn = "postgresql+asyncpg://someone:hunter2@db.example.com:banana/prodsecret"
+    _set_env(monkeypatch, DATABASE_URL=dsn)
+
+    with pytest.raises(ConfigError) as excinfo:
+        get_settings()
+
+    message = str(excinfo.value)
+    rendered = "".join(traceback.format_exception(excinfo.value))
+
+    assert "DATABASE_URL" in message
+    for fragment in ("hunter2", "someone", "db.example.com", "prodsecret", "banana", dsn):
+        assert fragment not in message, f"the rejection message echoes {fragment!r}"
+        assert fragment not in rendered, f"the traceback echoes {fragment!r}"
+
+
+WORKABLE_DATABASE_URLS = [
+    pytest.param(
+        "postgresql+asyncpg://borrelbeurs:borrelbeurs@localhost:5432/borrelbeurs",
+        id="docker-compose-local",
+    ),
+    pytest.param(
+        "postgresql+asyncpg://test:test@localhost:49173/test",
+        id="testcontainers-ephemeral-port",
+    ),
+    pytest.param(
+        "postgresql+asyncpg://borrelbeurs:borrelbeurs@db:5432/borrelbeurs",
+        id="compose-network-hostname",
+    ),
+    pytest.param(
+        "postgresql+asyncpg://user:p%40ss%2Fword@host.example.com:5432/db?ssl=require",
+        id="encoded-password-and-query-string",
+    ),
+]
+
+
+@pytest.mark.parametrize("value", WORKABLE_DATABASE_URLS)
+def test_database_url_admits_the_shapes_we_actually_hand_it(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """The constraint has to be tight *and* workable.
+
+    Alembic gets the compose URL; Phase 2's integration tests get whatever
+    `PostgresContainer.get_connection_url(driver="asyncpg")` hands back, which
+    is the same shape on an ephemeral port. Tightening the scheme must not
+    exclude either.
+    """
+    _set_env(monkeypatch, DATABASE_URL=value)
+
+    assert get_settings().database_url == value
+
+
+def test_the_committed_database_url_is_accepted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """R19 -- the DSN a developer copies out of `.env.example` must validate.
+
+    `.env.example` is the contract between this module and `docker-compose.yml`:
+    AC1 promises that copying it, starting Postgres and applying migrations
+    needs no further manual steps. If the shipped DATABASE_URL failed its own
+    schema, the first `alembic upgrade` would break and it would look like a bug
+    in `scripts/setup.sh`. Read from the real file, never retyped.
+    """
+    committed = _parse_env_file(ENV_EXAMPLE)["DATABASE_URL"]
+    _set_env(monkeypatch, DATABASE_URL=committed)
+
+    assert get_settings().database_url == committed
 
 
 def test_committed_env_example_cannot_boot(

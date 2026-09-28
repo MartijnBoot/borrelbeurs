@@ -1,6 +1,6 @@
 ---
 description: Run the full local gate and report the actual output as evidence
-model: sonnet
+model: haiku
 ---
 
 Run the checks and report evidence.

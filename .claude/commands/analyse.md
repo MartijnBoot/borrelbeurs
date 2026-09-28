@@ -1,7 +1,7 @@
 ---
 description: Deep read-only analysis of part of the codebase, fanned out to parallel analyst agents
 argument-hint: [what to analyse, e.g. "the order path" or "static/koers.html"]
-model: opus
+model: sonnet
 ---
 
 Analyse: **$ARGUMENTS**
