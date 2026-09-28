@@ -46,7 +46,9 @@ Until T9 lands, `scripts/check.sh` does not exist. If `/verify` reports that, ru
 - [ ] Commit the uncommitted work on the T7 branch (model changes, checklist, last swarm ledger notes):
   `git add .claude docs/plans/manual-checklist.md docs/plans/rebuild-progress.md` then
   `git commit -m "chore: manual workflow — cheaper models, checklist, ledger notes"`
-- [ ] Stop the swarm for good: don't run `scripts/swarm.ps1` or `/rebuild`
+- [x] ~~Stop the swarm for good~~ — superseded 2026-09-28: the swarm is resumed with pinned
+  models (`task-builder`/`task-verifier` sonnet, reviewers opus). This checklist is the fallback
+  if that attempt fails.
 
 ## Phase −1 — v1 authorization hotfix
 - [x] Done (`b617a56`)
