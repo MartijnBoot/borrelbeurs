@@ -66,16 +66,16 @@ Exit: `scripts/setup.sh` then one command gives a running shell app; CI green.
 - [x] build
 - [x] verify — `/clear` then `/verify`
 - [x] review — `/clear` then `/review 0`
-- [ ] merge — `git switch main` then `git merge --squash feature/phase-0-t7-postgres-compose-alembic` then `git commit -m "Phase 0 T7 — Postgres, Compose and the Alembic baseline"`
-- [ ] clean up — `git branch -D feature/phase-0-t7-postgres-compose-alembic` then `git push origin main`
+- [x] merge — `git switch main` then `git merge --squash feature/phase-0-t7-postgres-compose-alembic` then `git commit -m "Phase 0 T7 — Postgres, Compose and the Alembic baseline"`
+- [x] clean up — `git branch -D feature/phase-0-t7-postgres-compose-alembic` then `git push origin main`
 
 **T4b no filesystem side effects** (needs T5, T7 — not in the audited plan; its brief is in `rebuild-progress.md` → "Decisions the swarm took alone")
-- [ ] branch — `git switch main` then `git pull` then `git switch -c feature/phase-0-t4b-no-fs-side-effects`
-- [ ] build — `/clear` then `/build 0 T4b` (tell it to read the T4b entry in `docs/plans/rebuild-progress.md`)
-- [ ] verify — `/clear` then `/verify`
-- [ ] review — `/clear` then `/review 0`
-- [ ] merge — `git switch main` then `git merge --squash feature/phase-0-t4b-no-fs-side-effects` then `git commit -m "Phase 0 T4b — no filesystem side effects"`
-- [ ] clean up — `git branch -D feature/phase-0-t4b-no-fs-side-effects` then `git push origin main`
+- [x] branch — `git switch main` then `git pull` then `git switch -c feature/phase-0-t4b-no-fs-side-effects`
+- [x] build — `/clear` then `/build 0 T4b` (tell it to read the T4b entry in `docs/plans/rebuild-progress.md`)
+- [x] verify — `/clear` then `/verify`
+- [x] review — `/clear` then `/review 0`
+- [x] merge — `git switch main` then `git merge --squash feature/phase-0-t4b-no-fs-side-effects` then `git commit -m "Phase 0 T4b — no filesystem side effects"`
+- [x] clean up — `git branch -D feature/phase-0-t4b-no-fs-side-effects` then `git push origin main`
 
 **T6 web shell, same origin** (needs T5)
 - [ ] branch — `git switch main` then `git pull` then `git switch -c feature/phase-0-t6-web-shell`

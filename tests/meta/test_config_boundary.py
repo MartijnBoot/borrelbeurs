@@ -31,11 +31,21 @@ Deliberately **not** covered here:
   (R12). That is a property of how the process is started, not of the syntax
   tree; it belongs to T5's app shell and T9's `check.sh`.
 - Filesystem side effects at import (R16). A different predicate needing a
-  different walk (module-level statements only) and its own allowlist — see the
-  handover note rather than bolting it onto this one.
+  different walk (module-level statements only) and its own allowlist — built
+  as `tests/meta/test_import_side_effects.py` (T4b) rather than bolted onto
+  this one.
 - `legacy/v1/**` (frozen v1 reference) and `exchange/**` (the pure engine,
   entering the gate in Phase 1). Both are excluded from ruff and mypy as well
   (`pyproject.toml:52`, `pyproject.toml:63`); this is plan D13, settled.
+
+T4b's other predicate lives here instead: a second `BaseSettings` subclass
+anywhere under `app/` or `db/` would read the environment exactly as validly
+as `Settings` does, with no `os.environ` reference in its own source for the
+walk above to ever see (T4's Gate C, 2026-09-27 — the `second-basesettings`
+gap; see `docs/plans/rebuild-progress.md`). That is a question about the
+*shape* of a class over the same roots this file already scans, not about
+module-level statements, so it belongs here rather than in
+`test_import_side_effects.py`.
 """
 
 from __future__ import annotations
@@ -287,3 +297,144 @@ BENIGN_SOURCES = [
 def test_detector_permits_ordinary_code(source: str) -> None:
     """`import os` is not the offence; reading the environment is."""
     assert find_violations(source, Path("app/main.py")) == []
+
+
+# --- the second-basesettings gap (T4b) --------------------------------------
+#
+# `pydantic_settings.BaseSettings` reads the environment in its own __init__,
+# not through any `os.environ` reference a subclass's source ever contains --
+# so a second subclass anywhere under app/ or db/ would read the environment
+# exactly as validly as `Settings` does, and every test above would stay
+# green. This closes that gap with the same shape: a real-tree assertion, an
+# anti-vacuity check and a regression snippet.
+
+
+def _base_name(node: ast.expr) -> str:
+    """The trailing identifier of a base-class expression: `BaseSettings` and
+    `pydantic_settings.BaseSettings` both give `BaseSettings`."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return ""
+
+
+# The bases that read the environment on construction, keyed by the module they
+# are imported from. `Settings` is here because subclassing it inherits exactly
+# the same environment read as subclassing `BaseSettings` directly.
+SETTINGS_BASES = {"pydantic_settings": "BaseSettings", "app.core.config": "Settings"}
+
+
+def _settings_base_names(tree: ast.Module) -> dict[str, str]:
+    """Local name -> canonical base, for every name in `tree` bound to a banned
+    base. The literal `BaseSettings` always counts; an `as` alias, or `Settings`
+    imported from `app.core.config`, counts only where `tree` imports it."""
+    names = {"BaseSettings": "BaseSettings"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module in SETTINGS_BASES:
+            canonical = SETTINGS_BASES[node.module]
+            for alias in node.names:
+                if alias.name == canonical:
+                    names[alias.asname or alias.name] = canonical
+    return names
+
+
+def find_basesettings_subclasses(source: str, path: Path) -> list[Violation]:
+    """Every class in `source` that subclasses `BaseSettings` or `Settings`,
+    directly or through an import alias."""
+    tree = ast.parse(source, filename=path.as_posix())
+    banned = _settings_base_names(tree)
+    found: list[Violation] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        for base in node.bases:
+            canonical = banned.get(_base_name(base))
+            if canonical is not None:
+                found.append(
+                    Violation(path, node.lineno, f"class {node.name} subclasses {canonical}")
+                )
+                break
+    return found
+
+
+def test_exactly_one_basesettings_subclass_exists() -> None:
+    """The gap, closed: one `BaseSettings` subclass, and it is `Settings` in
+    `app/core/config.py` -- not a second one reading the environment through a
+    door AC3's own walk cannot see."""
+    found: list[Violation] = []
+    for relative_path in scanned_files():
+        source = (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+        found.extend(find_basesettings_subclasses(source, relative_path))
+
+    assert len(found) == 1, (
+        f"expected exactly one BaseSettings subclass, found {len(found)}: {[str(v) for v in found]}"
+    )
+    assert found[0].path == CONFIG_MODULE, (
+        f"the one BaseSettings subclass must live in {CONFIG_MODULE.as_posix()} "
+        f"(spec AC3); found it in {found[0].path.as_posix()} instead"
+    )
+
+
+def test_the_basesettings_scan_reaches_the_real_settings_class() -> None:
+    """Fail loudly if the walk stops finding classes, instead of passing
+    vacuously on an empty result — the same failure mode
+    `test_the_scan_reaches_the_real_source_tree` guards against above."""
+    source = (REPO_ROOT / CONFIG_MODULE).read_text(encoding="utf-8")
+
+    found = find_basesettings_subclasses(source, CONFIG_MODULE)
+
+    assert any(v.detail == "class Settings subclasses BaseSettings" for v in found), (
+        f"expected to find `class Settings(BaseSettings)` in {CONFIG_MODULE.as_posix()}; "
+        f"found: {[str(v) for v in found]}"
+    )
+
+
+SECOND_SETTINGS_SOURCES = [
+    pytest.param(
+        "from pydantic_settings import BaseSettings\n\n"
+        "class FeatureFlags(BaseSettings):\n"
+        "    new_thing_enabled: bool = False\n",
+        id="direct-basesettings-subclass",
+    ),
+    pytest.param(
+        "from pydantic_settings import BaseSettings as BS\n\n"
+        "class FeatureFlags(BS):\n"
+        "    new_thing_enabled: bool = False\n",
+        id="aliased-basesettings",
+    ),
+    pytest.param(
+        "from app.core.config import Settings\n\n"
+        "class FeatureFlags(Settings):\n"
+        "    new_thing_enabled: bool = False\n",
+        id="indirect-via-settings",
+    ),
+]
+
+
+@pytest.mark.parametrize("source", SECOND_SETTINGS_SOURCES)
+def test_detector_flags_a_second_basesettings_subclass(source: str) -> None:
+    """The regression this guard exists for: a second module quietly gains its
+    own `BaseSettings` and reads the environment through it, unseen by the
+    reference walk above because the subclass's own source never mentions
+    `os.environ`."""
+    violations = find_basesettings_subclasses(source, Path("app/core/feature_flags.py"))
+
+    assert len(violations) == 1
+    assert violations[0].line == 3
+
+
+BASESETTINGS_BENIGN_SOURCES = [
+    pytest.param("class Settings:\n    pass\n", id="plain-class-no-base"),
+    pytest.param("class Settings(SomethingElse):\n    pass\n", id="unrelated-base-class"),
+    pytest.param(
+        "from some_other_lib import Settings\n\nclass Mine(Settings):\n    pass\n",
+        id="settings-from-an-unrelated-module",
+    ),
+]
+
+
+@pytest.mark.parametrize("source", BASESETTINGS_BENIGN_SOURCES)
+def test_basesettings_detector_permits_ordinary_classes(source: str) -> None:
+    """A class named `Settings` is not the offence; subclassing `BaseSettings` is."""
+    assert find_basesettings_subclasses(source, Path("app/main.py")) == []
