@@ -1,51 +1,64 @@
 # CLAUDE.md
 
-Guidance for Claude Code when working in this repo.
+Guidance for Claude Code in this repo. Fuller context: [README.md](README.md),
+[docs/way-of-working.md](docs/way-of-working.md), [docs/plans/rebuild-route.md](docs/plans/rebuild-route.md).
 
 ## Project
 
-**BorrelBeurs** — a "drink stock exchange" web app for student borrels. Drink prices fluctuate live based on demand, idle decay, Brownian noise, and admin-triggered jumps/crashes. Bar staff place orders, a big screen shows live prices, admins configure parameters.
+BorrelBeurs — a drink stock exchange for student borrels, rebuilt from v1 (frozen, reference
+only, in `legacy/v1/`). FastAPI (`app/`) serving a Vite/React frontend (`web/`) from one origin,
+backed by **Postgres** (`db/`, Alembic), with the pure pricing engine (`exchange/`) underneath.
 
-Detailed architecture (component diagram + request/WS flow) lives in [ARCHITECTURE.md](ARCHITECTURE.md). Read it before non-trivial changes.
+## Commands
 
-## Stack
+- `./scripts/setup.sh` — clone to running stack: env, deps, `docker compose up -d db`, migrate.
+  Idempotent. (Not built yet — T8 is parked, blocked on T6, which needs `pnpm`; until then, do
+  the equivalent steps by hand.)
+- `./scripts/check.sh` — the gate: format, lint, types, unit, integration. The same script CI
+  runs. Run it before calling any task done.
+- `uv run alembic -c db/alembic.ini revision -m "<msg>"` — new migration.
+- `uv run alembic -c db/alembic.ini upgrade head` / `downgrade -1` — apply / roll back.
+- `uv run pytest tests/unit tests/meta tests/engine` — fast tests, no database needed.
+  (`tests/engine` is Phase 1; today run `uv run pytest tests/unit tests/meta`.)
+- `uv run uvicorn app.main:app --reload --port 8000` — run the app.
 
-- **Backend:** FastAPI + Uvicorn (Python 3.11), single worker, in-memory `ExchangeState` synchronized via WebSocket broadcast.
-- **Engine:** [exchange/engine.py](exchange/engine.py) — pricing model (prices, demand, BM noise, idle decay, scheduled jumps).
-- **Frontend:** static HTML/JS pages in [static/](static/) (no build step). Pages: `login`, `home` (admin), `koers` (display), `bar`, `manipulation`, `settings`. Theming via [static/theme.js](static/theme.js).
-- **Auth:** key-based login → JWT cookie session, RBAC per page ([backend/auth.py](backend/auth.py)). Keys in `config/keys.json`.
-- **Persistence:** JSON config + per-event xlsx earnings workbooks + news.json ([backend/persistence.py](backend/persistence.py)).
-- **Deploy:** Docker. [run.bat](run.bat) loads `bierbeurs-image.tar` (or builds), mounts `./config` and `./static` into the container, exposes port 8000.
+## Workflow
 
-## Layout
-
-- [backend/api.py](backend/api.py) — routes, WS `/ws`, order pipeline, jump/crash endpoints.
-- [backend/auth.py](backend/auth.py) — `validate_key`, `require_page`, role landing.
-- [backend/config.py](backend/config.py) — paths (`CONFIG_PATH`, `STATIC_DIR`, etc.), driven by env vars.
-- [backend/persistence.py](backend/persistence.py) — engine load/save, xlsx earnings, news CRUD.
-- [exchange/engine.py](exchange/engine.py) — `ExchangeState`, `single_step`, `prices_from_y`, calibration.
-- [config/exchange_config.json](config/exchange_config.json) — live engine config (mounted volume).
-- [static/](static/) — all client pages + uploads/logo/earnings dirs.
-
-## Running locally
-
-- Docker: `run.bat` (Windows) — prefers loading `bierbeurs-image.tar`, else builds. Container name `bierbeurs`, port 8000, default admin token `TestTest`.
-- Rebuild after backend changes: `rebuild.bat` — builds the image, re-exports `bierbeurs-image.tar`, then calls `run.bat`. (`run.bat` alone won't pick up Python changes if a stale tar/image exists.)
-- Dev (no Docker): `py -m uvicorn backend.api:app --host 0.0.0.0 --port 8000 --reload` (see top of [backend/api.py](backend/api.py)). `--reload` only watches Python; `static/` is served live, so frontend edits need no restart (hard-refresh the browser).
-- Deps: [requirements.txt](requirements.txt) (FastAPI 0.111, numpy 1.26, openpyxl, PyJWT).
-- No automated test suite — verify changes by running the app (Docker or uvicorn) and exercising the relevant page.
-- Config resolution ([backend/config.py](backend/config.py)): paths come from `CONFIG_PATH`, `STATIC_DIR`, `DEFAULT_CONFIG_PATH` env vars. An empty/`{}` `exchange_config.json` falls back to the baked-in default template.
+- Work from an audited plan in `docs/plans/phase-N-*.md`. No task without a PASS audit — not
+  yours to waive.
+- One task per session, on its own branch, conventional commits (`feat(phase-0): T7 — ...`).
+- Bug fixes start with a failing test; a feature's acceptance criteria become its test cases.
+- Run `./scripts/check.sh` and paste the actual output before saying a task is done —
+  "tests pass" is not evidence. (Not built yet — T9 parked on T8; until then run `ruff format
+  --check .`, `ruff check .`, `mypy app tests`, `pytest -q`.)
+- If a requirement is genuinely ambiguous, stop and ask; do not guess.
 
 ## Conventions
 
-- Order requests carry a `snapshot_version`; server returns 409 on stale snapshots — preserve this when touching the order path.
-- After any state mutation, save engine + broadcast over `/ws`. Don't mutate state without broadcasting.
-- Frontend pages are plain HTML — no bundler, no framework. Keep changes vanilla JS/CSS.
-- Pricing math (`a`, `d`, `s0`, `alpha_price`, `eta`, `K`, decay/idle params) is meaningful — don't rename or restructure config keys without checking [exchange/engine.py](exchange/engine.py) and existing `exchange_config.json`.
-- UI strings are Dutch; keep that consistent.
+- `app/core/` is this repo's only `core/`: config, errors, logging — cross-cutting,
+  framework-adjacent infrastructure with no business logic in it. There is no `lib/`; do not add
+  one without first saying, here, what it means.
+- **Postgres is the persistence layer, local and hosted** (ADR 0004) — one engine, one DSN shape
+  (`postgresql+asyncpg://...`), validated in `app/core/config.py`, the only module that reads the
+  environment (`os.environ` anywhere else under `app/` or `db/` is a bug `tests/meta/` catches).
+- Migrations live in `db/migrations/versions/`, forward-only, applied in order. Never edit one
+  that already has a successor — add a new one.
+- Types at the boundary: every external input is validated (pydantic) before use. No untyped
+  boundary.
+- `exchange/` must end up importing no clock, no I/O, no framework, golden fixtures passing —
+  Phase 1's target, not today: `engine.py` is v1 verbatim (`import time` and all), excluded
+  from ruff/mypy until then (`pyproject.toml`).
+- A new dependency needs justification in the PR (why not stdlib, licence, maintenance) — ask
+  first.
 
-## Don't
+## Never
 
-- Don't commit `static/earnings/*.xlsx`, `static/uploads/*`, or real `config/keys.json` contents.
-- Don't change WebSocket broadcast format without updating every page in [static/](static/) that consumes it.
-- Don't introduce a database — file-based JSON/xlsx persistence is intentional for offline event use.
+- Never edit a migration that already has a successor — add a new one instead.
+  `scripts/hooks/guard_migrations.py` decides this and is unit-tested, but **not yet
+  registered** (`.claude/settings.json` has no `hooks` key, so nothing enforces it — a human
+  applies that wiring by hand, `docs/plans/pending-claude-config-edits.md` §8). Follow this
+  rule by discipline until then.
+- Never introduce a second database engine, or a second place that reads the process environment.
+- Never commit `.env*`, `config/keys.json`, real secrets or credentials.
+- Never edit `legacy/v1/` — read it for reference only.
+- Never use production credentials, or connect to production, from a dev or agent session.
