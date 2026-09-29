@@ -12,8 +12,7 @@ backed by **Postgres** (`db/`, Alembic), with the pure pricing engine (`exchange
 ## Commands
 
 - `./scripts/setup.sh` — clone to running stack: env, deps, `docker compose up -d db`, migrate.
-  Idempotent. (Not built yet — T8 is parked, blocked on T6, which needs `pnpm`; until then, do
-  the equivalent steps by hand.)
+  Idempotent. Git Bash only; needs `docker`, `uv`, `pnpm`.
 - `./scripts/check.sh` — the gate: format, lint, types, unit, integration. The same script CI
   runs. Run it before calling any task done.
 - `uv run alembic -c db/alembic.ini revision -m "<msg>"` — new migration.
@@ -29,7 +28,7 @@ backed by **Postgres** (`db/`, Alembic), with the pure pricing engine (`exchange
 - One task per session, on its own branch, conventional commits (`feat(phase-0): T7 — ...`).
 - Bug fixes start with a failing test; a feature's acceptance criteria become its test cases.
 - Run `./scripts/check.sh` and paste the actual output before saying a task is done —
-  "tests pass" is not evidence. (Not built yet — T9 parked on T8; until then run `ruff format
+  "tests pass" is not evidence. (Not built yet — T9 is next; until then run `ruff format
   --check .`, `ruff check .`, `mypy app tests`, `pytest -q`.)
 - If a requirement is genuinely ambiguous, stop and ask; do not guess.
 
