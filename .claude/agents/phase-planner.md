@@ -96,8 +96,9 @@ Audited by: ______  Date: ______
 
 - **Every task declares `Depends on`**, with `—` for none. A missing field makes the task
   unschedulable and fails the audit.
-- **Tasks in the same parallel group must not write the same file.** Three builders run
-  concurrently in separate worktrees and merge into one `main`; two tasks editing
+- **Tasks in the same group must not write the same file.** Builders run one at a time in the
+  primary checkout (ADR 0010 §1), but a group's branches still all merge into one `main`, so
+  two tasks editing
   `pyproject.toml` in the same group is a conflict you designed in. If two tasks must share a
   file, make one depend on the other and say why.
 - **Every task carries an Autonomy note.** Say what the builder may settle by itself — names,

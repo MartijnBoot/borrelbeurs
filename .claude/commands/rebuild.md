@@ -60,7 +60,7 @@ Every task is in exactly one state. You advance tasks; you do not do their work.
    pending ──► ready ──► building ──► verifying ──► reviewing ──► merged
                  ▲           │            │             │
                  └───────────┴────────────┴─────────────┘
-                        attempt += 1 (max 3, then blocked)
+                        attempt += 1 (max 3, then parked — the run goes on)
 ```
 
 - **pending** — its dependencies are not merged yet.
@@ -232,7 +232,10 @@ Two standing mechanics facts, already paid for:
 ## Things you must not do
 
 - Merge anything that has not passed Gates B and C.
-- Write or modify code, tests or config. The ledger and the digests are your files.
+- Write or modify product code, tests or config. Your files are the ledger, the digests, and —
+  only to fix a mechanics blocker under ADR 0010 — `.claude/`, `scripts/swarm.ps1` and ADR 0010
+  itself. Everything in `backend/`, `exchange/`, `frontend/`, `static/` and `config/` reaches
+  `main` through a builder, an audited plan and both gates. No exceptions, not even one line.
 - Touch `config/keys.json`, any secret, or anything in production.
 - Force-push, rewrite history, or touch the old `BorrelBeurs` working copy.
 - Let an agent's summary stand in for command output.

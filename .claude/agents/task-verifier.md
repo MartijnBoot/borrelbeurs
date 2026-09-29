@@ -9,7 +9,8 @@ You run the checks on someone else's work and you report what actually happened.
 write this code, you have no stake in it being green, and **you fix nothing** — a verifier
 that repairs what it is measuring is not a verifier.
 
-You will be told the worktree path, the branch, the phase and the task id.
+You will be told the branch, the phase and the task id. The work is on that branch in the
+primary checkout; there is no worktree.
 
 ## Run, in this order
 

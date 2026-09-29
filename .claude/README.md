@@ -18,9 +18,9 @@ Per phase the orchestrator dispatches:
 
 ```
   phase-planner ──► plan-auditor ──► PASS ──┐
-                                            │   per ready task, up to 3 concurrently:
+                                            │   one ready task at a time:
                                             └─► task-builder ──► task-verifier ──► fresh-eyes-reviewer
-                                                  (own worktree)    (fresh ctx)      (+ engine-guardian
+                                                  (own branch)     (fresh ctx)      (+ engine-guardian
                                                                                       if exchange/ moved)
                                                                           │
                                                              squash-merge ┘ ──► ledger ──► next task
@@ -66,7 +66,7 @@ downstream. Running a check and reporting its output does not.
 |---|---|
 | `phase-planner` | Turning an approved spec into a schedulable task graph |
 | `plan-auditor` | **Gate B** — adversarial plan audit; its PASS unblocks implementation |
-| `task-builder` | Implementing exactly one task, in its own worktree |
+| `task-builder` | Implementing exactly one task, on its own branch |
 | `task-verifier` | Running the gate on someone else's work; fixes nothing |
 | `fresh-eyes-reviewer` | **Gate C** — before every merge |
 | `engine-guardian` | **Any diff touching `exchange/`** — verifies the pricing maths is unchanged |

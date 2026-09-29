@@ -90,9 +90,9 @@ downstream inherits it.
    stated for anything breaking.
 8. **Secrets, production, infra.** Name anything that goes near them.
 9. **The task graph is real.** Every `Depends on` points at a task that exists; there is no
-   cycle; two tasks in the same parallel group do not write the same file. The swarm runs
-   parallel groups concurrently in separate worktrees, so a wrong graph becomes a merge
-   conflict at best and a lost edit at worst. Recompute the groups yourself from the
+   cycle; two tasks in the same group do not write the same file. Every branch in a group
+   merges into one `main`, so a wrong graph becomes a merge conflict at best and a lost edit
+   at worst. Recompute the groups yourself from the
    dependencies rather than trusting the plan's own grouping.
 10. **The phase's assigned defects** from the defect register are each claimed by a task.
 
