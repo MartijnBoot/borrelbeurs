@@ -194,10 +194,19 @@ from T5 onward the app still boots.
   rule, scoped to `src/features/*` so Phase 4's features inherit it. `pnpm build`
   emits `web/dist/`. `app/main.py` mounts `web/dist` as an SPA catch-all **after** the `/api`
   router. No CDN references anywhere (ADR 0006).
-- **Verification:** `pnpm --dir web build && pnpm --dir web lint && pnpm --dir web exec tsc --noEmit` ·
+- **Verification:** `pnpm --dir web build && pnpm --dir web lint && pnpm --dir web exec tsc -b` ·
   with the app running, `curl -fsS localhost:8000/` returns the SPA HTML while
   `curl -fsS localhost:8000/healthz` still returns JSON ·
-  `grep -rn "https\?://" web/dist | grep -v localhost` returns nothing
+  `grep -rnE "(src|href)=[\"']?https?://|url\([\"']?https?://|@import +[\"']?https?://" web/dist`
+  returns nothing
+- **Amended 2026-09-29 (T6 review):** two verification commands could not do their job.
+  `tsc --noEmit` against the root `tsconfig.json` (`"files": []`, references only) type-checks
+  no file and exits 0 on a type error; `tsc -b` follows the references and fails. A bare
+  `https?://` grep can never come back empty, because React's bundle carries non-request URL
+  strings (`react.dev/errors/…`, the `w3.org` SVG/MathML namespaces). The replacement grep looks
+  only where a CDN reference can load something: `src`/`href` attributes, CSS `url()` and
+  `@import`. It was shown to catch an injected `<script src="https://…">`, `<link href=https://…>`,
+  `@import "https://…"` and `url(https://…)`.
 - **Depends on:** T5
 
 ### T7 — Postgres, Compose and the Alembic baseline
@@ -233,7 +242,7 @@ from T5 onward the app still boots.
 - **Implements:** AC4
 - **Expected output:** One script running, fast checks first (§7.3:1179): `ruff format --check` →
   `ruff check` → `pnpm --dir web format:check` → `pnpm --dir web lint` → `mypy app db tests` →
-  `pnpm --dir web exec tsc --noEmit` → `pytest tests/unit tests/meta tests/engine` →
+  `pnpm --dir web exec tsc -b` → `pytest tests/unit tests/meta tests/engine` →
   `pnpm --dir web test --run` → `pytest tests/integration`. Exits non-zero on the first failure.
   `legacy/` and `exchange/` are excluded from ruff and mypy — v1 code, and `exchange/` enters the
   gate in Phase 1. pytest's exit code 5 ("no tests collected") is handled per directory rather

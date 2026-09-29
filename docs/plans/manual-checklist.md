@@ -83,8 +83,8 @@ Exit: `scripts/setup.sh` then one command gives a running shell app; CI green.
 - [x] clean up — `git branch -D feature/phase-0-t4b-no-fs-side-effects` then `git push origin main`
 
 **Prerequisite — Node toolchain** (blocks T6, and so T8–T12)
-- [ ] Switch to Node 22 (per `.nvmrc`), e.g. `nvm install 22` then `nvm use 22`
-- [ ] `corepack enable pnpm` then `pnpm --version` prints a version
+- [x] Switch to Node 22 (per `.nvmrc`), e.g. `nvm install 22` then `nvm use 22`
+- [x] `corepack enable pnpm` then `pnpm --version` prints a version
 
 **T6 web shell, same origin** (needs T5 + the Node prerequisite)
 - [ ] branch — `git switch main` then `git pull` then `git switch -c feature/phase-0-t6-web-shell`

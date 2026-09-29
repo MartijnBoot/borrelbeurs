@@ -18,6 +18,7 @@ import importlib
 import json
 import logging
 from collections.abc import Iterator, MutableMapping
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import pytest
@@ -220,6 +221,57 @@ def test_the_api_namespace_is_mounted_at_api_and_nowhere_else() -> None:
     assert unknown.status == 404
     assert unknown.headers["content-type"].startswith("application/json")
     assert unknown.json()
+
+
+@pytest.fixture
+def built_frontend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A stand-in `web/dist`, so the SPA mount is exercised whether or not pnpm ran.
+
+    The real `web/dist` exists only on machines that built the frontend; a test
+    leaning on it would pass vacuously on a fresh clone or in CI. A file beside
+    the dist folder stands in for anything a traversal might try to reach.
+    """
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<!doctype html><title>BorrelBeurs</title>")
+    (tmp_path / "secret.txt").write_text("outside the dist folder")
+    monkeypatch.setattr(app.main, "WEB_DIST", dist)
+    return dist
+
+
+def test_the_root_serves_the_built_frontend(built_frontend: Path) -> None:
+    response = get("/")
+
+    assert response.status == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert b"<title>BorrelBeurs</title>" in response.body
+
+
+def test_the_spa_mount_leaves_unknown_paths_a_json_404(built_frontend: Path) -> None:
+    """The mount sits after /api and adds no history fallback (app/main.py:99-105).
+
+    A catch-all that answered `index.html` for everything would turn a client's
+    typo in `/api/...` into a 200 page of HTML; these must stay plain 404s.
+    """
+    for path in ("/api/nope", "/nope", "/nope/deep"):
+        response = get(path)
+        assert response.status == 404, path
+        assert response.headers["content-type"].startswith("application/json"), path
+
+
+def test_the_spa_mount_serves_nothing_outside_the_dist_folder(built_frontend: Path) -> None:
+    assert get("/../secret.txt").status == 404
+    assert get("/healthz").json() == {"status": "ok"}
+
+
+def test_a_missing_frontend_build_is_not_a_boot_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No `web/dist` means nothing to serve at `/` -- never an app that will not start."""
+    monkeypatch.setattr(app.main, "WEB_DIST", tmp_path / "not-built")
+
+    assert get("/readyz").status == 200
+    assert get("/").status == 404
 
 
 def test_importing_the_app_reads_no_environment(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,9 +1,12 @@
-"""The application shell: build the app, boot it, answer two probes.
+"""The application shell: build the app, boot it, answer two probes, serve the SPA.
 
 **Nothing happens at import except building the object graph.** `create_app()`
-constructs routers; it reads no variable, opens no file and binds no socket.
-The environment is read inside `lifespan`, on the first line of boot, and
-nowhere else (`app/core/config.py:5-11`).
+constructs routers, reads no variable and binds no socket; the one filesystem
+check it does make -- whether `web/dist` exists, to decide if there is a built
+frontend to mount -- is a directory stat, not a file open, and its absence is
+not an error (a Python test run need not have built the frontend first). The
+environment is read inside `lifespan`, on the first line of boot, and nowhere
+else (`app/core/config.py:5-11`).
 
 That placement is what makes spec AC2 -- "shall fail at boot ... and shall not
 serve traffic" -- true by construction rather than by care. `uvicorn.Server.startup`
@@ -24,9 +27,11 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
 from fastapi import APIRouter, FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from app.api.health import router as health_router
 from app.core.config import get_settings
@@ -40,6 +45,11 @@ logger = logging.getLogger(__name__)
 # is anything to move, so T6's SPA catch-all -- mounted after this router -- has
 # one namespace to keep its hands off instead of twenty top-level paths.
 api_router = APIRouter(prefix="/api")
+
+# `pnpm --dir web build` output (T6). Not built by every checkout -- a Python
+# test run has no reason to have run pnpm first -- so its absence only means
+# there is no frontend to serve, never a boot failure.
+WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
 
 
 @asynccontextmanager
@@ -85,6 +95,17 @@ def create_app() -> FastAPI:
     application.add_exception_handler(AppError, handle_app_error)
     application.include_router(health_router)
     application.include_router(api_router)
+
+    # Mounted last, at "/", and after /api: everything above already owns its
+    # namespace, so the SPA only ever catches what neither router claimed
+    # (docs/design/architecture.md:36-38). `html=True` serves `index.html` for
+    # "/" and other directory-style requests; it does not add history-mode
+    # fallback for arbitrary unmatched paths -- Phase 0 has no client-side
+    # routes yet to justify that, and `/probe` or `/api/nope` must keep
+    # answering plain 404, not SPA HTML.
+    if WEB_DIST.is_dir():
+        application.mount("/", StaticFiles(directory=WEB_DIST, html=True), name="spa")
+
     return application
 
 

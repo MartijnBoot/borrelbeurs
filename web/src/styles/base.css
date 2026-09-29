@@ -1,0 +1,16 @@
+/* Base reset. Phase 4 (docs/design/frontend-architecture.md:40) adds
+   tokens.css and keyframes.css alongside this file; there is nothing to
+   theme yet. */
+
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
