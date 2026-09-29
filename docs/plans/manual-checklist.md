@@ -87,20 +87,20 @@ Exit: `scripts/setup.sh` then one command gives a running shell app; CI green.
 - [x] `corepack enable pnpm` then `pnpm --version` prints a version
 
 **T6 web shell, same origin** (needs T5 + the Node prerequisite)
-- [ ] branch — `git switch main` then `git pull` then `git switch -c feature/phase-0-t6-web-shell`
-- [ ] build — `/clear` then `/build 0 T6`
-- [ ] verify — `/clear` then `/verify`
-- [ ] review — `/clear` then `/review 0`
-- [ ] merge — `git switch main` then `git merge --squash feature/phase-0-t6-web-shell` then `git commit -m "Phase 0 T6 — web shell served from the same origin"`
-- [ ] clean up — `git branch -D feature/phase-0-t6-web-shell` then `git push origin main`
+- [x] branch — `git switch main` then `git pull` then `git switch -c feature/phase-0-t6-web-shell`
+- [x] build — `/clear` then `/build 0 T6`
+- [x] verify — `/clear` then `/verify`
+- [x] review — `/clear` then `/review 0`
+- [x] merge — `git switch main` then `git merge --squash feature/phase-0-t6-web-shell` then `git commit -m "Phase 0 T6 — web shell served from the same origin"`
+- [x] clean up — `git branch -D feature/phase-0-t6-web-shell` then `git push origin main`
 
 **T8 `scripts/setup.sh`** (needs T6 and T7 — it installs the web deps, so it waits for T6)
-- [ ] branch — `git switch main` then `git pull` then `git switch -c feature/phase-0-t8-setup-script`
-- [ ] build — `/clear` then `/build 0 T8`
-- [ ] verify — `/clear` then `/verify`
-- [ ] review — `/clear` then `/review 0`
-- [ ] merge — `git switch main` then `git merge --squash feature/phase-0-t8-setup-script` then `git commit -m "Phase 0 T8 — scripts/setup.sh"`
-- [ ] clean up — `git branch -D feature/phase-0-t8-setup-script` then `git push origin main`
+- [x] branch — `git switch main` then `git pull` then `git switch -c feature/phase-0-t8-setup-script`
+- [x] build — `/clear` then `/build 0 T8`
+- [x] verify — `/clear` then `/verify`
+- [x] review — `/clear` then `/review 0`
+- [x] merge — `git switch main` then `git merge --squash feature/phase-0-t8-setup-script` then `git commit -m "Phase 0 T8 — scripts/setup.sh"`
+- [x] clean up — `git branch -D feature/phase-0-t8-setup-script` then `git push origin main`
 
 **T13 `CLAUDE.md`, agent configuration and the migration hook** (needs T7) — built by the swarm, run 10
 - [x] build
@@ -108,7 +108,7 @@ Exit: `scripts/setup.sh` then one command gives a running shell app; CI green.
 - [x] review — Gate C PASS on attempt 2, zero Correctness findings
 - [x] merge — `9194bef` "Phase 0 T13 — CLAUDE.md, the migration guard hook, and its pending registration"
 - [x] clean up (local branch deleted) — the push happens in Step 0 above
-- [ ] apply the stale `.claude/` edits by hand from `docs/plans/pending-claude-config-edits.md` — **including §8, registering the migration-guard hook in `.claude/settings.json`**; until then nothing enforces it. Then `git rm docs/plans/pending-claude-config-edits.md` then `git commit -am "chore: apply pending .claude edits"` then `git push origin main`
+- [x] apply the stale `.claude/` edits by hand from `docs/plans/pending-claude-config-edits.md` — **including §8, registering the migration-guard hook in `.claude/settings.json`**; until then nothing enforces it. Then `git rm docs/plans/pending-claude-config-edits.md` then `git commit -am "chore: apply pending .claude edits"` then `git push origin main`
 
 **T9 `scripts/check.sh`** (needs T4, T6, T7)
 - [ ] branch — `git switch main` then `git pull` then `git switch -c feature/phase-0-t9-check-script`

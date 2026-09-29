@@ -53,10 +53,9 @@ backed by **Postgres** (`db/`, Alembic), with the pure pricing engine (`exchange
 ## Never
 
 - Never edit a migration that already has a successor — add a new one instead.
-  `scripts/hooks/guard_migrations.py` decides this and is unit-tested, but **not yet
-  registered** (`.claude/settings.json` has no `hooks` key, so nothing enforces it — a human
-  applies that wiring by hand, `docs/plans/pending-claude-config-edits.md` §8). Follow this
-  rule by discipline until then.
+  `scripts/hooks/guard_migrations.py` decides this, is unit-tested, and is registered as a
+  `PreToolUse` hook in `.claude/settings.json` for `Write|Edit|MultiEdit`. It does not see
+  `Bash` — a `sed -i` on a superseded revision is not stopped by anything, so don't.
 - Never introduce a second database engine, or a second place that reads the process environment.
 - Never commit `.env*`, `config/keys.json`, real secrets or credentials.
 - Never edit `legacy/v1/` — read it for reference only.

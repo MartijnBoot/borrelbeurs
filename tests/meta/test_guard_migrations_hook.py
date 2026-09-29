@@ -1,13 +1,9 @@
 """T13 -- the migration guard hook, unit-tested directly.
 
-`scripts/hooks/guard_migrations.py` is meant to be wired into
-`.claude/settings.json` as a `PreToolUse` hook so the harness enforces it on
-every `Write`/`Edit`/`MultiEdit` call, but that registration has **not**
-landed: `.claude/settings.json` could not be edited this session (it refuses
-`Edit`, `Write` and `Bash` alike -- see `docs/plans/pending-claude-config-edits.md`
-§8), so today it has no `hooks` key and nothing runs this script during a
-tool call. A human applies that wiring by hand per §8. What actually decides
-"block or allow" lives in the script and is tested here, the same way
+`scripts/hooks/guard_migrations.py` is wired into `.claude/settings.json` as
+a `PreToolUse` hook, so the harness runs it on every `Write`/`Edit`/`MultiEdit`
+call. That registration is config, not code, and is not exercised here. What
+actually decides "block or allow" lives in the script and is tested here, the same way
 `test_migration_scaffolding.py` tests Alembic's behaviour against real and
 scratch copies of `db/migrations/`.
 
