@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react'
 
 type HealthStatus =
-  | { state: 'loading' }
-  | { state: 'ok'; body: string }
-  | { state: 'error'; message: string }
+  { state: 'loading' } | { state: 'ok'; body: string } | { state: 'error'; message: string }
 
 /**
  * Placeholder shell (plan T6). Its only job is proving the SPA is served from
@@ -39,8 +37,7 @@ export function App() {
     <main>
       <h1>BorrelBeurs</h1>
       <p>
-        /healthz:{' '}
-        {health.state === 'loading' && 'loading…'}
+        /healthz: {health.state === 'loading' && 'loading…'}
         {health.state === 'ok' && health.body}
         {health.state === 'error' && `error: ${health.message}`}
       </p>

@@ -38,10 +38,7 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      'react-refresh/only-export-components': [
-        'warn',
-        { allowConstantExport: true },
-      ],
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       // Every feature exposes exactly one entry point (index.ts); nothing
       // outside a feature may reach into its internals.
       'boundaries/entry-point': [

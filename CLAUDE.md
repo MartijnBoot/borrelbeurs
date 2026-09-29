@@ -13,12 +13,13 @@ backed by **Postgres** (`db/`, Alembic), with the pure pricing engine (`exchange
 
 - `./scripts/setup.sh` — clone to running stack: env, deps, `docker compose up -d db`, migrate.
   Idempotent. Git Bash only; needs `docker`, `uv`, `pnpm`.
-- `./scripts/check.sh` — the gate: format, lint, types, unit, integration. The same script CI
-  runs. Run it before calling any task done.
+- `./scripts/check.sh` — the gate: format, lint, types, unit, integration (Python and web),
+  stopping at the first failure. Needs the compose `db` running for the integration step. CI
+  will run this same script (T11). Run it before calling any task done.
 - `uv run alembic -c db/alembic.ini revision -m "<msg>"` — new migration.
 - `uv run alembic -c db/alembic.ini upgrade head` / `downgrade -1` — apply / roll back.
 - `uv run pytest tests/unit tests/meta tests/engine` — fast tests, no database needed.
-  (`tests/engine` is Phase 1; today run `uv run pytest tests/unit tests/meta`.)
+  (`tests/engine` stays empty until Phase 1.)
 - `uv run uvicorn app.main:app --reload --port 8000` — run the app.
 
 ## Workflow
@@ -28,8 +29,7 @@ backed by **Postgres** (`db/`, Alembic), with the pure pricing engine (`exchange
 - One task per session, on its own branch, conventional commits (`feat(phase-0): T7 — ...`).
 - Bug fixes start with a failing test; a feature's acceptance criteria become its test cases.
 - Run `./scripts/check.sh` and paste the actual output before saying a task is done —
-  "tests pass" is not evidence. (Not built yet — T9 is next; until then run `ruff format
-  --check .`, `ruff check .`, `mypy app tests`, `pytest -q`.)
+  "tests pass" is not evidence.
 - If a requirement is genuinely ambiguous, stop and ask; do not guess.
 
 ## Conventions

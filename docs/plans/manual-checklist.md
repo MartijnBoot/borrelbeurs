@@ -111,10 +111,10 @@ Exit: `scripts/setup.sh` then one command gives a running shell app; CI green.
 - [x] apply the stale `.claude/` edits by hand from `docs/plans/pending-claude-config-edits.md` — **including §8, registering the migration-guard hook in `.claude/settings.json`**; until then nothing enforces it. Then `git rm docs/plans/pending-claude-config-edits.md` then `git commit -am "chore: apply pending .claude edits"` then `git push origin main`
 
 **T9 `scripts/check.sh`** (needs T4, T6, T7)
-- [ ] branch — `git switch main` then `git pull` then `git switch -c feature/phase-0-t9-check-script`
-- [ ] build — `/clear` then `/build 0 T9`
-- [ ] verify — `/clear` then `/verify` (from here on it runs the real `scripts/check.sh`)
-- [ ] review — `/clear` then `/review 0`
+- [x] branch — `git switch main` then `git pull` then `git switch -c feature/phase-0-t9-check-script`
+- [x] build — `/clear` then `/build 0 T9`
+- [x] verify — `/clear` then `/verify` (from here on it runs the real `scripts/check.sh`)
+- [x] review — `/clear` then `/review 0`
 - [ ] merge — `git switch main` then `git merge --squash feature/phase-0-t9-check-script` then `git commit -m "Phase 0 T9 — scripts/check.sh"`
 - [ ] clean up — `git branch -D feature/phase-0-t9-check-script` then `git push origin main`
 
