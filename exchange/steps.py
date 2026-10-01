@@ -18,9 +18,10 @@ from exchange.pricing import (
     expected_flow_from_price,
     inv_sigmoid,
     prices_from_y,
+    quantize_step,
 )
 from exchange.spec import MarketSpec
-from exchange.state import EngineState
+from exchange.state import EngineState, PriceJump
 
 
 @dataclass(frozen=True, eq=False)
@@ -119,3 +120,64 @@ def _single_step(
         order_pressure=order_pressure, cross_price_pressure=cross, cum_orders=cum_orders
     )
     return dataclasses.replace(state, y=y_next, cum_orders=cum_orders), diagnostics
+
+
+def schedule_jump(
+    spec: MarketSpec,
+    state: EngineState,
+    *,
+    drink: int,
+    p_target: float,
+    duration_ms: int,
+    now_ms: int,
+) -> EngineState:
+    """Start easing `drink` to `p_target` over `duration_ms` (v1 engine.py:318-332).
+
+    The target is quantised to `step_quant` and its fraction clipped into
+    (0, 1), so a target outside `[p_min, p_max]` saturates at the bound rather
+    than raising (AC8). A jump already running on that drink is replaced.
+    """
+    if not 0 <= drink < len(spec.names):
+        raise ValueError(f"unknown drink index {drink} (market has {len(spec.names)} drinks)")
+    step = float(spec.params.step_quant)
+    p_target_q = float(quantize_step(p_target, step))
+    lo, hi = spec.p_min[drink], spec.p_max[drink]
+    f = np.clip((p_target_q - lo) / (hi - lo), FRAC_EPS, 1 - FRAC_EPS)
+    y1 = float(inv_sigmoid(f))
+    jump = PriceJump(
+        i=drink,
+        y0=float(state.y[drink]),
+        y1=y1,
+        t0_ms=now_ms,
+        t1_ms=now_ms + max(1, int(duration_ms)),
+    )
+    # Replace in place, as v1's dict assignment keeps the key's position.
+    jumps = [jump if j.i == drink else j for j in state.jumps]
+    if not any(j.i == drink for j in state.jumps):
+        jumps.append(jump)
+    return dataclasses.replace(state, jumps=tuple(jumps), version=state.version + 1)
+
+
+def apply_jumps(spec: MarketSpec, state: EngineState, *, now_ms: int) -> EngineState:
+    """Put every jumping drink on its smoothstep path; land and drop finished jumps.
+
+    v1 engine.py:334-358. While a jump is active this overwrites whatever
+    orders or noise did to that drink's `y` (AC7) -- but only when it runs: in
+    v1's tick Brownian runs after it, so a jumping drink can be published with
+    one draw of noise on top until the next application (plan D5).
+    """
+    if not state.jumps:
+        return state
+    y = np.array(state.y)
+    remaining = []
+    for pj in state.jumps:
+        if now_ms >= pj.t1_ms:
+            y[pj.i] = pj.y1
+        else:
+            # smoothstep easing
+            f = (now_ms - pj.t0_ms) / max(1, pj.t1_ms - pj.t0_ms)
+            f = np.clip(f, 0.0, 1.0)
+            f = f * f * (3 - 2 * f)
+            y[pj.i] = pj.y0 + f * (pj.y1 - pj.y0)
+            remaining.append(pj)
+    return dataclasses.replace(state, y=y, jumps=tuple(remaining))
