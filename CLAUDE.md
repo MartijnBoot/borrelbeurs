@@ -26,7 +26,8 @@ backed by **Postgres** (`db/`, Alembic), with the pure pricing engine (`exchange
 
 - Work from an audited plan in `docs/plans/phase-N-*.md`. No task without a PASS audit — not
   yours to waive.
-- One task per session, on its own branch, conventional commits (`feat(phase-0): T7 — ...`).
+- One task per branch, conventional commits (`feat(phase-0): T7 — ...`). `/build N` with no
+  task id builds the whole phase in one session, task by task, on stacked branches.
 - Bug fixes start with a failing test; a feature's acceptance criteria become its test cases.
 - Run `./scripts/check.sh` and paste the actual output before saying a task is done —
   "tests pass" is not evidence.
