@@ -53,8 +53,9 @@ package = false
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-# legacy/ is v1, frozen. exchange/ enters the gate in Phase 1, not before.
-extend-exclude = ["legacy", "exchange"]
+# legacy/ is v1, frozen. tests/engine/v1_reference/ is v1's engine, moved there
+# byte-identical and hash-pinned (Phase 1 plan D2): formatting it would change it.
+extend-exclude = ["legacy", "tests/engine/v1_reference"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
@@ -74,11 +75,23 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 python_version = "3.11"
 strict = true
 warn_unused_configs = true
-exclude = "^(legacy|exchange)/"
+exclude = "^(legacy|tests/engine/v1_reference)/"
+# tests/ has no __init__.py, but tests/engine/golden/ is imported as
+# `tests.engine.golden` (Phase 1 T1). Without this, mypy names that package
+# `golden` by walking up to the first directory lacking an __init__.py, and
+# then finds it a second time under its import name.
+explicit_package_bases = true
 # The pydantic mypy plugin is deliberately not enabled: it rewrites model
 # __init__ signatures, which would make the `Settings()` call in
 # app/core/config.py an error even though populating a BaseSettings from the
 # environment is exactly what it is for.
+
+# The v1 reference engine is untyped and may not be edited (Phase 1 plan D2,
+# R7). Its importers -- the golden capture, later the differential tests -- see
+# it as `Any` rather than mypy following into it.
+[[tool.mypy.overrides]]
+module = "tests.engine.v1_reference.*"
+follow_imports = "skip"
 
 # --- tests -------------------------------------------------------------------
 

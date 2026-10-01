@@ -19,14 +19,16 @@ backed by **Postgres** (`db/`, Alembic), with the pure pricing engine (`exchange
 - `uv run alembic -c db/alembic.ini revision -m "<msg>"` — new migration.
 - `uv run alembic -c db/alembic.ini upgrade head` / `downgrade -1` — apply / roll back.
 - `uv run pytest tests/unit tests/meta tests/engine` — fast tests, no database needed.
-  (`tests/engine` stays empty until Phase 1.)
+- `uv run python -m tests.engine.golden.capture --check` — recapture the golden fixtures from
+  the v1 reference and diff them (`--write` regenerates them: a deliberate behaviour change only).
 - `uv run uvicorn app.main:app --reload --port 8000` — run the app.
 
 ## Workflow
 
 - Work from an audited plan in `docs/plans/phase-N-*.md`. No task without a PASS audit — not
   yours to waive.
-- One task per session, on its own branch, conventional commits (`feat(phase-0): T7 — ...`).
+- One task per branch, conventional commits (`feat(phase-0): T7 — ...`). `/build N` with no
+  task id builds the whole phase in one session, task by task, on stacked branches.
 - Bug fixes start with a failing test; a feature's acceptance criteria become its test cases.
 - Run `./scripts/check.sh` and paste the actual output before saying a task is done —
   "tests pass" is not evidence.
@@ -44,9 +46,10 @@ backed by **Postgres** (`db/`, Alembic), with the pure pricing engine (`exchange
   that already has a successor — add a new one.
 - Types at the boundary: every external input is validated (pydantic) before use. No untyped
   boundary.
-- `exchange/` must end up importing no clock, no I/O, no framework, golden fixtures passing —
-  Phase 1's target, not today: `engine.py` is v1 verbatim (`import time` and all), excluded
-  from ruff/mypy until then (`pyproject.toml`).
+- `exchange/` imports no clock, no I/O, no framework, and (from Phase 1 T7) replays the golden fixtures in
+  `tests/engine/golden/fixtures/` exactly. v1's engine lives on, verbatim and sha256-pinned, as
+  `tests/engine/v1_reference/engine.py` — the fixtures are captured from it; excluded from
+  ruff/mypy (`pyproject.toml`). Never edit it.
 - A new dependency needs justification in the PR (why not stdlib, licence, maintenance) — ask
   first.
 

@@ -42,9 +42,9 @@ intentional and documented here.
 | D-18 | `GET /state` advances the engine and rewrites globals | `api.py:278-281` | A read endpoint with write side effects; the display page's polling changes bar prices | 3 |
 | D-19 | Theme editor exposes only 13 of 21 tokens | `settings.html:428-442` | Custom themes look half-applied | 6 |
 | D-20 | `p0_total` / `p0_per_drink` are computed from `BAR_PRICE`, not `p0` | `api.py:770` → `persistence.py:126` | A lie in the money reporting | 7 |
-| D-21 | `calibrate_s0_to_p0` anchors to current `y`, not `p0` | `engine.py:38-41` | Name lies about behaviour | 1 |
-| D-22 | Idle gate uses `refresh_minutes`, not `idle_decay_minutes` | `engine.py:239` | The setting labelled as the threshold is not the gate | 1 |
-| D-23 | `flow_ema` only updates on order and never decays | `api.py:325` | Volatility amplification stays frozen after a quiet spell | 1 |
+| D-21 | `calibrate_s0_to_p0` anchors to current `y`, not `p0` | `engine.py:38-41` | Name lies about behaviour | 1 — **Resolved (Phase 1 T2):** renamed `anchor_s0_to_current_y`, maths unchanged, docstring says why ([exchange/spec.py](../../exchange/spec.py)) |
+| D-22 | Idle gate uses `refresh_minutes`, not `idle_decay_minutes` | `engine.py:239` | The setting labelled as the threshold is not the gate | 1 — **Resolved (Phase 1 T6):** kept as v1, documented on `apply_idle` ([exchange/steps.py](../../exchange/steps.py)) and pinned by `test_d22_idle_fires_on_the_refresh_boundary_not_the_idle_threshold` ([tests/engine/test_steps_idle_brownian.py](../../tests/engine/test_steps_idle_brownian.py)) |
+| D-23 | `flow_ema` only updates on order and never decays | `api.py:325` | Volatility amplification stays frozen after a quiet spell | 1 — **Resolved by decision (Phase 1 T10):** kept as v1, see [ADR 0012](../adr/0012-flow-ema-keeps-v1-semantics.md); moved into `apply_orders` (T4), pinned by `test_d23_flow_ema_is_unchanged_by_idle_and_brownian` (T6) |
 | D-24 | Index-based drink identity; no duplicate-name check | `api.py:595-646` | A duplicate name corrupts every name→index map | 2 |
 | D-25 | Inconsistent HTML escaping; drink names interpolated into `innerHTML` | `koers.html:462`, `settings.html:633`, `manipulation.html:383-386` | Injection via drink name | 4 |
 | D-26 | `home.html` health strip references DOM that does not exist | `home.html:110-151` | Throws uncaught on every load | 6 |

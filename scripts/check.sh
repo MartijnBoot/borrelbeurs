@@ -55,9 +55,8 @@ step() {
 # Directories allowed to hold no tests yet. pytest exits 5 on "no tests
 # collected"; that is green only for a directory named here, never globally,
 # so a collection error (exit 2) or a directory whose tests all vanished is
-# still red (plan R10). tests/engine fills up in Phase 1 -- delete it from this
-# list then.
-ALLOW_EMPTY=" tests/engine "
+# still red (plan R10). Empty since Phase 1 filled tests/engine.
+ALLOW_EMPTY=""
 
 pytest_each() {
   local dir status
@@ -76,7 +75,7 @@ step "ruff format --check" uv run ruff format --check .
 step "ruff check" uv run ruff check .
 step "web format:check" pnpm --dir web format:check
 step "web lint" pnpm --dir web lint
-step "mypy app db tests" uv run mypy app db tests
+step "mypy app db exchange tests" uv run mypy app db exchange tests
 step "web tsc -b" pnpm --dir web exec tsc -b
 step "pytest tests/unit tests/meta tests/engine" pytest_each tests/unit tests/meta tests/engine
 # `run test`, not `test`: pnpm's `test` shorthand parses `--run` as its own
