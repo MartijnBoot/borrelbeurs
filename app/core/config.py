@@ -29,7 +29,7 @@ from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, ValidationError, field_validator
+from pydantic import Field, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -88,6 +88,15 @@ class Settings(BaseSettings):
     log_level: LogLevel = "INFO"
     app_env: AppEnv = "local"
 
+    # Optional. Login attempts per client IP per rolling 60 s, counted before
+    # the key is parsed or hashed (Phase 3 SD7).
+    login_rate_per_minute: int = Field(default=10, ge=1)
+
+    # Optional. The session cookie's `Secure` attribute (Phase 3 SD8). Off is
+    # for a plain-http local stack only; `_refuse_insecure_cookie_in_production`
+    # makes production refuse it.
+    session_cookie_secure: bool = True
+
     @field_validator("log_level", mode="before")
     @classmethod
     def _normalise_log_level(cls, value: object) -> object:
@@ -132,6 +141,22 @@ class Settings(BaseSettings):
         if parts.path in ("", "/"):
             raise ValueError(f"names no database; {DATABASE_URL_SHAPE}")
         return value
+
+    @model_validator(mode="after")
+    def _refuse_insecure_cookie_in_production(self) -> Settings:
+        """A session cookie without `Secure` is refused in production (Phase 3 SD8, AC6a).
+
+        Raised as `ConfigError` directly rather than as a `ValueError`: a model
+        validator's error has no field location, so `_describe` could not name
+        the variable, and naming it is the point (AC2).
+        """
+        if self.app_env == "production" and not self.session_cookie_secure:
+            raise ConfigError(
+                "Invalid configuration: SESSION_COOKIE_SECURE=false is refused when "
+                "APP_ENV=production; a session cookie must be Secure there. "
+                "The application will not start."
+            )
+        return self
 
 
 def _environment_variable(location: tuple[int | str, ...]) -> str:

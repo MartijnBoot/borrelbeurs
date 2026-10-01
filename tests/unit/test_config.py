@@ -15,7 +15,15 @@ import pytest
 
 from app.core.config import ConfigError, get_settings
 
-ENV_VARS = ("DATABASE_URL", "JWT_SECRET", "PORT", "LOG_LEVEL", "APP_ENV")
+ENV_VARS = (
+    "DATABASE_URL",
+    "JWT_SECRET",
+    "PORT",
+    "LOG_LEVEL",
+    "APP_ENV",
+    "LOGIN_RATE_PER_MINUTE",
+    "SESSION_COOKIE_SECURE",
+)
 
 ENV_EXAMPLE = Path(__file__).resolve().parents[2] / ".env.example"
 
@@ -327,3 +335,73 @@ def test_complete_environment_constructs_cleanly(
     monkeypatch.delenv("PORT")
     get_settings.cache_clear()
     assert get_settings().port == 8000
+
+
+def test_missing_jwt_secret_fails_naming_the_variable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Phase 3 AC4: no JWT_SECRET, no boot -- and the message says which variable."""
+    _set_env(monkeypatch, JWT_SECRET=None)
+
+    with pytest.raises(ConfigError) as excinfo:
+        get_settings()
+
+    assert "JWT_SECRET" in str(excinfo.value)
+
+
+# --- Phase 3: login rate and session cookie (SD7, SD8) ---------------------------
+
+
+def test_login_rate_and_cookie_security_default_to_ten_and_secure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_env(monkeypatch)
+
+    settings = get_settings()
+
+    assert settings.login_rate_per_minute == 10
+    assert settings.session_cookie_secure is True
+
+
+def test_both_are_read_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_env(monkeypatch, LOGIN_RATE_PER_MINUTE="25", SESSION_COOKIE_SECURE="false")
+
+    settings = get_settings()
+
+    assert settings.login_rate_per_minute == 25
+    assert settings.session_cookie_secure is False
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "banana"])
+def test_a_bad_login_rate_fails_naming_the_variable(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    _set_env(monkeypatch, LOGIN_RATE_PER_MINUTE=value)
+
+    with pytest.raises(ConfigError) as excinfo:
+        get_settings()
+
+    assert "LOGIN_RATE_PER_MINUTE" in str(excinfo.value)
+
+
+def test_production_refuses_an_insecure_session_cookie(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AC6a (boot half), SD8: `Secure` may be switched off locally, never in production."""
+    _set_env(monkeypatch, APP_ENV="production", SESSION_COOKIE_SECURE="false")
+
+    with pytest.raises(ConfigError) as excinfo:
+        get_settings()
+
+    message = str(excinfo.value)
+    assert "SESSION_COOKIE_SECURE" in message
+    assert "production" in message
+
+
+@pytest.mark.parametrize(
+    ("app_env", "secure"), [("production", "true"), ("local", "false"), ("ci", "false")]
+)
+def test_an_insecure_cookie_is_allowed_outside_production(
+    monkeypatch: pytest.MonkeyPatch, app_env: str, secure: str
+) -> None:
+    _set_env(monkeypatch, APP_ENV=app_env, SESSION_COOKIE_SECURE=secure)
+
+    assert get_settings().session_cookie_secure is (secure == "true")
