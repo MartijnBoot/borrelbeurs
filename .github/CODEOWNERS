@@ -1,0 +1,7 @@
+# BorrelBeurs -- code owners (plan T12, way-of-working 7.1).
+#
+# Schema changes and the shipped image. With a single operator no review is
+# required (ADR 0012), so this records ownership today and starts enforcing it
+# the day a second contributor turns the review requirement back on.
+/db/migrations/ @MartijnBoot
+/docker/ @MartijnBoot

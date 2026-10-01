@@ -1,0 +1,36 @@
+# BorrelBeurs -- feedback (plan T12, way-of-working Appendix G).
+#
+# Appendix G is one template for bugs and feedback; this is its feedback
+# half -- the context fields kept, reproduction steps and severity dropped.
+name: Feedback
+description: A suggestion, or something that works but could work better.
+labels: [feedback]
+body:
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options: [local, dev, external-test, production]
+  - type: input
+    id: build-sha
+    attributes:
+      label: Build SHA
+  - type: input
+    id: route
+    attributes:
+      label: URL / route
+  - type: input
+    id: user
+    attributes:
+      label: User / tenant
+  - type: textarea
+    id: feedback
+    attributes:
+      label: Feedback
+      description: What you noticed, and what you would expect instead.
+    validations:
+      required: true
+  - type: textarea
+    id: recording
+    attributes:
+      label: Screenshot / recording

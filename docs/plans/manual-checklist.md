@@ -131,24 +131,24 @@ Exit: `scripts/setup.sh` then one command gives a running shell app; CI green.
 - [x] build — `/clear` then `/build 0 T11`
 - [x] verify — `/clear` then `/verify`
 - [x] review — `/clear` then `/review 0`
-- [ ] merge — `git switch main` then `git merge --squash feature/phase-0-t11-ci-workflow` then `git commit -m "Phase 0 T11 — CI workflow"`
-- [ ] clean up — `git branch -D feature/phase-0-t11-ci-workflow` then `git push origin main`
-- [ ] CI green — `gh run list --branch main --limit 1` shows `completed success`
+- [x] merge — `git switch main` then `git merge --squash feature/phase-0-t11-ci-workflow` then `git commit -m "Phase 0 T11 — CI workflow"`
+- [x] clean up — `git branch -D feature/phase-0-t11-ci-workflow` then `git push origin main`
+- [x] CI green — `gh run list --branch main --limit 1` shows `completed success`
 
 **T12 repository governance** (needs T11 green — human, GitHub UI — see plan `docs/plans/phase-0-foundations.md` T12)
 
 Don't start before T11's CI has run once: requiring `check` / `secret-scan` / `docker` before
 they exist blocks every PR. The repo is **private on a personal account** — check first
 whether your plan allows branch protection and push protection there:
-- [ ] plan — `gh api user --jq .plan.name` (private-repo branch protection needs Pro)
-- [ ] available security features — `gh api repos/MartijnBoot/borrelbeurs --jq .security_and_analysis`
-- [ ] if push protection is unavailable: decide — make the repo public, or record an AC7 waiver ADR like R5's
-- [ ] branch protection on `main` — github.com/MartijnBoot/borrelbeurs → Settings → Branches: PR required, required checks `check` / `secret-scan` / `docker`, dismiss stale approvals, no force-push, no deletion, linear history (no required review — R5 waiver)
-- [ ] secret scanning + push protection — Settings → Code security
-- [ ] repo files (can be a normal `/build 0 T12` task): `.github/dependabot.yml`, `CODEOWNERS`, `PULL_REQUEST_TEMPLATE.md`, `ISSUE_TEMPLATE/{bug,feedback}.yml`, review-waiver ADR
-- [ ] check — `gh api repos/MartijnBoot/borrelbeurs/branches/main/protection` shows the three checks and `allow_force_pushes: false`
-- [ ] check — `gh api repos/MartijnBoot/borrelbeurs/secret-scanning/alerts` returns 200
-- [ ] check AC7 — on a throwaway branch, commit a known provider-pattern secret and `git push`; the push is rejected (keep the message)
+- [x] plan — `gh api user --jq .plan.name` (private-repo branch protection needs Pro)
+- [x] available security features — `gh api repos/MartijnBoot/borrelbeurs --jq .security_and_analysis`
+- [x] if push protection is unavailable: decide — make the repo public, or record an AC7 waiver ADR like R5's
+- [x] branch protection on `main` — github.com/MartijnBoot/borrelbeurs → Settings → Branches: PR required, required checks `check` / `secret-scan` / `docker`, dismiss stale approvals, no force-push, no deletion, linear history (no required review — R5 waiver)
+- [x] secret scanning + push protection — Settings → Code security
+- [x] repo files (can be a normal `/build 0 T12` task): `.github/dependabot.yml`, `CODEOWNERS`, `PULL_REQUEST_TEMPLATE.md`, `ISSUE_TEMPLATE/{bug,feedback}.yml`, review-waiver ADR
+- [x] check — `gh api repos/MartijnBoot/borrelbeurs/branches/main/protection` shows the three checks and `allow_force_pushes: false`
+- [x] check — `gh api repos/MartijnBoot/borrelbeurs/secret-scanning/alerts` returns 200
+- [x] check AC7 — on a throwaway branch, commit a known provider-pattern secret and `git push`; the push is rejected (keep the message)
 
 Run these in PowerShell or Git Bash exactly as written. The `Bash(...:*)` form in
 `rebuild-progress.md` is a Claude Code permission rule, not a command.
