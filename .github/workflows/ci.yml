@@ -1,0 +1,128 @@
+# BorrelBeurs -- the gate, in CI (plan T11, AC4, AC5).
+#
+# One workflow, every PR and every push to `main` (way-of-working 7.3:1179).
+# Three jobs: `check` runs the identical script a developer runs locally --
+# scripts/check.sh is not restated here, it is called -- so AC4 ("local and
+# CI agree") is structurally true rather than a promise someone has to keep.
+# `secret-scan` and `docker` are independent and run in parallel with it.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # gitleaks-action scans only the new commits on push and pull_request; it
+  # scans the full history only on these two (plan:284).
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    # Same image + credentials as docker-compose.yml's `db` (AC1 keeps these
+    # two in sync; tests/meta/test_compose_matches_env_example.py guards it).
+    # DATABASE_URL below is .env.example's own value -- a published, local-only
+    # development credential, not a secret.
+    services:
+      db:
+        image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+        env:
+          POSTGRES_USER: borrelbeurs
+          POSTGRES_PASSWORD: borrelbeurs
+          POSTGRES_DB: borrelbeurs
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U borrelbeurs -d borrelbeurs"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://borrelbeurs:borrelbeurs@localhost:5432/borrelbeurs
+      APP_ENV: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python
+        run: uv python install
+
+      # No root package.json and no `packageManager` field, so the action has
+      # nothing to read a version from -- it must be given one.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install Python dependencies (frozen)
+        run: uv sync --frozen
+
+      - name: Install web dependencies (frozen)
+        run: pnpm --dir web install --frozen-lockfile
+
+      # AC2 (fail-fast boot) needs a JWT_SECRET at least 32 characters long,
+      # and .env.example deliberately ships one too short to pass validation
+      # (a committed one would be a leaked one). Generated fresh per run, the
+      # same way scripts/setup.sh generates a local one.
+      - name: Generate an ephemeral JWT secret
+        run: echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      - name: Run the gate
+        run: ./scripts/check.sh
+
+  secret-scan:
+    name: secret-scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history, so the scheduled / manual runs can scan all of it --
+          # a secret committed and later deleted still leaked.
+          fetch-depth: 0
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pinned: .gitleaks.toml's `[[allowlists]]` table is ignored by
+          # older gitleaks releases, and the action's default moves.
+          GITLEAKS_VERSION: 8.28.0
+          # No GITLEAKS_LICENSE: that is only required for a GitHub
+          # organization's repositories, and this one is on a personal
+          # account (plan:299, docs/plans/manual-checklist.md T12).
+
+  docker:
+    name: docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Build only, never push (plan:285) -- promoting a built image is
+      # Phase 8's job (plan:433-435). Tagged by commit so the artifact a
+      # later phase promotes is traceable to the exact source it was built
+      # from.
+      - name: Build the image
+        run: docker build -f docker/Dockerfile -t "borrelbeurs:${{ github.sha }}" .

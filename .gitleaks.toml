@@ -1,0 +1,21 @@
+# BorrelBeurs -- gitleaks config for the secret-scan job (plan T11, AC5/AC7).
+#
+# Extends gitleaks' default ruleset; one allowlist entry on top of it. Without
+# this, secret-scan is permanently red on `main`: gitleaks' `generic-api-key`
+# rule flags the unit tests' JWT_SECRET fixture (tests/unit/test_config.py,
+# tests/unit/test_app_shell.py) -- a sequential hex string chosen to be exactly
+# 32 characters, not a credential. It is in history, so editing the tests would
+# not clear it.
+#
+# `AKIAIOSFODNN7EXAMPLE` (plan:291) needs no entry here: the default
+# `aws-access-token` rule already allowlists keys ending in EXAMPLE. That also
+# means it cannot serve as the fixture that proves secret-scan fails.
+#
+# Scope: the one exact string. Never widen this to a path or a rule.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Unit-test JWT_SECRET fixture -- sequential hex, not a credential"
+regexes = ['''^0123456789abcdef0123456789abcdef$''']

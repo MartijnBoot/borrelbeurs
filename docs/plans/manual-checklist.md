@@ -115,22 +115,22 @@ Exit: `scripts/setup.sh` then one command gives a running shell app; CI green.
 - [x] build — `/clear` then `/build 0 T9`
 - [x] verify — `/clear` then `/verify` (from here on it runs the real `scripts/check.sh`)
 - [x] review — `/clear` then `/review 0`
-- [ ] merge — `git switch main` then `git merge --squash feature/phase-0-t9-check-script` then `git commit -m "Phase 0 T9 — scripts/check.sh"`
-- [ ] clean up — `git branch -D feature/phase-0-t9-check-script` then `git push origin main`
+- [x] merge — `git switch main` then `git merge --squash feature/phase-0-t9-check-script` then `git commit -m "Phase 0 T9 — scripts/check.sh"`
+- [x] clean up — `git branch -D feature/phase-0-t9-check-script` then `git push origin main`
 
 **T10 Dockerfile and build-context hygiene** (needs T9)
-- [ ] branch — `git switch main` then `git pull` then `git switch -c feature/phase-0-t10-dockerfile`
-- [ ] build — `/clear` then `/build 0 T10`
-- [ ] verify — `/clear` then `/verify`
-- [ ] review — `/clear` then `/review 0`
-- [ ] merge — `git switch main` then `git merge --squash feature/phase-0-t10-dockerfile` then `git commit -m "Phase 0 T10 — Dockerfile and build-context hygiene"`
-- [ ] clean up — `git branch -D feature/phase-0-t10-dockerfile` then `git push origin main`
+- [x] branch — `git switch main` then `git pull` then `git switch -c feature/phase-0-t10-dockerfile`
+- [x] build — `/clear` then `/build 0 T10`
+- [x] verify — `/clear` then `/verify`
+- [x] review — `/clear` then `/review 0`
+- [x] merge — `git switch main` then `git merge --squash feature/phase-0-t10-dockerfile` then `git commit -m "Phase 0 T10 — Dockerfile and build-context hygiene"`
+- [x] clean up — `git branch -D feature/phase-0-t10-dockerfile` then `git push origin main`
 
 **T11 CI workflow** (needs T10)
-- [ ] branch — `git switch main` then `git pull` then `git switch -c feature/phase-0-t11-ci-workflow`
-- [ ] build — `/clear` then `/build 0 T11`
-- [ ] verify — `/clear` then `/verify`
-- [ ] review — `/clear` then `/review 0`
+- [x] branch — `git switch main` then `git pull` then `git switch -c feature/phase-0-t11-ci-workflow`
+- [x] build — `/clear` then `/build 0 T11`
+- [x] verify — `/clear` then `/verify`
+- [x] review — `/clear` then `/review 0`
 - [ ] merge — `git switch main` then `git merge --squash feature/phase-0-t11-ci-workflow` then `git commit -m "Phase 0 T11 — CI workflow"`
 - [ ] clean up — `git branch -D feature/phase-0-t11-ci-workflow` then `git push origin main`
 - [ ] CI green — `gh run list --branch main --limit 1` shows `completed success`
