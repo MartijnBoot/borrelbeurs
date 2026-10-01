@@ -28,6 +28,12 @@ PHASE_2_TABLES = frozenset(
         "news",
     }
 )
+PHASE_3_TABLES = frozenset({"auth_key", "market_event"})
+
+# AC6c (schema half): an access key's secret is stored only as its argon2id hash.
+AUTH_KEY_COLUMNS = frozenset(
+    {"key_id", "label", "role", "secret_hash", "created_at", "revoked_at", "last_used_at"}
+)
 
 INTEGER_TYPES = frozenset({"integer", "bigint"})
 FLOAT_TYPES = frozenset({"real", "double precision", "numeric", "money"})
@@ -76,9 +82,11 @@ def money_violations(columns: Iterable[Column]) -> list[str]:
     return faults
 
 
-def test_the_eight_phase_2_tables_are_the_ones_inspected(database_url: str) -> None:
-    """Anti-vacuity: the inspection below reaches every table of SD4."""
-    assert {table for table, _, _ in asyncio.run(_columns(database_url))} == PHASE_2_TABLES
+def test_the_application_tables_are_the_ones_inspected(database_url: str) -> None:
+    """Anti-vacuity: the inspection below reaches every table of Phase 2 SD4 and Phase 3."""
+    tables = {table for table, _, _ in asyncio.run(_columns(database_url))}
+
+    assert tables == PHASE_2_TABLES | PHASE_3_TABLES
 
 
 def test_every_money_column_is_integer_cents(database_url: str) -> None:
@@ -274,3 +282,196 @@ def test_one_drink_appears_once_per_order(database_url: str) -> None:
 
     with pytest.raises(IntegrityError, match="order_line_order_id_drink_id_key"):
         _in_transaction(database_url, write)
+
+
+# Phase 3 (T2): auth_key, market_event, order's actor and receipt, run's grace and candles.
+
+
+def test_auth_key_holds_no_column_for_a_plaintext_secret(database_url: str) -> None:
+    """AC6c (schema half), SD5: exactly SD5's columns; the secret only as its hash."""
+    columns = {(c, d) for t, c, d in asyncio.run(_columns(database_url)) if t == "auth_key"}
+
+    assert {c for c, _ in columns} == AUTH_KEY_COLUMNS
+    assert ("secret_hash", "text") in columns
+
+
+async def _auth_key(connection: AsyncConnection, *, role: str = "bar", label: str = "Bar 1") -> int:
+    result = await connection.execute(
+        text(
+            "INSERT INTO auth_key (label, role, secret_hash) "
+            "VALUES (:label, :role, '$argon2id$x') RETURNING key_id"
+        ),
+        {"label": label, "role": role},
+    )
+    return int(result.scalar_one())
+
+
+def test_the_three_roles_are_accepted(database_url: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        for role in ("display", "bar", "admin"):
+            await _auth_key(connection, role=role)
+
+    _in_transaction(database_url, write)
+
+
+def test_an_unknown_role_is_rejected(database_url: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        await _auth_key(connection, role="Admin")
+
+    with pytest.raises(IntegrityError, match="auth_key_role_check"):
+        _in_transaction(database_url, write)
+
+
+@pytest.mark.parametrize("label", ["", "x" * 101], ids=["empty", "101-chars"])
+def test_a_key_label_is_one_to_a_hundred_characters(database_url: str, label: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        await _auth_key(connection, label=label)
+
+    with pytest.raises(IntegrityError, match="auth_key_label_check"):
+        _in_transaction(database_url, write)
+
+
+async def _market_event(
+    connection: AsyncConnection, run_id: int, *, kind: str = "crash", start: int = 0, end: int = 1
+) -> None:
+    await connection.execute(
+        text(
+            "INSERT INTO market_event (run_id, kind, drink_ids, t_start_ms, t_end_ms) "
+            "VALUES (:r, :kind, '[1]', :start, :end)"
+        ),
+        {"r": run_id, "kind": kind, "start": start, "end": end},
+    )
+
+
+def test_the_three_event_kinds_are_accepted(database_url: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        run_id, _ = await _run_and_drink(connection)
+        for kind in ("crash", "bubble", "correction"):
+            await _market_event(connection, run_id, kind=kind)
+
+    _in_transaction(database_url, write)
+
+
+def test_an_unknown_event_kind_is_rejected(database_url: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        run_id, _ = await _run_and_drink(connection)
+        await _market_event(connection, run_id, kind="boom")
+
+    with pytest.raises(IntegrityError, match="market_event_kind_check"):
+        _in_transaction(database_url, write)
+
+
+@pytest.mark.parametrize("end", [1000, 999])
+def test_an_event_must_end_after_it_starts(database_url: str, end: int) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        run_id, _ = await _run_and_drink(connection)
+        await _market_event(connection, run_id, start=1000, end=end)
+
+    with pytest.raises(IntegrityError, match="market_event_times_check"):
+        _in_transaction(database_url, write)
+
+
+def test_an_event_belongs_to_an_existing_run(database_url: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        await _market_event(connection, -1)
+
+    with pytest.raises(IntegrityError, match="market_event_run_id_fkey"):
+        _in_transaction(database_url, write)
+
+
+def test_active_events_are_indexed_per_run(database_url: str) -> None:
+    """The ticker and rehydrate look up `ended_at IS NULL` events of one run."""
+    found: list[str] = []
+
+    async def read(connection: AsyncConnection) -> None:
+        result = await connection.execute(
+            text("SELECT indexdef FROM pg_indexes WHERE indexname = 'market_event_active'")
+        )
+        found.extend(str(row[0]) for row in result)
+
+    _in_transaction(database_url, read)
+
+    assert len(found) == 1
+    assert "(run_id)" in found[0]
+    assert "ended_at IS NULL" in found[0]
+
+
+def test_an_order_may_carry_its_actor_and_receipt(database_url: str) -> None:
+    """SD20: both are nullable (Phase 2's orders have neither), and stored when given."""
+
+    async def write(connection: AsyncConnection) -> None:
+        run_id, _ = await _run_and_drink(connection)
+        key_id = await _auth_key(connection)
+        await _order(connection, run_id, "k-legacy")
+        await connection.execute(
+            text(
+                'INSERT INTO "order" (run_id, idempotency_key, version, wall_ts_ms, '
+                "actor_key_id, response) VALUES (:r, 'k-new', 2, 0, :a, '{\"order_id\": 1}')"
+            ),
+            {"r": run_id, "a": key_id},
+        )
+
+    _in_transaction(database_url, write)
+
+
+def test_an_orders_actor_must_be_an_existing_key(database_url: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        run_id, _ = await _run_and_drink(connection)
+        await connection.execute(
+            text(
+                'INSERT INTO "order" (run_id, idempotency_key, version, wall_ts_ms, actor_key_id) '
+                "VALUES (:r, 'k-1', 1, 0, -1)"
+            ),
+            {"r": run_id},
+        )
+
+    with pytest.raises(IntegrityError, match="order_actor_key_id_fkey"):
+        _in_transaction(database_url, write)
+
+
+def test_a_run_defaults_to_two_grace_versions_and_minute_candles(database_url: str) -> None:
+    """SD18, SD25: existing and new runs take the defaults."""
+    found: list[tuple[int, int]] = []
+
+    async def write(connection: AsyncConnection) -> None:
+        run_id, _ = await _run_and_drink(connection)
+        result = await connection.execute(
+            text("SELECT quote_grace_versions, candle_interval_ms FROM run WHERE run_id = :r"),
+            {"r": run_id},
+        )
+        row = result.one()
+        found.append((int(row[0]), int(row[1])))
+
+    _in_transaction(database_url, write)
+
+    assert found == [(2, 60_000)]
+
+
+@pytest.mark.parametrize(
+    ("column", "value", "constraint"),
+    [
+        ("quote_grace_versions", -1, "run_quote_grace_versions_check"),
+        ("candle_interval_ms", 0, "run_candle_interval_ms_check"),
+    ],
+)
+def test_run_grace_and_candle_interval_are_bounded(
+    database_url: str, column: str, value: int, constraint: str
+) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        run_id, _ = await _run_and_drink(connection)
+        await connection.execute(
+            text(f"UPDATE run SET {column} = :v WHERE run_id = :r"), {"v": value, "r": run_id}
+        )
+
+    with pytest.raises(IntegrityError, match=constraint):
+        _in_transaction(database_url, write)
+
+
+def test_zero_grace_versions_is_allowed(database_url: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        run_id, _ = await _run_and_drink(connection)
+        await connection.execute(
+            text("UPDATE run SET quote_grace_versions = 0 WHERE run_id = :r"), {"r": run_id}
+        )
+
+    _in_transaction(database_url, write)

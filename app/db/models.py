@@ -44,6 +44,8 @@ class Run(Base):
     __table_args__ = (
         CheckConstraint("status IN ('draft', 'live', 'ended')", name="run_status_check"),
         CheckConstraint("run_seed >= 0", name="run_run_seed_check"),
+        CheckConstraint("quote_grace_versions >= 0", name="run_quote_grace_versions_check"),
+        CheckConstraint("candle_interval_ms > 0", name="run_candle_interval_ms_check"),
         Index(
             "run_one_live",
             text("(true)"),
@@ -60,6 +62,8 @@ class Run(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    quote_grace_versions: Mapped[int] = mapped_column(Integer, server_default=text("2"))
+    candle_interval_ms: Mapped[int] = mapped_column(Integer, server_default=text("60000"))
 
 
 class RunConfigRevision(Base):
@@ -163,7 +167,11 @@ class PriceTick(Base):
 
 
 class Order(Base):
-    """An accepted order. Its money is in its lines, never here (PD4, AC11)."""
+    """An accepted order. Its money is in its lines, never here (PD4, AC11).
+
+    `actor_key_id` and `response` (the receipt as returned, Phase 3 SD20) are
+    NULL on Phase 2's imported and test orders.
+    """
 
     __tablename__ = "order"
     __table_args__ = (UniqueConstraint("idempotency_key", name="order_idempotency_key_key"),)
@@ -174,6 +182,8 @@ class Order(Base):
     version: Mapped[int] = mapped_column(BigInteger)
     wall_ts_ms: Mapped[int] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    actor_key_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("auth_key.key_id"))
+    response: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
 
 class OrderLine(Base):
@@ -215,3 +225,43 @@ class News(Base):
     text: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AuthKey(Base):
+    """An access key, minted by CLI (Phase 3 SD5). The secret is stored only as
+    its argon2id hash (AC6c)."""
+
+    __tablename__ = "auth_key"
+    __table_args__ = (
+        CheckConstraint("role IN ('display', 'bar', 'admin')", name="auth_key_role_check"),
+        CheckConstraint("char_length(label) BETWEEN 1 AND 100", name="auth_key_label_check"),
+    )
+
+    key_id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    label: Mapped[str] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(Text)
+    secret_hash: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class MarketEvent(Base):
+    """A crash, bubble or correction (Phase 3 SD23). Active while `ended_at` is NULL."""
+
+    __tablename__ = "market_event"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('crash', 'bubble', 'correction')", name="market_event_kind_check"
+        ),
+        CheckConstraint("t_end_ms > t_start_ms", name="market_event_times_check"),
+        Index("market_event_active", "run_id", postgresql_where=text("ended_at IS NULL")),
+    )
+
+    event_id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    run_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("run.run_id"))
+    kind: Mapped[str] = mapped_column(Text)
+    drink_ids: Mapped[list[int]] = mapped_column(JSONB)
+    t_start_ms: Mapped[int] = mapped_column(BigInteger)
+    t_end_ms: Mapped[int] = mapped_column(BigInteger)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
