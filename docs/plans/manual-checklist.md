@@ -164,10 +164,10 @@ Exit: pure engine reproduces v1's outputs exactly. **Build on opus (`/model opus
 - [x] branch — `git switch main` then `git pull` then `git switch -c docs/phase-1-plan`
 - [x] plan — `/clear` then `/plan 1`
 - [x] audit — `/clear` then `/audit 1`, fill in `Audited by` / `Date`
-- [ ] merge the plan — per-phase loop step 5 with `<N>` = 1
-- [ ] tasks (copy from the plan, then per-task loop with `/build 1 <T>` and `/review 1`):
-  - [ ] …
-- [ ] exit criterion — `/clear` then `/verify` shows the golden fixtures passing on `main`
+- [x] merge the plan — per-phase loop step 5 with `<N>` = 1
+- [x] tasks (copy from the plan, then per-task loop with `/build 1 <T>` and `/review 1`):
+  - [x] …
+- [x] exit criterion — `/clear` then `/verify` shows the golden fixtures passing on `main`
 
 ## Phase 2 — Data model + persistence
 Exit: live config round-trips through Postgres; restart preserves prices.
