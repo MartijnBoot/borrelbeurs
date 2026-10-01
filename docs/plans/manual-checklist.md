@@ -162,8 +162,8 @@ Exit: pure engine reproduces v1's outputs exactly. **Build on opus (`/model opus
 
 - [x] Spec approved (`docs/specs/phase-1-engine.md` already says `Status: Approved`)
 - [x] branch — `git switch main` then `git pull` then `git switch -c docs/phase-1-plan`
-- [ ] plan — `/clear` then `/plan 1`
-- [ ] audit — `/clear` then `/audit 1`, fill in `Audited by` / `Date`
+- [x] plan — `/clear` then `/plan 1`
+- [x] audit — `/clear` then `/audit 1`, fill in `Audited by` / `Date`
 - [ ] merge the plan — per-phase loop step 5 with `<N>` = 1
 - [ ] tasks (copy from the plan, then per-task loop with `/build 1 <T>` and `/review 1`):
   - [ ] …
