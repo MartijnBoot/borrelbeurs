@@ -1,0 +1,63 @@
+# BorrelBeurs -- bug report (plan T12, way-of-working Appendix G).
+name: Bug
+description: Something behaves wrongly.
+labels: [bug]
+body:
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options: [local, dev, external-test, production]
+    validations:
+      required: true
+  - type: input
+    id: build-sha
+    attributes:
+      label: Build SHA
+  - type: input
+    id: route
+    attributes:
+      label: URL / route
+  - type: input
+    id: user
+    attributes:
+      label: User / tenant
+  - type: input
+    id: client
+    attributes:
+      label: Browser + OS + viewport
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      value: "1. "
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual
+    validations:
+      required: true
+  - type: textarea
+    id: recording
+    attributes:
+      label: Screenshot / recording
+  - type: textarea
+    id: console
+    attributes:
+      label: Console errors / failed requests
+      render: text
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options: [P1, P2, P3, P4]
+    validations:
+      required: true

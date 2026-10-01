@@ -1,0 +1,30 @@
+# BorrelBeurs -- Dependabot (plan T12, way-of-working 7.1).
+#
+# Weekly, one grouped PR per ecosystem. Python uses the `uv` ecosystem, not
+# `pip`: `pip` would bump pyproject.toml and leave uv.lock stale
+# (tests/meta/test_repo_governance.py says why in full).
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    groups:
+      web:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
