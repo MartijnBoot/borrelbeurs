@@ -184,12 +184,12 @@ Exit: live config round-trips through Postgres; restart preserves prices.
 ## Phase 3 — API + auth + realtime
 Exit: every route authorized; integration tests green against real Postgres.
 
-- [ ] spec — read `docs/specs/phase-3-api-realtime.md` (`Draft`) → approve, or `/clear` then `/spec 3`
-- [ ] branch — `git switch main` then `git pull` then `git switch -c docs/phase-3-plan`
-- [ ] plan — `/clear` then `/plan 3`
-- [ ] audit — `/clear` then `/audit 3`
-- [ ] merge the plan — per-phase loop step 5 with `<N>` = 3
-- [ ] tasks (`/build 3 <T>`, `/review 3`):
+- [x] spec — read `docs/specs/phase-3-api-realtime.md` (`Draft`) → approve, or `/clear` then `/spec 3`
+- [x] branch — `git switch main` then `git pull` then `git switch -c docs/phase-3-plan`
+- [x] plan — `/clear` then `/plan 3`
+- [x] audit — `/clear` then `/audit 3`
+- [x] merge the plan — per-phase loop step 5 with `<N>` = 3
+- [x] tasks (`/build 3 <T>`, `/review 3`):
   - [ ] …
 - [ ] exit criterion — `/clear` then `/verify` shows the integration suite green against Postgres
 
