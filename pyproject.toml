@@ -35,6 +35,12 @@ dependencies = [
     # The pricing engine. Pinned exactly: Phase 1 replays v1's golden fixtures
     # and numpy's random stream is what they rest on (plan D2).
     "numpy==1.26.4",
+    # Access keys and sessions (Phase 3 SD5, SD6, SD8; approved under plan PD1).
+    # argon2id hashing of key secrets: stdlib has scrypt, not argon2.
+    "argon2-cffi>=23.1,<26",
+    # HS256 session tokens with `exp` validation: no JWT in stdlib, and
+    # hand-rolled HMAC/base64url/claims is where auth bugs live.
+    "PyJWT>=2.9,<3",
 ]
 
 [dependency-groups]
@@ -43,6 +49,8 @@ dev = [
     "mypy>=1.13,<2",
     "pytest>=8.3,<9",
     "testcontainers>=4.8,<5",
+    # FastAPI's TestClient imports it (Phase 3 SD33; approved under plan PD1).
+    "httpx>=0.27,<1.0",
 ]
 
 [tool.uv]
