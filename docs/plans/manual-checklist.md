@@ -172,11 +172,11 @@ Exit: pure engine reproduces v1's outputs exactly. **Build on opus (`/model opus
 ## Phase 2 — Data model + persistence
 Exit: live config round-trips through Postgres; restart preserves prices.
 
-- [ ] spec — read `docs/specs/phase-2-persistence.md` (currently `Draft`) → set `Status: Approved`, or `/clear` then `/spec 2`
-- [ ] branch — `git switch main` then `git pull` then `git switch -c docs/phase-2-plan`
-- [ ] plan — `/clear` then `/plan 2`
-- [ ] audit — `/clear` then `/audit 2`
-- [ ] merge the plan — per-phase loop step 5 with `<N>` = 2
+- [x] spec — read `docs/specs/phase-2-persistence.md` (currently `Draft`) → set `Status: Approved`, or `/clear` then `/spec 2`
+- [x] branch — `git switch main` then `git pull` then `git switch -c docs/phase-2-plan`
+- [x] plan — `/clear` then `/plan 2`
+- [x] audit — `/clear` then `/audit 2`
+- [x] merge the plan — per-phase loop step 5 with `<N>` = 2
 - [ ] tasks (`/build 2 <T>`, `/review 2`):
   - [ ] …
 - [ ] exit criterion — change a config value, restart the app, prices are unchanged
