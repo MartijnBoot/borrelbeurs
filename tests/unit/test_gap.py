@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from app.runtime.gap import DEFAULT_CATCH_UP_BUDGET_MS, apply_gap_rule
+from app.runtime.gap import DEFAULT_CATCH_UP_BUDGET_MS, apply_gap_rule, gap_shift_ms
 from exchange import EngineState, MarketSpec, advance, initial_state, prices_from_y, schedule_jump
 from exchange.steps import apply_jumps
 from tests.engine.golden.replay import spec_from_config
@@ -129,3 +129,35 @@ def test_an_interrupted_jump_plays_out_its_remaining_time_after_boot() -> None:
     expected = apply_jumps(spec, state, now_ms=jump.t0_ms + 40_000 + BUDGET + 5_000)
     assert after.y[JUMP_DRINK] == expected.y[JUMP_DRINK]
     assert [j.i for j in after.jumps] == [JUMP_DRINK]
+
+
+# --- gap_shift_ms (Phase 3 T7): the shared arithmetic -------------------------
+
+
+@pytest.mark.parametrize(
+    ("gap", "shift"),
+    [
+        (BUDGET, None),
+        (0, None),
+        (-5_000, None),
+        (BUDGET + 1, 1),
+        (10 * 60_000, 10 * 60_000 - BUDGET),
+    ],
+)
+def test_gap_shift_ms_is_gap_minus_budget_or_none(gap: int, shift: int | None) -> None:
+    assert gap_shift_ms(last_wall_ts_ms=START, now_ms=START + gap, budget_ms=BUDGET) == shift
+
+
+@pytest.mark.parametrize("gap", [BUDGET, BUDGET + 1, 10 * 60_000])
+def test_apply_gap_rule_moves_the_anchors_by_exactly_gap_shift_ms(gap: int) -> None:
+    _, state, last_wall = _traded()
+    kwargs = {"last_wall_ts_ms": last_wall, "now_ms": last_wall + gap, "budget_ms": BUDGET}
+
+    shift = gap_shift_ms(**kwargs)
+    shifted = apply_gap_rule(state, **kwargs)
+
+    if shift is None:
+        assert shifted is None
+    else:
+        assert shifted is not None
+        assert shifted.last_idle_ms - state.last_idle_ms == shift

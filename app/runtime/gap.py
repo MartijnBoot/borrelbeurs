@@ -21,6 +21,19 @@ from exchange import EngineState
 DEFAULT_CATCH_UP_BUDGET_MS = 30_000
 
 
+def gap_shift_ms(*, last_wall_ts_ms: int, now_ms: int, budget_ms: int) -> int | None:
+    """How far the gap rule moves every anchor: `gap - budget_ms`, or `None` within the budget.
+
+    The one place that arithmetic lives, so the jump anchors here and an active
+    market event's start and end (Phase 3 SD23, AC19a) move by exactly the same
+    amount.
+    """
+    gap = now_ms - last_wall_ts_ms
+    if gap <= budget_ms:
+        return None
+    return gap - budget_ms
+
+
 def apply_gap_rule(
     state: EngineState, *, last_wall_ts_ms: int, now_ms: int, budget_ms: int
 ) -> EngineState | None:
@@ -33,10 +46,9 @@ def apply_gap_rule(
     one accepted transition (PD16). `tick_index`, `rng_counter` and every float
     are left exactly as they were.
     """
-    gap = now_ms - last_wall_ts_ms
-    if gap <= budget_ms:
+    shift = gap_shift_ms(last_wall_ts_ms=last_wall_ts_ms, now_ms=now_ms, budget_ms=budget_ms)
+    if shift is None:
         return None
-    shift = gap - budget_ms
     return dataclasses.replace(
         state,
         last_order_ts=state.last_order_ts + shift,
