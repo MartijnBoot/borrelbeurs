@@ -22,6 +22,8 @@ backed by **Postgres** (`db/`, Alembic), with the pure pricing engine (`exchange
 - `uv run python -m tests.engine.golden.capture --check` — recapture the golden fixtures from
   the v1 reference and diff them (`--write` regenerates them: a deliberate behaviour change only).
 - `uv run uvicorn app.main:app --reload --port 8000` — run the app.
+- `uv run python -m app.cli.import_v1 --config <path> [--news <path>] [--bar-prices <path>]` —
+  import v1's files as a new draft run; prints its `run_id`.
 
 ## Workflow
 

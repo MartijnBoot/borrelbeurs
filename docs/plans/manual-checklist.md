@@ -177,9 +177,9 @@ Exit: live config round-trips through Postgres; restart preserves prices.
 - [x] plan — `/clear` then `/plan 2`
 - [x] audit — `/clear` then `/audit 2`
 - [x] merge the plan — per-phase loop step 5 with `<N>` = 2
-- [ ] tasks (`/build 2 <T>`, `/review 2`):
-  - [ ] …
-- [ ] exit criterion — change a config value, restart the app, prices are unchanged
+- [x] tasks (`/build 2 <T>`, `/review 2`):
+  - [x] …
+- [x] exit criterion — change a config value, restart the app, prices are unchanged
 
 ## Phase 3 — API + auth + realtime
 Exit: every route authorized; integration tests green against real Postgres.

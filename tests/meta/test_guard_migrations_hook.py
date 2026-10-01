@@ -155,15 +155,15 @@ def test_load_chain_ignores_non_migration_files(tmp_path: Path) -> None:
     assert set(load_chain(tmp_path)) == {"0001"}
 
 
-def test_head_paths_on_the_real_repository_is_the_one_baseline_file() -> None:
-    """Anti-vacuity, against the real tree: today's only head is 0001_baseline.py.
+def test_head_paths_on_the_real_repository_is_the_newest_revision() -> None:
+    """Anti-vacuity, against the real tree: today's only head is 0003_state_ledger_news.py.
 
-    If this ever fails because a second revision landed, that is expected --
+    If this ever fails because another revision landed, that is expected --
     update the assertion, it is not this guard that broke.
     """
     heads = head_paths(VERSIONS_DIR)
 
-    assert heads == {(VERSIONS_DIR / "0001_baseline.py").resolve()}
+    assert heads == {(VERSIONS_DIR / "0003_state_ledger_news.py").resolve()}
 
 
 # --- decide ---------------------------------------------------------------------
@@ -228,13 +228,14 @@ def test_decide_allows_a_non_migration_file_inside_the_versions_directory(tmp_pa
     assert allowed is True
 
 
-def test_decide_on_the_real_repository_allows_the_real_baseline_today() -> None:
-    """The task's own verification, against the real tree as it stands: with
-    exactly one revision on disk, 0001_baseline.py *is* the newest, so an edit
-    to it is allowed -- the blocking case needs a second revision, exercised
-    above and in the `main()` tests below with a scratch copy."""
-    allowed, _ = decide(VERSIONS_DIR / "0001_baseline.py")
+def test_decide_on_the_real_repository_blocks_the_baseline_and_allows_the_head() -> None:
+    """Against the real tree as it stands: the baseline has successors, so an
+    edit to 0001_baseline.py is refused, naming the head, and one to the head is not."""
+    blocked, message = decide(VERSIONS_DIR / "0001_baseline.py")
+    allowed, _ = decide(VERSIONS_DIR / "0003_state_ledger_news.py")
 
+    assert blocked is False
+    assert "0003_state_ledger_news.py" in message
     assert allowed is True
 
 

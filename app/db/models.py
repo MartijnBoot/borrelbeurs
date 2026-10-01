@@ -1,0 +1,217 @@
+"""The schema as SQLAlchemy 2.0 declarative models, column-for-column with the migrations.
+
+The migrations in `db/migrations/versions/` are the source of truth; these models
+mirror them so the repositories have typed tables to query, and
+`tests/integration/test_migrations.py` fails if the two ever drift apart.
+
+Every euro amount is an integer number of cents (`*_cents`, AC9, PD3). The only
+float columns are the demand coefficients `a`, `d`, `s0`, `c` and an order line's
+diagnostic `p_cont`, none of which is money. Revenue is stored once, as
+`OrderLine.line_total_cents` (AC11).
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    DateTime,
+    Double,
+    ForeignKey,
+    Identity,
+    Index,
+    Integer,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
+from sqlalchemy.dialects.postgresql import JSON, JSONB
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class Run(Base):
+    """One borrel's market. At most one is `live` at a time (SD6)."""
+
+    __tablename__ = "run"
+    __table_args__ = (
+        CheckConstraint("status IN ('draft', 'live', 'ended')", name="run_status_check"),
+        CheckConstraint("run_seed >= 0", name="run_run_seed_check"),
+        Index(
+            "run_one_live",
+            text("(true)"),
+            unique=True,
+            postgresql_where=text("status = 'live'"),
+        ),
+    )
+
+    run_id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    status: Mapped[str] = mapped_column(Text, server_default=text("'draft'"))
+    run_seed: Mapped[int] = mapped_column(BigInteger)
+    tick_interval_ms: Mapped[int] = mapped_column(Integer, server_default=text("1000"))
+    params: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RunConfigRevision(Base):
+    """Every configuration a run has had, numbered from 1."""
+
+    __tablename__ = "run_config_revision"
+    __table_args__ = (CheckConstraint("revision >= 1", name="run_config_revision_revision_check"),)
+
+    run_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("run.run_id"), primary_key=True)
+    revision: Mapped[int] = mapped_column(Integer, primary_key=True)
+    config: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    author: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Drink(Base):
+    """A drink in a run. Identity is `drink_id`, never `slot` (D-24).
+
+    `slot` is the drink's position in the engine's arrays; `name_key` is
+    `name.strip().casefold()`, computed in Python (PD6) because Postgres'
+    `lower()` depends on the collation.
+    """
+
+    __tablename__ = "drink"
+    __table_args__ = (
+        CheckConstraint("slot >= 0", name="drink_slot_check"),
+        CheckConstraint(
+            "p_min_cents < p0_cents AND p0_cents < p_max_cents", name="drink_prices_check"
+        ),
+        CheckConstraint("bar_price_cents >= 0", name="drink_bar_price_cents_check"),
+        UniqueConstraint("run_id", "slot", name="drink_run_id_slot_key"),
+        Index(
+            "drink_name_live",
+            "run_id",
+            "name_key",
+            unique=True,
+            postgresql_where=text("removed_at IS NULL"),
+        ),
+    )
+
+    drink_id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    run_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("run.run_id"))
+    slot: Mapped[int] = mapped_column(Integer)
+    name: Mapped[str] = mapped_column(Text)
+    name_key: Mapped[str] = mapped_column(Text)
+    p_min_cents: Mapped[int] = mapped_column(Integer)
+    p0_cents: Mapped[int] = mapped_column(Integer)
+    p_max_cents: Mapped[int] = mapped_column(Integer)
+    a: Mapped[float] = mapped_column(Double)
+    d: Mapped[float] = mapped_column(Double)
+    s0: Mapped[float] = mapped_column(Double)
+    c: Mapped[float] = mapped_column(Double)
+    bar_price_cents: Mapped[int] = mapped_column(Integer)
+    added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class EngineState(Base):
+    """A live run's `exchange.EngineState`, keyed by `drink_id` (SD8).
+
+    The five per-drink and jump columns are `json`, which keeps the text as
+    written, not `jsonb`, which would lose `-0.0` (PD7). `app/db/codec.py`
+    writes and reads them.
+    """
+
+    __tablename__ = "engine_state"
+
+    run_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("run.run_id"), primary_key=True)
+    y: Mapped[Any] = mapped_column(JSON)
+    cum_orders: Mapped[Any] = mapped_column(JSON)
+    flow_ema: Mapped[Any] = mapped_column(JSON)
+    last_order_ts: Mapped[Any] = mapped_column(JSON)
+    jumps: Mapped[Any] = mapped_column(JSON)
+    last_idle_ms: Mapped[int] = mapped_column(BigInteger)
+    last_bm_ms: Mapped[int] = mapped_column(BigInteger)
+    rng_counter: Mapped[int] = mapped_column(BigInteger)
+    version: Mapped[int] = mapped_column(BigInteger)
+    tick_index: Mapped[int] = mapped_column(BigInteger)
+    t_round: Mapped[int] = mapped_column(BigInteger)
+    wall_ts_ms: Mapped[int] = mapped_column(BigInteger)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PriceTick(Base):
+    """One row per accepted transition: `{drink_id: {"p_cont", "p_q"}}` (SD10)."""
+
+    __tablename__ = "price_tick"
+    __table_args__ = (
+        CheckConstraint(
+            "source IN ('tick', 'order', 'jump', 'idle', 'reset', 'gap')",
+            name="price_tick_source_check",
+        ),
+    )
+
+    run_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("run.run_id"), primary_key=True)
+    version: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    source: Mapped[str] = mapped_column(Text)
+    prices: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    wall_ts_ms: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Order(Base):
+    """An accepted order. Its money is in its lines, never here (PD4, AC11)."""
+
+    __tablename__ = "order"
+    __table_args__ = (UniqueConstraint("idempotency_key", name="order_idempotency_key_key"),)
+
+    order_id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    run_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("run.run_id"))
+    idempotency_key: Mapped[str] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(BigInteger)
+    wall_ts_ms: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class OrderLine(Base):
+    """One drink in an order, at the price charged, in cents."""
+
+    __tablename__ = "order_line"
+    __table_args__ = (
+        CheckConstraint("qty > 0", name="order_line_qty_check"),
+        CheckConstraint("unit_price_cents >= 0", name="order_line_unit_price_cents_check"),
+        CheckConstraint("line_total_cents = qty * unit_price_cents", name="order_line_total_check"),
+        UniqueConstraint("order_id", "drink_id", name="order_line_order_id_drink_id_key"),
+    )
+
+    order_line_id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    order_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("order.order_id", ondelete="CASCADE")
+    )
+    drink_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("drink.drink_id"))
+    qty: Mapped[int] = mapped_column(Integer)
+    unit_price_cents: Mapped[int] = mapped_column(Integer)
+    line_total_cents: Mapped[int] = mapped_column(Integer)
+    p_cont: Mapped[float] = mapped_column(Double)
+
+
+class News(Base):
+    """A ticker item. `level` is one of four lowercase values (SD13)."""
+
+    __tablename__ = "news"
+    __table_args__ = (
+        CheckConstraint(
+            "level IN ('info', 'success', 'warning', 'danger')", name="news_level_check"
+        ),
+    )
+
+    news_id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    run_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("run.run_id"))
+    ts_ms: Mapped[int] = mapped_column(BigInteger)
+    level: Mapped[str] = mapped_column(Text)
+    text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
