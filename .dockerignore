@@ -1,12 +1,31 @@
 .git
 .gitignore
-*.tar
-*.pdf
+# **/ for the reason given above __pycache__ below: a bare pattern would
+# exclude only a tarball or PDF at the context root, and AC6 means all of them.
+**/*.tar
+**/*.pdf
 docs/
 static/earnings/
 static/uploads/
 config/keys.json
-__pycache__/
-*.pyc
+# Unlike .gitignore, a bare dockerignore pattern matches only the build
+# context root -- it needs an explicit **/ to reach the __pycache__ and *.pyc
+# that exist at every depth under app/, db/ and exchange/ (verified by
+# building docker/Dockerfile: without the prefix these ship into the image).
+**/__pycache__/
+**/*.pyc
 .venv/
 config/.jwt_secret
+
+# Added for v2 (plan T10) — this repository's own junk, absent from v1.
+# **/ so a web/.env.local cannot ride `COPY web/` into the build stage and have
+# its VITE_* values baked into the shipped bundle.
+**/.env*
+# Same **/ requirement as __pycache__ above -- web/node_modules is nested, a
+# bare `node_modules` entry excludes nothing and the build-context copy would
+# otherwise clobber the install this Dockerfile's web-build stage just ran.
+**/node_modules
+legacy/
+tests/
+.github/
+web/dist

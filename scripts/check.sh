@@ -79,7 +79,9 @@ step "web lint" pnpm --dir web lint
 step "mypy app db tests" uv run mypy app db tests
 step "web tsc -b" pnpm --dir web exec tsc -b
 step "pytest tests/unit tests/meta tests/engine" pytest_each tests/unit tests/meta tests/engine
-step "web test" pnpm --dir web test --run
+# `run test`, not `test`: pnpm's `test` shorthand parses `--run` as its own
+# option and rejects it; `run <script>` passes it through to vitest.
+step "web test" pnpm --dir web run test --run
 step "pytest tests/integration" pytest_each tests/integration
 
 printf '\nscripts/check.sh: all %d steps passed\n' "$TOTAL"
