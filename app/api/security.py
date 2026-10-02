@@ -41,6 +41,9 @@ from urllib.parse import urlsplit
 import jwt
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
+from starlette.datastructures import Headers
+from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.core.config import Settings
 from app.db.keys import ROLES, AuthKeyRow, Role
@@ -226,3 +229,37 @@ async def verify_login(
     if row is None or not matched or row.revoked:
         return None
     return row
+
+
+# --- the Origin middleware (SD9) ----------------------------------------------------
+
+UNSAFE_METHODS: Final = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+class OriginGuard:
+    """Pure-ASGI middleware: an unsafe HTTP request without a same-origin `Origin` is 403.
+
+    Browsers send cookies on cross-site form posts; with no CORS middleware at all
+    (one origin, AC6b) this check is the CSRF defence. The WebSocket handshake gets
+    the same check in the `/ws` handler, before accept (SD31).
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope["method"] in UNSAFE_METHODS:
+            headers = Headers(scope=scope)
+            if not same_origin(headers.get("origin"), headers.get("host")):
+                response = JSONResponse(
+                    status_code=403,
+                    content={
+                        "error": {
+                            "code": "origin_mismatch",
+                            "message": "this request must come from this site",
+                        }
+                    },
+                )
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)

@@ -18,10 +18,13 @@ secret or a credential -- the same rule `app/core/config.py` follows.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import ClassVar
 
 from fastapi import Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import JsonValue
 
 
 class AppError(Exception):
@@ -37,6 +40,20 @@ class AppError(Exception):
     status_code: ClassVar[int] = 500
     code: ClassVar[str] = "internal_error"
 
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        extra: Mapping[str, JsonValue] | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> None:
+        """`extra` adds fields inside the `error` object beside `code` and `message`
+        (Phase 3 PD8: `price_changed` carries `version` and `prices`); `headers` are
+        set on the response (`Retry-After` on 429)."""
+        super().__init__(message)
+        self.extra: Mapping[str, JsonValue] = extra or {}
+        self.headers: Mapping[str, str] = headers or {}
+
 
 async def handle_app_error(request: Request, exc: Exception) -> JSONResponse:
     """Render an `AppError` as JSON. Anything else is re-raised, never swallowed.
@@ -51,5 +68,31 @@ async def handle_app_error(request: Request, exc: Exception) -> JSONResponse:
 
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": {"code": exc.code, "message": str(exc)}},
+        content={"error": {**exc.extra, "code": exc.code, "message": str(exc)}},
+        headers=dict(exc.headers),
+    )
+
+
+async def handle_validation_error(request: Request, exc: Exception) -> JSONResponse:
+    """FastAPI's request-validation 422, in the same envelope, code `invalid_request` (PD9).
+
+    Each fault is its location and message only. pydantic's `input` is dropped:
+    a login body's rejected value is an access key, and this lands in a log.
+    """
+    if not isinstance(exc, RequestValidationError):
+        raise exc
+
+    faults: list[JsonValue] = [
+        {"loc": [str(part) for part in error["loc"]], "msg": str(error["msg"])}
+        for error in exc.errors()
+    ]
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": {
+                "code": "invalid_request",
+                "message": "the request is not valid",
+                "faults": faults,
+            }
+        },
     )

@@ -25,18 +25,25 @@ very file the config module deliberately refuses to read (R12).
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.api.auth import router as auth_router
 from app.api.health import router as health_router
+from app.api.security import LoginLimiter, OriginGuard
 from app.core.config import get_settings
-from app.core.errors import AppError, handle_app_error
+from app.core.errors import AppError, handle_app_error, handle_validation_error
 from app.core.logging import configure_logging
+from app.db.session import create_engine
+from app.runtime.clock import Clock, RealClock
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +52,7 @@ logger = logging.getLogger(__name__)
 # is anything to move, so T6's SPA catch-all -- mounted after this router -- has
 # one namespace to keep its hands off instead of twenty top-level paths.
 api_router = APIRouter(prefix="/api")
+api_router.include_router(auth_router)
 
 # `pnpm --dir web build` output (T6). Not built by every checkout -- a Python
 # test run has no reason to have run pnpm first -- so its absence only means
@@ -65,6 +73,12 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     configure_logging(settings.log_level)
 
     application.state.settings = settings
+    application.state.engine = create_engine(settings)
+    application.state.login_limiter = LoginLimiter(
+        settings.login_rate_per_minute, application.state.clock
+    )
+    if settings.app_env != "production":
+        _mount_docs(application)
     application.state.ready = True
     logger.info(
         "application started",
@@ -77,22 +91,67 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         # Shutdown flips readiness first: a drain that keeps reporting 200 is
         # how a load balancer keeps sending traffic at a closing process.
         application.state.ready = False
+        await application.state.engine.dispose()
         logger.info("application stopped")
 
 
-def create_app() -> FastAPI:
-    """Build the application. Pure: no environment, no I/O, no socket."""
+def _mount_docs(application: FastAPI) -> None:
+    """SD3: `/openapi.json`, `/docs` and `/redoc`, outside production only (plan PD15).
+
+    Put in front of the SPA mount, which would otherwise catch them.
+    """
+
+    async def openapi(request: Request) -> JSONResponse:
+        return JSONResponse(application.openapi())
+
+    async def swagger(request: Request) -> HTMLResponse:
+        return get_swagger_ui_html(openapi_url="/openapi.json", title="BorrelBeurs API")
+
+    async def redoc(request: Request) -> HTMLResponse:
+        return get_redoc_html(openapi_url="/openapi.json", title="BorrelBeurs API")
+
+    before = len(application.router.routes)
+    application.add_route("/openapi.json", openapi, include_in_schema=False)
+    application.add_route("/docs", swagger, include_in_schema=False)
+    application.add_route("/redoc", redoc, include_in_schema=False)
+    added = application.router.routes[before:]
+    del application.router.routes[before:]
+    application.router.routes[0:0] = added
+
+
+def create_app(
+    *,
+    clock: Clock | None = None,
+    run_migrations: bool = True,
+    request_shutdown: Callable[[], None] | None = None,
+) -> FastAPI:
+    """Build the application. Pure: no environment, no I/O, no socket.
+
+    The keyword arguments are the test seam (plan PD16): a fake clock, no
+    migration at boot (the test database is migrated once per session), and a
+    shutdown hook (PD17). Production passes none of them.
+    """
     application = FastAPI(
         title="BorrelBeurs",
         version="0.0.0",
         lifespan=lifespan,
+        # SD3: no docs routes here; a non-production lifespan adds them (PD15).
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
     )
+    application.state.clock = clock if clock is not None else RealClock()
+    application.state.run_migrations = run_migrations
+    application.state.request_shutdown = request_shutdown
 
     # False until the lifespan says otherwise, so an app that is merely
     # constructed -- in a test, in `--reload`'s parent process -- is never ready.
     application.state.ready = False
 
     application.add_exception_handler(AppError, handle_app_error)
+    application.add_exception_handler(RequestValidationError, handle_validation_error)
+    # SD9. No CORS middleware, ever: one origin (AC6b).
+    application.add_middleware(OriginGuard)
     application.include_router(health_router)
     application.include_router(api_router)
 

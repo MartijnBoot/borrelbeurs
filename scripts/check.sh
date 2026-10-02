@@ -81,6 +81,6 @@ step "pytest tests/unit tests/meta tests/engine" pytest_each tests/unit tests/me
 # `run test`, not `test`: pnpm's `test` shorthand parses `--run` as its own
 # option and rejects it; `run <script>` passes it through to vitest.
 step "web test" pnpm --dir web run test --run
-step "pytest tests/integration" pytest_each tests/integration
+step "pytest tests/integration tests/api" pytest_each tests/integration tests/api
 
 printf '\nscripts/check.sh: all %d steps passed\n' "$TOTAL"
