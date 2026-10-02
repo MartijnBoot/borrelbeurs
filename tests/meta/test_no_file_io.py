@@ -35,7 +35,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 SCANNED_ROOTS = (Path("app") / "db", Path("app") / "runtime")
 
-MUST_SEE = (Path("app") / "db" / "runs.py", Path("app") / "runtime" / "gap.py")
+MUST_SEE = (
+    Path("app") / "db" / "runs.py",
+    Path("app") / "runtime" / "gap.py",
+    Path("app") / "runtime" / "holder.py",
+)
 
 FILE_METHODS = frozenset({"read_text", "read_bytes", "write_text", "write_bytes", "open"})
 JSON_FILE_FUNCTIONS = frozenset({"load", "dump"})
