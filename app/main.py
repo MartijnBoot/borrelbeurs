@@ -38,7 +38,9 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.auth import router as auth_router
 from app.api.health import router as health_router
+from app.api.news import router as news_router
 from app.api.security import LoginLimiter, OriginGuard
+from app.api.state import router as state_router
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError, handle_app_error, handle_validation_error
 from app.core.logging import configure_logging
@@ -53,6 +55,8 @@ logger = logging.getLogger(__name__)
 # one namespace to keep its hands off instead of twenty top-level paths.
 api_router = APIRouter(prefix="/api")
 api_router.include_router(auth_router)
+api_router.include_router(state_router)
+api_router.include_router(news_router)
 
 # `pnpm --dir web build` output (T6). Not built by every checkout -- a Python
 # test run has no reason to have run pnpm first -- so its absence only means

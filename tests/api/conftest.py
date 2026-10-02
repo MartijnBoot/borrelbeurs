@@ -26,8 +26,10 @@ from fastapi.testclient import TestClient
 from app.api.security import format_key, hash_secret, mint_secret
 from app.core.config import Settings, get_settings
 from app.db.keys import Role, create_key, set_secret_hash
+from app.db.runs import add_drink, create_draft_run, go_live
 from app.db.session import create_engine
 from app.main import create_app
+from exchange import Params
 from tests.integration.conftest import database_url, scratch_database
 from tests.support.clock import FakeClock
 
@@ -59,6 +61,44 @@ def client(api_env: str, clock: FakeClock) -> Iterator[TestClient]:
     app = create_app(clock=clock, run_migrations=False)
     with TestClient(app, base_url=BASE_URL, headers={"origin": BASE_URL}) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def live_run(api_env: str, settings: Settings) -> int:
+    """A live run of three drinks in the scratch database, made before the app boots."""
+
+    async def scenario() -> int:
+        engine = create_engine(settings.model_copy(update={"database_url": api_env}))
+        try:
+            async with engine.begin() as conn:
+                run_id = await create_draft_run(conn, params=Params(step_quant=0.1), run_seed=7)
+                for slot, name in enumerate(("Bier", "Wijn", "Fris")):
+                    await add_drink(
+                        conn,
+                        run_id,
+                        name=name,
+                        slot=slot,
+                        p_min_cents=150,
+                        p0_cents=260,
+                        p_max_cents=500,
+                        a=1.0,
+                        d=0.1,
+                        s0=1.0,
+                        c=0.1,
+                        bar_price_cents=260,
+                    )
+            await go_live(engine, run_id, now_ms=T0)
+            return run_id
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(scenario())
+
+
+@pytest.fixture
+def live_client(live_run: int, client: TestClient) -> TestClient:
+    """`client`, booted after `live_run` exists, so the holder rehydrates it."""
+    return client
 
 
 @pytest.fixture
