@@ -17,8 +17,16 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from app.core.config import Settings
 from app.db.codec import tick_prices
 from app.db.engine_state import StaleState
+from app.db.keys import create_key
 from app.db.mapping import cents_from_quantised, spec_from_rows
-from app.db.orders import OrderLineInput, OrderWritten, earnings_by_drink, write_order
+from app.db.orders import (
+    OrderLineInput,
+    OrderWritten,
+    StoredOrder,
+    earnings_by_drink,
+    find_order_by_key,
+    write_order,
+)
 from app.db.runs import active_drinks, add_drink, create_draft_run, go_live
 from app.db.session import create_engine
 from exchange import EngineState, MarketSpec, Params, advance
@@ -28,8 +36,13 @@ SEED = 2024
 T0 = 1_700_000_000_000
 
 # UPDATE engine_state, INSERT "order", INSERT order_line (one multi-row statement),
-# INSERT price_tick. A new statement must be added here, so it cannot skip injection.
-WRITE_ORDER_STATEMENTS = 4
+# UPDATE "order" SET response (Phase 3 T18, when a receipt is given), INSERT price_tick.
+# A new statement must be added here, so it cannot skip injection.
+WRITE_ORDER_STATEMENTS = 5
+
+
+def _receipt(order_id: int) -> dict[str, Any]:
+    return {"order_id": order_id}
 
 
 class Injected(Exception):
@@ -132,6 +145,7 @@ def test_write_order_issues_the_expected_statements(settings: Settings, database
                     drink_ids=drink_ids,
                     lines=lines,
                     wall_ts_ms=T0 + 1_000,
+                    response=_receipt,
                 )
             finally:
                 event.remove(engine.sync_engine, "before_cursor_execute", record)
@@ -177,6 +191,7 @@ def test_a_failure_at_any_statement_writes_nothing(
                         drink_ids=drink_ids,
                         lines=lines,
                         wall_ts_ms=T0 + 1_000,
+                        response=_receipt,
                     )
             finally:
                 event.remove(engine.sync_engine, "before_cursor_execute", inject)
@@ -444,3 +459,73 @@ def test_a_line_naming_a_foreign_drink_raises_before_any_sql(
             await engine.dispose()
 
     asyncio.run(scenario())
+
+
+# --- Phase 3 T18: the acting key, the stored receipt, lookup by key -------------
+
+
+def test_the_actor_and_receipt_are_stored_and_found_by_key(
+    settings: Settings, database_url: str
+) -> None:
+    async def scenario() -> tuple[OrderWritten, StoredOrder | None, StoredOrder | None, int]:
+        engine = _engine(settings, database_url)
+        try:
+            run_id, spec, drink_ids, state = await _live(engine)
+            async with engine.begin() as conn:
+                key_id = await create_key(conn, label="Bar", role="bar", secret_hash="x")
+            candidate, lines = _order(spec, state, drink_ids, {drink_ids[0]: 2}, T0 + 1_000)
+            written = await write_order(
+                engine,
+                run_id=run_id,
+                idempotency_key="k-receipt",
+                expected_version=state.version,
+                state=candidate,
+                spec=spec,
+                drink_ids=drink_ids,
+                lines=lines,
+                wall_ts_ms=T0 + 1_000,
+                actor_key_id=key_id,
+                response=lambda order_id: {"order_id": order_id, "total_cents": 1},
+            )
+            async with engine.connect() as conn:
+                found = await find_order_by_key(conn, "k-receipt")
+                missing = await find_order_by_key(conn, "k-absent")
+            return written, found, missing, key_id
+        finally:
+            await engine.dispose()
+
+    written, found, missing, key_id = asyncio.run(scenario())
+    assert missing is None
+    assert found is not None
+    assert (found.order_id, found.version) == (written.order_id, written.version)
+    assert found.actor_key_id == key_id
+    assert found.response == {"order_id": written.order_id, "total_cents": 1}
+
+
+def test_an_order_without_a_receipt_stores_none(settings: Settings, database_url: str) -> None:
+    """Phase 2's callers pass neither; both columns stay NULL."""
+
+    async def scenario() -> StoredOrder | None:
+        engine = _engine(settings, database_url)
+        try:
+            run_id, spec, drink_ids, state = await _live(engine)
+            candidate, lines = _order(spec, state, drink_ids, {drink_ids[0]: 1}, T0 + 1_000)
+            await write_order(
+                engine,
+                run_id=run_id,
+                idempotency_key="k-plain",
+                expected_version=state.version,
+                state=candidate,
+                spec=spec,
+                drink_ids=drink_ids,
+                lines=lines,
+                wall_ts_ms=T0 + 1_000,
+            )
+            async with engine.connect() as conn:
+                return await find_order_by_key(conn, "k-plain")
+        finally:
+            await engine.dispose()
+
+    found = asyncio.run(scenario())
+    assert found is not None
+    assert (found.actor_key_id, found.response) == (None, None)

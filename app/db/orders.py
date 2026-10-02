@@ -8,15 +8,20 @@ back, so an order is never stored without the state and tick it produced.
 
 The caller prices the lines: this module computes `line_total_cents` and
 nothing else -- no prices, no grace (ADR 0008). A duplicate `idempotency_key`
-surfaces as the database's `IntegrityError`; replaying it is Phase 3's.
+surfaces as the database's `IntegrityError`; `app/runtime/orders.py` replays it.
+
+Phase 3 (SD20) adds the acting key and the receipt. The receipt needs the
+`order_id`, so it is written by an UPDATE of the order row once the id is known,
+still inside the same transaction: an order is never stored without its receipt.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
 
-from sqlalchemy import func, insert, select
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from app.db import models
@@ -38,6 +43,15 @@ class OrderWritten:
     version: int
 
 
+@dataclass(frozen=True)
+class StoredOrder:
+    order_id: int
+    run_id: int
+    version: int
+    actor_key_id: int | None
+    response: Mapping[str, Any] | None
+
+
 async def write_order(
     engine: AsyncEngine,
     *,
@@ -49,6 +63,8 @@ async def write_order(
     drink_ids: Sequence[int],
     lines: Sequence[OrderLineInput],
     wall_ts_ms: int,
+    actor_key_id: int | None = None,
+    response: Callable[[int], Mapping[str, Any]] | None = None,
 ) -> OrderWritten:
     """Store the order, its lines, `state` and its tick in one transaction, or nothing."""
     unknown = sorted({line.drink_id for line in lines} - set(drink_ids))
@@ -78,6 +94,7 @@ async def write_order(
                         idempotency_key=idempotency_key,
                         version=state.version,
                         wall_ts_ms=wall_ts_ms,
+                        actor_key_id=actor_key_id,
                     )
                     .returning(models.Order.order_id)
                 )
@@ -98,6 +115,12 @@ async def write_order(
                 ]
             )
         )
+        if response is not None:
+            await conn.execute(
+                update(models.Order)
+                .where(models.Order.order_id == order_id)
+                .values(response=dict(response(order_id)))
+            )
         await insert_tick(
             conn,
             run_id=run_id,
@@ -108,6 +131,27 @@ async def write_order(
             wall_ts_ms=wall_ts_ms,
         )
     return OrderWritten(order_id=order_id, version=state.version)
+
+
+async def find_order_by_key(conn: AsyncConnection, idempotency_key: str) -> StoredOrder | None:
+    """The order stored under `idempotency_key`, with its receipt, or `None`."""
+    order = models.Order
+    row = (
+        await conn.execute(
+            select(
+                order.order_id, order.run_id, order.version, order.actor_key_id, order.response
+            ).where(order.idempotency_key == idempotency_key)
+        )
+    ).one_or_none()
+    if row is None:
+        return None
+    return StoredOrder(
+        order_id=int(row.order_id),
+        run_id=int(row.run_id),
+        version=int(row.version),
+        actor_key_id=None if row.actor_key_id is None else int(row.actor_key_id),
+        response=row.response,
+    )
 
 
 async def earnings_by_drink(conn: AsyncConnection, run_id: int) -> list[tuple[int, int, int]]:
