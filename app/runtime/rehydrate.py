@@ -2,11 +2,14 @@
 
 `rehydrate` reads, in one REPEATABLE READ transaction so every read sees the
 same snapshot: the live run, its active drinks, the engine state keyed by
-`drink_id`, the price ticks in the history window, the earnings aggregate and
-the news. Then it applies the gap rule (SD2). Only if that returns a state is
-anything written: one compare-and-set `save_transition` with `source = 'gap'`,
-in its own transaction, so a concurrent writer surfaces as `StaleState`. The gap
-tick joins the ring only after that commits.
+`drink_id`, the price ticks in the history window, the earnings aggregate, the
+news and the active market events. Then it applies the gap rule (SD2). Only if
+that returns a state is anything written, in one transaction of its own: the
+compare-and-set of the state, its `gap` tick, and the active events' start and
+end moved by the same `gap_shift_ms` as the jump anchors (Phase 3 SD23, AC19a).
+A concurrent writer surfaces as `StaleState`. The gap tick joins the ring only
+after that commits. An event whose shifted end is already past stays active:
+the ticker's first slot ends it.
 
 Nothing here reads a file (AC18), takes a lock, starts a ticker or advances the
 engine; those are Phase 3's.
@@ -22,15 +25,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.db.codec import tick_prices
-from app.db.engine_state import load_state, load_ticks_in_window, save_transition
+from app.db.engine_state import compare_and_set, insert_tick, load_state, load_ticks_in_window
 from app.db.mapping import spec_from_rows
+from app.db.market_events import active_events, shift_active_events
 from app.db.models import Run
 from app.db.news import NewsItem, list_news
 from app.db.orders import earnings_by_drink
 from app.db.runs import active_drinks
 from app.runtime.earnings import EarningsAggregate
-from app.runtime.gap import DEFAULT_CATCH_UP_BUDGET_MS, apply_gap_rule
+from app.runtime.gap import DEFAULT_CATCH_UP_BUDGET_MS, apply_gap_rule, gap_shift_ms
 from app.runtime.history import HistoryRing, TickEntry
+from app.runtime.market_events import ActiveEvent, shift_events
 from exchange import EngineState, MarketSpec, Params
 
 
@@ -51,6 +56,9 @@ class RehydratedRun:
     ring: HistoryRing
     earnings: EarningsAggregate
     news: tuple[NewsItem, ...]
+    market_events: tuple[ActiveEvent, ...]
+    quote_grace_versions: int
+    candle_interval_ms: int
 
 
 async def rehydrate(
@@ -62,7 +70,13 @@ async def rehydrate(
         async with conn.begin():
             run = (
                 await conn.execute(
-                    select(Run.run_id, Run.run_seed, Run.params).where(Run.status == "live")
+                    select(
+                        Run.run_id,
+                        Run.run_seed,
+                        Run.params,
+                        Run.quote_grace_versions,
+                        Run.candle_interval_ms,
+                    ).where(Run.status == "live")
                 )
             ).one_or_none()
             if run is None:
@@ -82,19 +96,32 @@ async def rehydrate(
             ring.load(await load_ticks_in_window(conn, run_id, window_ms))
             earnings = EarningsAggregate.from_rows(await earnings_by_drink(conn, run_id))
             news = await list_news(conn, run_id)
+            events = await active_events(conn, run_id)
 
-    shifted = apply_gap_rule(state, last_wall_ts_ms=wall_ts_ms, now_ms=now_ms, budget_ms=budget_ms)
-    if shifted is not None:
-        await save_transition(
-            engine,
-            run_id=run_id,
-            expected_version=state.version,
-            state=shifted,
-            spec=spec,
-            drink_ids=drink_ids,
-            source="gap",
-            wall_ts_ms=now_ms,
-        )
+    gap = {"last_wall_ts_ms": wall_ts_ms, "now_ms": now_ms, "budget_ms": budget_ms}
+    shifted = apply_gap_rule(state, **gap)
+    shift_ms = gap_shift_ms(**gap)
+    if shifted is not None and shift_ms is not None:
+        async with engine.begin() as conn:
+            await compare_and_set(
+                conn,
+                run_id=run_id,
+                expected_version=state.version,
+                state=shifted,
+                drink_ids=drink_ids,
+                wall_ts_ms=now_ms,
+            )
+            await insert_tick(
+                conn,
+                run_id=run_id,
+                state=shifted,
+                spec=spec,
+                drink_ids=drink_ids,
+                source="gap",
+                wall_ts_ms=now_ms,
+            )
+            await shift_active_events(conn, run_id, shift_ms)
+        events = shift_events(events, shift_ms)
         ring.append(
             TickEntry(
                 version=shifted.version,
@@ -116,4 +143,7 @@ async def rehydrate(
         ring=ring,
         earnings=earnings,
         news=news,
+        market_events=events,
+        quote_grace_versions=int(run.quote_grace_versions),
+        candle_interval_ms=int(run.candle_interval_ms),
     )

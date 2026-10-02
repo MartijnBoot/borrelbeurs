@@ -21,6 +21,7 @@ from app.core.config import Settings
 from app.db.codec import StateDrinkMismatch, tick_prices
 from app.db.engine_state import insert_tick, load_state, save_transition
 from app.db.mapping import cents_from_quantised, spec_from_rows
+from app.db.market_events import end_event, insert_event
 from app.db.orders import OrderLineInput, write_order
 from app.db.runs import active_drinks, add_drink, create_draft_run, go_live, set_bar_price
 from app.db.session import create_engine
@@ -480,6 +481,172 @@ def test_the_ring_holds_exactly_the_committed_ticks_in_the_window(
             assert [e.version for e in window] == list(range(5, 21))
             assert [e.wall_ts_ms for e in window] == [T0 + v * 60_000 for v in range(5, 21)]
             assert ghost.version not in [e.version for e in window]
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+# --- Phase 3 T12: market events and the run's grace and candle columns --------
+
+
+async def _event(engine: AsyncEngine, run_id: int, *, start: int, end: int) -> int:
+    async with engine.begin() as conn:
+        return await insert_event(
+            conn, run_id=run_id, kind="crash", drink_ids=(1, 2), t_start_ms=start, t_end_ms=end
+        )
+
+
+async def _event_rows(engine: AsyncEngine) -> list[tuple[int, int, bool]]:
+    async with engine.connect() as conn:
+        rows = await conn.execute(
+            text(
+                "SELECT t_start_ms, t_end_ms, ended_at IS NULL FROM market_event ORDER BY event_id"
+            )
+        )
+        return [(int(row[0]), int(row[1]), bool(row[2])) for row in rows]
+
+
+def test_rehydrate_reads_the_runs_grace_and_candle_interval(
+    settings: Settings, database_url: str
+) -> None:
+    async def scenario() -> tuple[int, int, tuple[object, ...]]:
+        engine = _engine(settings, database_url)
+        try:
+            run_id = await _draft(engine)
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        "UPDATE run SET quote_grace_versions = 3, candle_interval_ms = 30000"
+                        " WHERE run_id = :r"
+                    ),
+                    {"r": run_id},
+                )
+            _, _, _, wall = await _trade(engine, run_id)
+            result = await rehydrate(engine, now_ms=wall)
+            assert isinstance(result, RehydratedRun)
+            return result.quote_grace_versions, result.candle_interval_ms, result.market_events
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(scenario()) == (3, 30_000, ())
+
+
+def test_within_the_budget_active_events_are_rehydrated_unshifted(
+    settings: Settings, database_url: str
+) -> None:
+    async def scenario() -> None:
+        engine = _engine(settings, database_url)
+        try:
+            run_id = await _draft(engine)
+            _, _, _, wall = await _trade(engine, run_id)
+            event_id = await _event(engine, run_id, start=wall - 5_000, end=wall + 25_000)
+            ended = await _event(engine, run_id, start=wall - 9_000, end=wall - 8_000)
+            async with engine.begin() as conn:
+                await end_event(conn, ended, t_end_ms=wall - 8_000)
+
+            result = await rehydrate(engine, now_ms=wall + BUDGET)
+
+            assert isinstance(result, RehydratedRun)
+            assert [(e.event_id, e.t_start_ms, e.t_end_ms) for e in result.market_events] == [
+                (event_id, wall - 5_000, wall + 25_000)
+            ]
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_a_long_outage_shifts_active_events_by_exactly_the_jump_anchor_shift(
+    settings: Settings, database_url: str
+) -> None:
+    """AC19a: the event's start and end move as far as the jump's `t0_ms` / `t1_ms`, in memory
+    and in the database; an already-ended event does not move."""
+
+    async def scenario() -> None:
+        engine = _engine(settings, database_url)
+        try:
+            run_id = await _draft(engine)
+            _, _, state, wall = await _trade(engine, run_id)
+            assert state.jumps
+            await _event(engine, run_id, start=wall - 5_000, end=wall + 25_000)
+            ended = await _event(engine, run_id, start=wall - 9_000, end=wall - 8_000)
+            async with engine.begin() as conn:
+                await end_event(conn, ended, t_end_ms=wall - 8_000)
+
+            result = await rehydrate(engine, now_ms=wall + BUDGET + 600_000)
+
+            assert isinstance(result, RehydratedRun)
+            (jump_before,) = state.jumps
+            (jump_after,) = result.state.jumps
+            moved = jump_after.t0_ms - jump_before.t0_ms
+            assert moved == jump_after.t1_ms - jump_before.t1_ms == 600_000
+            (event,) = result.market_events
+            assert (event.t_start_ms, event.t_end_ms) == (
+                wall - 5_000 + moved,
+                wall + 25_000 + moved,
+            )
+            assert await _event_rows(engine) == [
+                (wall - 5_000 + moved, wall + 25_000 + moved, True),
+                (wall - 9_000, wall - 8_000, False),
+            ]
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_an_event_that_ended_during_the_outage_stays_active_for_the_ticker(
+    settings: Settings, database_url: str
+) -> None:
+    """Its shifted end is still at or before now; the ticker's first slot ends it (AC19)."""
+
+    async def scenario() -> None:
+        engine = _engine(settings, database_url)
+        try:
+            run_id = await _draft(engine)
+            _, _, _, wall = await _trade(engine, run_id)
+            await _event(engine, run_id, start=wall - 60_000, end=wall - 50_000)
+            now = wall + BUDGET + 600_000
+
+            result = await rehydrate(engine, now_ms=now)
+
+            assert isinstance(result, RehydratedRun)
+            (event,) = result.market_events
+            assert event.t_end_ms <= now
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_a_failed_event_shift_leaves_neither_the_tick_nor_the_state(
+    settings: Settings, database_url: str
+) -> None:
+    """T12: CAS + gap tick + event shift are one transaction."""
+
+    async def scenario() -> None:
+        engine = _engine(settings, database_url)
+
+        def fail_on_event_update(*args: Any) -> None:
+            if args[2].startswith("UPDATE market_event"):
+                raise Injected(args[2])
+
+        try:
+            run_id = await _draft(engine)
+            _, drink_ids, state, wall = await _trade(engine, run_id)
+            await _event(engine, run_id, start=wall - 5_000, end=wall + 25_000)
+            before = await _snapshot(engine), await _event_rows(engine)
+
+            event.listen(engine.sync_engine, "before_cursor_execute", fail_on_event_update)
+            try:
+                with pytest.raises(Injected):
+                    await rehydrate(engine, now_ms=wall + BUDGET + 600_000)
+            finally:
+                event.remove(engine.sync_engine, "before_cursor_execute", fail_on_event_update)
+
+            assert (await _snapshot(engine), await _event_rows(engine)) == before
+            assert_states_identical(await _stored(engine, run_id, drink_ids), state)
         finally:
             await engine.dispose()
 
