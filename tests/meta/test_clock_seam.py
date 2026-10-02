@@ -8,10 +8,8 @@ parse every file under the scanned roots and fail on `import time` or
 `from time import ...` anywhere but `app/runtime/clock.py`.
 
 **A guard that cannot fail is worse than no guard.** The walk must reach
-`clock.py` itself, and the detector must flag each banned form in a snippet.
-`app/realtime/` does not exist until Phase 3 T11; it is listed in
-`NOT_YET_CREATED`, and a test fails the moment it appears, so the entry is
-removed and the root is held to the same "must exist" rule as the others.
+`clock.py` itself and `app/realtime/messages.py`, and the detector must flag
+each banned form in a snippet.
 """
 
 from __future__ import annotations
@@ -28,9 +26,11 @@ SCANNED_ROOTS = (Path("app") / "runtime", Path("app") / "realtime")
 
 THE_CLOCK = Path("app") / "runtime" / "clock.py"
 
-MUST_SEE = (THE_CLOCK, Path("app") / "runtime" / "gap.py")
-
-NOT_YET_CREATED = frozenset({Path("app") / "realtime"})
+MUST_SEE = (
+    THE_CLOCK,
+    Path("app") / "runtime" / "gap.py",
+    Path("app") / "realtime" / "messages.py",
+)
 
 
 class Violation(NamedTuple):
@@ -98,20 +98,10 @@ def test_the_scan_reaches_the_real_source_tree() -> None:
     files = scanned_files()
 
     for root in SCANNED_ROOTS:
-        if root in NOT_YET_CREATED:
-            continue
         assert (REPO_ROOT / root).is_dir(), f"{root.as_posix()}/ is missing; scanning nothing"
     for path in MUST_SEE:
         assert path in files, (
             f"{path.as_posix()} was not scanned; seen {[f.as_posix() for f in files]}"
-        )
-
-
-def test_not_yet_created_roots_really_do_not_exist() -> None:
-    """When a listed root appears, drop it from `NOT_YET_CREATED` so it must keep existing."""
-    for root in NOT_YET_CREATED:
-        assert not (REPO_ROOT / root).exists(), (
-            f"{root.as_posix()}/ now exists: remove it from NOT_YET_CREATED"
         )
 
 
