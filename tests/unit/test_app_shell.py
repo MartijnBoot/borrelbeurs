@@ -17,7 +17,8 @@ import asyncio
 import importlib
 import json
 import logging
-from collections.abc import Iterator, MutableMapping
+from collections.abc import AsyncIterator, Iterator, MutableMapping
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -25,7 +26,7 @@ import pytest
 from fastapi import APIRouter, FastAPI
 
 import app.main
-from app.core.config import ConfigError, get_settings
+from app.core.config import ConfigError, Settings, get_settings
 
 # A complete, valid environment. Test values only -- no real credentials.
 COMPLETE_ENV = {
@@ -58,6 +59,34 @@ def bootable_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     root.setLevel(level)
 
     get_settings.cache_clear()
+
+
+class _AnsweringEngine:
+    """Stands in for the database engine: `/readyz`'s `SELECT 1` always answers."""
+
+    @asynccontextmanager
+    async def connect(self) -> AsyncIterator[Any]:
+        class Connection:
+            async def execute(self, statement: Any) -> None:
+                return None
+
+        yield Connection()
+
+
+@asynccontextmanager
+async def noop_runtime(application: FastAPI, settings: Settings, **_: Any) -> AsyncIterator[None]:
+    """The runtime's contract without its work (Phase 3 T20): no lock, no database, no
+    ticker -- these tests are about the shell. Ready on entry, not ready on exit."""
+    application.state.engine = _AnsweringEngine()
+    application.state.ready = True
+    try:
+        yield
+    finally:
+        application.state.ready = False
+
+
+def shell_app() -> FastAPI:
+    return app.main.create_app(runtime=noop_runtime)
 
 
 class Response(NamedTuple):
@@ -105,7 +134,7 @@ async def _request(target: FastAPI, path: str) -> Response:
 
 def get(path: str, *, booted: bool = True) -> Response:
     """GET `path` against a freshly built app, with or without a completed boot."""
-    target = app.main.create_app()
+    target = shell_app()
 
     async def scenario() -> Response:
         if not booted:
@@ -120,7 +149,7 @@ def test_healthz_reports_ok() -> None:
     response = get("/healthz")
 
     assert response.status == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json()["status"] == "ok"
 
 
 def test_healthz_answers_before_the_lifespan_has_run() -> None:
@@ -135,7 +164,7 @@ def test_readyz_is_not_ready_until_the_lifespan_completes() -> None:
 
 
 def test_readyz_stops_being_ready_after_shutdown() -> None:
-    target = app.main.create_app()
+    target = shell_app()
 
     async def scenario() -> Response:
         async with target.router.lifespan_context(target):
@@ -147,7 +176,7 @@ def test_readyz_stops_being_ready_after_shutdown() -> None:
 
 def test_the_lifespan_loads_settings_and_publishes_them() -> None:
     """The settings are read once, during boot, and held on the app."""
-    target = app.main.create_app()
+    target = shell_app()
 
     async def scenario() -> int:
         async with target.router.lifespan_context(target):
@@ -169,7 +198,7 @@ def test_a_missing_variable_fails_the_boot_before_anything_is_served(
     """
     monkeypatch.delenv("DATABASE_URL")
     get_settings.cache_clear()
-    target = app.main.create_app()
+    target = shell_app()
 
     async def scenario() -> None:
         async with target.router.lifespan_context(target):
@@ -261,7 +290,7 @@ def test_the_spa_mount_leaves_unknown_paths_a_json_404(built_frontend: Path) -> 
 
 def test_the_spa_mount_serves_nothing_outside_the_dist_folder(built_frontend: Path) -> None:
     assert get("/../secret.txt").status == 404
-    assert get("/healthz").json() == {"status": "ok"}
+    assert get("/healthz").json()["status"] == "ok"
 
 
 def test_a_missing_frontend_build_is_not_a_boot_failure(
@@ -290,16 +319,25 @@ def test_importing_the_app_reads_no_environment(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_the_entrypoint_binds_the_configured_port(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`settings.port` is what the server binds -- not a hard-coded 8000 (plan D11)."""
+    """`settings.port` is what the server binds -- not a hard-coded 8000 (plan D11) --
+    and the app can ask that server to stop (Phase 3 PD17)."""
     recorded: dict[str, Any] = {}
 
-    def fake_run(target: str, **kwargs: Any) -> None:
-        recorded["target"] = target
-        recorded.update(kwargs)
+    class FakeServer:
+        def __init__(self, config: Any) -> None:
+            recorded["config"] = config
+            self.should_exit = False
+            recorded["server"] = self
 
-    monkeypatch.setattr("uvicorn.run", fake_run)
+        def run(self) -> None:
+            recorded["ran"] = True
+
+    monkeypatch.setattr("uvicorn.Server", FakeServer)
 
     app.main.main()
 
-    assert recorded["target"] == "app.main:app"
-    assert recorded["port"] == 8123
+    assert recorded["ran"] is True
+    assert recorded["config"].app is app.main.app
+    assert recorded["config"].port == 8123
+    app.main.app.state.request_shutdown()
+    assert recorded["server"].should_exit is True

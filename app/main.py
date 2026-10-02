@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
 
 import uvicorn
@@ -39,10 +39,10 @@ from fastapi.staticfiles import StaticFiles
 from app.api.auth import router as auth_router
 from app.api.health import router as health_router
 from app.api.security import LoginLimiter, OriginGuard
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.errors import AppError, handle_app_error, handle_validation_error
 from app.core.logging import configure_logging
-from app.db.session import create_engine
+from app.runtime.boot import exit_process, start_runtime
 from app.runtime.clock import Clock, RealClock
 
 logger = logging.getLogger(__name__)
@@ -59,40 +59,43 @@ api_router.include_router(auth_router)
 # there is no frontend to serve, never a boot failure.
 WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
 
+# `start_runtime`'s shape (app/runtime/boot.py); tests pass a no-op one.
+Runtime = Callable[..., AbstractAsyncContextManager[None]]
+
 
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
-    """Load settings, configure logging, declare the instance ready.
+    """Load settings, configure logging, then boot the runtime and serve.
 
-    The seams Phase 3 fills are here, in order: after `configure_logging` come
-    the migration, the ADR 0003 advisory lock, rehydration and the ticker. None
-    of them exist yet, and stubbing them would be inventing an interface a
-    phase early.
+    `start_runtime` (app/runtime/boot.py) does the rest in SD11's order -- lock,
+    migrate, rehydrate, ticker -- and sets `ready` last; its exit is the
+    shutdown path (not ready first, then drain). A failure there raises out of
+    the lifespan, so uvicorn exits before it ever binds a port.
     """
-    settings = get_settings()
+    settings: Settings = get_settings()
     configure_logging(settings.log_level)
 
     application.state.settings = settings
-    application.state.engine = create_engine(settings)
     application.state.login_limiter = LoginLimiter(
         settings.login_rate_per_minute, application.state.clock
     )
     if settings.app_env != "production":
         _mount_docs(application)
-    application.state.ready = True
-    logger.info(
-        "application started",
-        extra={"app_env": settings.app_env, "port": settings.port},
-    )
 
-    try:
+    runtime: Runtime = application.state.runtime
+    async with runtime(
+        application,
+        settings,
+        clock=application.state.clock,
+        run_migrations=application.state.run_migrations,
+        on_lock_lost=application.state.on_lock_lost,
+    ):
+        logger.info(
+            "application started",
+            extra={"app_env": settings.app_env, "port": settings.port},
+        )
         yield
-    finally:
-        # Shutdown flips readiness first: a drain that keeps reporting 200 is
-        # how a load balancer keeps sending traffic at a closing process.
-        application.state.ready = False
-        await application.state.engine.dispose()
-        logger.info("application stopped")
+    logger.info("application stopped")
 
 
 def _mount_docs(application: FastAPI) -> None:
@@ -124,12 +127,15 @@ def create_app(
     clock: Clock | None = None,
     run_migrations: bool = True,
     request_shutdown: Callable[[], None] | None = None,
+    runtime: Runtime = start_runtime,
+    on_lock_lost: Callable[[], None] = exit_process,
 ) -> FastAPI:
     """Build the application. Pure: no environment, no I/O, no socket.
 
     The keyword arguments are the test seam (plan PD16): a fake clock, no
-    migration at boot (the test database is migrated once per session), and a
-    shutdown hook (PD17). Production passes none of them.
+    migration at boot (the test database is migrated once per session), a
+    shutdown hook (PD17), the runtime itself (a no-op one for the shell tests)
+    and the reaction to a lost advisory lock (PD5). Production passes none.
     """
     application = FastAPI(
         title="BorrelBeurs",
@@ -143,6 +149,8 @@ def create_app(
     application.state.clock = clock if clock is not None else RealClock()
     application.state.run_migrations = run_migrations
     application.state.request_shutdown = request_shutdown
+    application.state.runtime = runtime
+    application.state.on_lock_lost = on_lock_lost
 
     # False until the lifespan says otherwise, so an app that is merely
     # constructed -- in a test, in `--reload`'s parent process -- is never ready.
@@ -172,18 +180,27 @@ app = create_app()
 
 
 def main() -> None:
-    """Run the server on `settings.port` (plan D11: `PORT`, defaulting to 8000)."""
+    """Run the server on `settings.port` (plan D11: `PORT`, defaulting to 8000).
+
+    The server is built here rather than by `uvicorn.run`, so the app can ask it
+    to stop: `request_shutdown` sets `should_exit`, uvicorn's own graceful path
+    (lifespan shutdown, exit 0) on every OS (plan PD17).
+    """
     settings = get_settings()
     configure_logging(settings.log_level)
-    uvicorn.run(
-        "app.main:app",
-        # All interfaces: inside a container there is nothing else to bind.
-        host="0.0.0.0",
-        port=settings.port,
-        # Our JSON formatter owns the root logger; uvicorn's default dictConfig
-        # would replace it with plain text half a second later.
-        log_config=None,
+    server = uvicorn.Server(
+        uvicorn.Config(
+            app,
+            # All interfaces: inside a container there is nothing else to bind.
+            host="0.0.0.0",
+            port=settings.port,
+            # Our JSON formatter owns the root logger; uvicorn's default dictConfig
+            # would replace it with plain text half a second later.
+            log_config=None,
+        )
     )
+    app.state.request_shutdown = lambda: setattr(server, "should_exit", True)
+    server.run()
 
 
 if __name__ == "__main__":

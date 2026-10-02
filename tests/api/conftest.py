@@ -62,6 +62,21 @@ def client(api_env: str, clock: FakeClock) -> Iterator[TestClient]:
 
 
 @pytest.fixture
+def advance(client: TestClient, clock: FakeClock) -> Callable[[int], None]:
+    """Move the fake clock on the app's own event loop (plan R3).
+
+    The ticker and the lock watchdog sleep on it inside `TestClient`'s portal
+    thread; `FakeClock` is not thread-safe, so advancing it from the test thread
+    would wake their futures off-loop.
+    """
+
+    def move(ms: int) -> None:
+        client.portal.call(clock.advance, ms)  # type: ignore[union-attr]
+
+    return move
+
+
+@pytest.fixture
 def mint_key(api_env: str, settings: Settings) -> MintKey:
     """Mint a key straight into `auth_key`, the way `app.cli.keys create` does; the raw key."""
 

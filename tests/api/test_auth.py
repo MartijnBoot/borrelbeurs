@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -118,12 +118,14 @@ def test_the_eleventh_login_is_429_with_retry_after_and_costs_no_verify(
     assert verifier.calls == 1
 
 
-def test_the_login_window_rolls_on_the_injected_clock(client: TestClient, clock: FakeClock) -> None:
+def test_the_login_window_rolls_on_the_injected_clock(
+    client: TestClient, advance: Callable[[int], None]
+) -> None:
     for _ in range(10):
         client.post("/api/auth/login", json={"key": "nonsense"})
     assert client.post("/api/auth/login", json={"key": "nonsense"}).status_code == 429
 
-    clock.advance(60_000)
+    advance(60_000)
 
     assert client.post("/api/auth/login", json={"key": "nonsense"}).status_code == 401
 
@@ -191,13 +193,13 @@ def test_revoking_a_key_ends_its_session_on_the_next_request(
 
 
 def test_a_session_expires_after_24_hours_on_the_injected_clock(
-    login: Login, clock: FakeClock
+    login: Login, advance: Callable[[int], None]
 ) -> None:
     client = login("bar")
-    clock.advance(security.SESSION_MS - 1)
+    advance(security.SESSION_MS - 1)
     assert client.get("/api/auth/me").status_code == 200
 
-    clock.advance(1)
+    advance(1)
 
     assert client.get("/api/auth/me").status_code == 401
 
