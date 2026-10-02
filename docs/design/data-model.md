@@ -21,16 +21,16 @@ both environments.
 
 | Table | Purpose | Notes |
 |---|---|---|
-| `run` | One borrel | `status` draft/live/ended, `run_seed`, `tick_interval_ms`, `params` jsonb |
+| `run` | One borrel | `status` draft/live/ended, `run_seed`, `tick_interval_ms`, `params` jsonb, `quote_grace_versions` (default 2, ≥ 0), `candle_interval_ms` (default 60 000, > 0) |
 | `run_config_revision` | Append-only parameter history | Answers "who set `eta` to 5 mid-borrel". Gives most of the value of an admin audit log for free |
 | `drink` | Drink within a run | `drink_id`, `slot`, `name`, `name_key` (`name.strip().casefold()`, unique per run among non-removed drinks), `p_min_cents`, `p_max_cents`, `p0_cents`, `a`, `d`, `s0`, `c`, `bar_price_cents`, `added_at`, `removed_at` (soft delete) |
 | `engine_state` | The live simulation | **One row per run, UPSERT per tick.** `y`, `cum_orders`, `flow_ema`, `last_order_ts`, `jumps`, `last_idle_ms`, `last_bm_ms`, `rng_counter`, `version`, `tick_index`, `t_round`, `wall_ts_ms`. Per-drink values are `json` objects keyed by `drink_id`; each jump carries its `drink_id` |
 | `price_tick` | The price history | Append-only, PK `(run_id, version)`, one row per accepted transition. `prices` jsonb `{drink_id: {"p_cont", "p_q"}}`, `source` enum |
-| `order` | One customer transaction | `idempotency_key` **UNIQUE**, `version`. `actor_key_id` and stored `response` jsonb arrive with Phase 3 |
+| `order` | One customer transaction | `idempotency_key` **UNIQUE**, `version`, `actor_key_id` (FK `auth_key`, nullable), `response` jsonb (the receipt exactly as returned, nullable; Phase 2's orders have neither) |
 | `order_line` | One drink within an order | `drink_id`, `qty`, `unit_price_cents`, `line_total_cents`, `p_cont` |
 | `news` | News ticker items | `run_id`, `level` stored **lowercase**, `deleted_at` for soft delete |
-| `market_event` | Crash / bubble / correction | *Arrives with Phase 3.* `kind`, `drink_ids`, `t_start_ms`, **`t_end_ms`** |
-| `auth_key` | Access keys | *Arrives with Phase 3.* `key_id`, `label`, `role`, **argon2 `secret_hash`**, `revoked_at`, `last_used_at` |
+| `market_event` | Crash / bubble / correction | `run_id`, `kind` crash/bubble/correction, `drink_ids` jsonb, `t_start_ms`, **`t_end_ms`** (> `t_start_ms`), `ended_at` (NULL while active; indexed per run) |
+| `auth_key` | Access keys | `key_id`, `label` (1–100 characters), `role` display/bar/admin, **argon2id `secret_hash`**, `created_at`, `revoked_at`, `last_used_at` |
 | `theme` | Server-side theming | *Arrives with Phase 4+.* The 21 CSS custom properties plus image references |
 | `asset` | Uploaded images | *Arrives with Phase 4+.* `filename`, `content_type`, `bytes` |
 

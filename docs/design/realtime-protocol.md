@@ -30,6 +30,11 @@ Two caveats when slimming, both easy to get wrong:
 { v, type, seq, ts_ms, run_id, version, data }
 ```
 
+`seq` is global per process (Phase 3 SD27). Every **broadcast** takes the next `seq`;
+a **unicast** (`hello`, `snapshot`, `pong`, `error`) carries the current `seq` without
+incrementing it, so a snapshot at `seq = S` means "state as of S" and the next broadcast
+the client sees is `S+1`. Each boot draws a random `boot_id`.
+
 `seq` lets a client detect a dropped message and request a resync. Without it, a dropped
 `tick` leaves a permanent gap in the client's bar array that nothing will ever repair. It
 costs four bytes.
@@ -44,11 +49,11 @@ what makes absolute end-timestamps usable.
 | `hello` | Server time, `run_id`, `tick_interval_ms`, protocol version, your role | On connect |
 | `snapshot` | Drinks, client-relevant params, prices, the history window, recent news, earnings **aggregates only**, active market events, `version` | On connect, or on resync |
 | `tick` | `version`, `ts_ms`, prices, display prices, and a **server-bucketed bar**. ~200 bytes | 1 Hz |
-| `order` | `order_id`, lines, `total_cents`, **earnings delta** | Per accepted order |
+| `order` | `order_id`, lines, `total_cents`, **earnings delta**, and every drink's new `price_cents` / `chart_price_cents` (carried with the envelope's `version`) | Per accepted order |
 | `market_event` | `kind`, `drink_ids`, `t_start_ms`, **`t_end_ms`** | On start and end |
 | `news` | `{op: add\|delete, item}` | On change |
-| `config` | Params and drinks | On admin change |
-| `theme` | The 21 tokens plus image references | On theme change |
+| `config` | Params and drinks. *Deferred: defined by the phase that produces it (Phase 6)* | On admin change |
+| `theme` | The 21 tokens plus image references. *Deferred: defined by the phase that produces it (Phase 4+)* | On theme change |
 | `resync` | "You are too far behind, or I restarted" | On backpressure overflow or version gap |
 
 ### Why `t_end_ms` matters
@@ -65,7 +70,7 @@ countdown and animation locally, with no polling.
 
 | Type | Effect |
 |---|---|
-| `hello {last_version}` | Server replays missed ticks if they are still in the ring, otherwise sends a full `snapshot`. This makes reconnect cheap on venue wifi |
+| `hello {boot_id, last_seq}` | With the current `boot_id` and `last_seq` still in the replay log, the server replays every broadcast after `last_seq`, in order; otherwise it sends a full `snapshot`. This makes reconnect cheap on venue wifi |
 | `ping` | `pong`, as a **JSON frame** carrying server time |
 | `resync_request` | Read-only. Returns a `snapshot` |
 

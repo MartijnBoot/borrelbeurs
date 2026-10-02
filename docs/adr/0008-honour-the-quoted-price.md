@@ -55,3 +55,21 @@ doubles round-trips, and the bar interaction is "tap +1 Bier, done".
   shows "Server onbereikbaar" while the order may well have succeeded.
 - The check must sit inside the same transaction and the same lock as the state mutation.
   See [design/architecture.md](../design/architecture.md).
+
+## Addendum (Phase 3, SD18)
+
+Date: 2026-10-02
+
+The grace rule is refined: a quoted `unit_price_cents` equal to the live price is charged
+**whatever the quote's age**. Every 1 Hz tick bumps `version`, so a strict reading of "at most
+a version or two old" would reject any quote held over two seconds even at an unchanged price,
+bringing back the constant rejections this ADR rejected. In full, under the lock and per line:
+
+- `unit_price_cents == live` → charge it, at any age;
+- `|unit_price_cents − live| ≤ step` and `current_version − quote_version ≤ grace` → honour
+  the quoted price;
+- otherwise the whole order returns 409 `price_changed` with every line's current price and
+  the current version.
+
+`grace` is the product parameter this ADR requires: `run.quote_grace_versions`, default 2,
+kept out of the engine's `Params`.

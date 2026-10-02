@@ -56,7 +56,7 @@ app/
                           messages.py Pydantic models — these ARE the protocol contract
   api/                    orders, config, drinks, news, market, auth, state, theme
   jobs/                   export_xlsx.py — the only blocking worker
-  main.py                 boot: migrate, advisory lock, rehydrate, start ticker
+  main.py                 boot: advisory lock, migrate, rehydrate, start ticker, ready
 
 web/                      Vite + React + TypeScript (see frontend-architecture.md)
 ```
@@ -119,10 +119,11 @@ price and lose the sale.
 
 > Acceptance criterion: *a hard kill loses at most one tick of Brownian drift and zero orders.*
 
-**Boot sequence.** Migrate → acquire advisory lock → load the live run → rebuild spec and
+**Boot sequence** (ADR 0011: lock before migrate). Acquire the advisory lock → migrate →
+load the live run → rebuild spec and
 state **keyed by `drink_id`, not positional arrays** → load the history window into the ring
 → recompute earnings with one `GROUP BY` → apply the gap rule → insert a `gap` tick so the
-chart draws a break rather than a fake straight line.
+chart draws a break rather than a fake straight line → start the ticker → ready.
 
 This is the fix for v1's worst defect: `to_persist()` (`engine.py:139-150`) stores only
 static config and `from_persist` routes through `init`, so every restart recomputes `y` from
