@@ -42,4 +42,7 @@ class RealClock:
         return time.monotonic()
 
     async def sleep_until(self, monotonic_deadline: float) -> None:
-        await asyncio.sleep(max(0.0, monotonic_deadline - time.monotonic()))
+        # `asyncio.sleep` may wake early -- on Windows by up to the ~16 ms timer
+        # tick -- so sleep again until the deadline has really passed.
+        while (remaining := monotonic_deadline - time.monotonic()) > 0:
+            await asyncio.sleep(remaining)

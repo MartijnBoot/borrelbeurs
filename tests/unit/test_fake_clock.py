@@ -121,3 +121,27 @@ def test_the_real_clock_sleeps_until_a_monotonic_deadline() -> None:
 
     after, deadline = asyncio.run(scenario())
     assert after >= deadline - 0.005  # the event loop's timer resolution
+
+
+def test_the_real_clock_never_returns_before_its_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression: `asyncio.sleep` can wake early (on Windows by up to the ~16 ms timer
+    tick), and a single sleep returned with `monotonic()` still short of the deadline.
+    Here the first sleep wakes 10 ms early; `sleep_until` must sleep again until it is due."""
+    now = {"t": 100.0}
+    slept: list[float] = []
+
+    def fake_monotonic() -> float:
+        return now["t"]
+
+    async def early_sleep(seconds: float) -> None:
+        early = 0.010 if not slept else 0.0
+        slept.append(seconds)
+        now["t"] += max(0.0, seconds - early)
+
+    monkeypatch.setattr("app.runtime.clock.time.monotonic", fake_monotonic)
+    monkeypatch.setattr("app.runtime.clock.asyncio.sleep", early_sleep)
+
+    asyncio.run(RealClock().sleep_until(100.5))
+
+    assert now["t"] >= 100.5
+    assert len(slept) > 1  # the first, early wake was followed by another sleep
