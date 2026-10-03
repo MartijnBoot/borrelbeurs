@@ -36,6 +36,7 @@ from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
 from app.api.health import router as health_router
 from app.api.market import router as market_router
@@ -62,6 +63,7 @@ api_router.include_router(state_router)
 api_router.include_router(news_router)
 api_router.include_router(orders_router)
 api_router.include_router(market_router)
+api_router.include_router(admin_router)
 
 # `pnpm --dir web build` output (T6). Not built by every checkout -- a Python
 # test run has no reason to have run pnpm first -- so its absence only means
