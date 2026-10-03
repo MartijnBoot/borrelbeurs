@@ -60,8 +60,13 @@ def flatten(routes: Iterable[Any]) -> Iterator[Any]:
     dependencies."""
     for route in routes:
         contexts = getattr(route, "effective_route_contexts", None)
+        original = getattr(route, "original_route", None)
         if callable(contexts):
             yield from flatten(contexts())
+        elif isinstance(original, APIWebSocketRoute | WebSocketRoute):
+            # A WebSocket route's context has an empty `path`; the route as written
+            # carries the real path and the dependant tree with its guard.
+            yield original
         else:
             yield route
 

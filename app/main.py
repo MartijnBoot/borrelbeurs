@@ -46,6 +46,7 @@ from app.api.state import router as state_router
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError, handle_app_error, handle_validation_error
 from app.core.logging import configure_logging
+from app.realtime.ws import router as ws_router
 from app.runtime.boot import exit_process, start_runtime
 from app.runtime.clock import Clock, RealClock
 
@@ -170,6 +171,7 @@ def create_app(
     application.add_middleware(OriginGuard)
     application.include_router(health_router)
     application.include_router(api_router)
+    application.include_router(ws_router)
 
     # Mounted last, at "/", and after /api: everything above already owns its
     # namespace, so the SPA only ever catches what neither router claimed
