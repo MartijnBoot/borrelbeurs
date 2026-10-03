@@ -38,6 +38,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.auth import router as auth_router
 from app.api.health import router as health_router
+from app.api.market import router as market_router
 from app.api.news import router as news_router
 from app.api.orders import router as orders_router
 from app.api.security import LoginLimiter, OriginGuard
@@ -59,6 +60,7 @@ api_router.include_router(auth_router)
 api_router.include_router(state_router)
 api_router.include_router(news_router)
 api_router.include_router(orders_router)
+api_router.include_router(market_router)
 
 # `pnpm --dir web build` output (T6). Not built by every checkout -- a Python
 # test run has no reason to have run pnpm first -- so its absence only means
