@@ -218,22 +218,33 @@ def test_a_tick_is_never_stamped_before_the_commit_it_follows(
     drift); a tick after such a commit takes the commit's time, never an earlier one --
     a stamp going back reopens the previous candle (SD25)."""
 
-    async def scenario() -> list[tuple[int, str, int]]:
+    async def scenario() -> tuple[list[tuple[int, str, int]], int, dict[int, Any]]:
         async with _running(settings, database_url) as h:
             await h.advance(INTERVAL)
             h.clock.set_wall(h.clock.wall_ms() + 1_500)  # within the budget: no gap
             assert h.holder.drink_ids
-            await schedule(h.holder, h.holder.drink_ids[0], 400, 10_000, clock=h.clock)
+            jumped = h.holder.drink_ids[0]
+            await schedule(h.holder, jumped, 400, 10_000, clock=h.clock)
             await h.advance(INTERVAL)
             await h.advance(INTERVAL)
-            return await h.ticks()
+            return await h.ticks(), jumped, await _prices(h.engine)
 
-    rows = asyncio.run(scenario())
+    rows, jumped, prices = asyncio.run(scenario())
     assert [r[1] for r in rows] == ["reset", "tick", "jump", "tick", "tick"]
     stamps = [r[2] for r in rows]
     assert stamps == sorted(stamps), stamps
     assert rows[2][2] == rows[3][2] == T0 + 2_500  # the tick takes the jump's time
     assert rows[4][2] == T0 + 3_000  # and the grid takes over again once it is ahead
+    # AC37 (Phase 4 SD31): stamped at the jump's own time, the tick moves no price.
+    jump_version, tick_version = rows[2][0], rows[3][0]
+    assert prices[tick_version][str(jumped)]["p_q"] == prices[jump_version][str(jumped)]["p_q"]
+
+
+async def _prices(engine: AsyncEngine) -> dict[int, Any]:
+    """`price_tick.prices` per version: `{drink_id: {"p_cont", "p_q"}}`."""
+    async with engine.connect() as conn:
+        rows = await conn.execute(text("SELECT version, prices FROM price_tick"))
+        return {int(r[0]): r[1] for r in rows}
 
 
 def test_a_wall_clock_jump_re_anchors(settings: Settings, database_url: str) -> None:
@@ -325,6 +336,41 @@ def test_an_event_ending_within_the_next_interval_ends_on_that_slot(
     assert ended.event.event_id == event_id
     assert ended.event.t_end_ms == T0 + 2_500
     assert still_active == 0
+
+
+def test_an_event_ending_before_the_ticks_actual_stamp_ends_on_that_tick(
+    settings: Settings, database_url: str
+) -> None:
+    """AC36 (Phase 4 SD29): a jump pulls the tick's stamp ahead of its grid slot; an
+    event ending between the two ends on that tick, not one slot late."""
+
+    async def scenario() -> tuple[int, list[tuple[int, str, int]], int]:
+        engine = _engine(settings, database_url)
+        try:
+            run = await _live(engine)
+            async with engine.begin() as conn:
+                await insert_event(
+                    conn,
+                    run_id=run.run_id,
+                    kind="crash",
+                    drink_ids=run.drink_ids,
+                    t_start_ms=T0 - 10_000,
+                    t_end_ms=T0 + 2_200,  # after the grid's T0+2000, before the jump's T0+2500
+                )
+        finally:
+            await engine.dispose()
+        async with _running_rehydrated(settings, database_url) as h:
+            await h.advance(INTERVAL)
+            h.clock.set_wall(h.clock.wall_ms() + 1_500)  # within the budget: no gap
+            await schedule(h.holder, h.holder.drink_ids[0], 400, 10_000, clock=h.clock)
+            await h.advance(INTERVAL)  # grid slot T0+2000, stamped T0+2500
+            ended = sum(isinstance(e, MarketEventEnded) for e in h.events)
+            return ended, await h.ticks(), len(h.holder.market_events)
+
+    ended, rows, active = asyncio.run(scenario())
+    assert [r[1:] for r in rows[-2:]] == [("jump", T0 + 2_500), ("tick", T0 + 2_500)]
+    assert ended == 1
+    assert active == 0
 
 
 @asynccontextmanager

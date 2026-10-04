@@ -79,6 +79,8 @@ class Ticker:
         self._gap_pending = False
         self._stopping = False
         self._busy = False
+        # The last committed tick's actual stamp, which events end against (SD29).
+        self._last_stamp_ms = 0
         self._task: asyncio.Task[None] | None = None
         self.last_iteration_monotonic: float | None = None
 
@@ -141,7 +143,9 @@ class Ticker:
             self._k += 1
             stamp = self._wall_anchor + self._k * self._interval_ms
             if await self._guarded("tick", self._tick_step(stamp)):
-                await self._end_due_events(stamp)
+                # Against the stamp the tick committed with, which a later commit can pull
+                # ahead of the grid: an event ending in between ends now, not a slot late.
+                await self._end_due_events(self._last_stamp_ms)
             if self._stopping:
                 return
 
@@ -156,7 +160,16 @@ class Ticker:
         return True
 
     def _tick_step(self, grid_ms: int) -> Callable[[MarketView], Awaitable[Outcome[int]]]:
+        """One slot's tick, stamped `max(grid_ms, last commit's wall time)`.
+
+        The stamp never goes back, so a wall clock stepping back by less than the
+        catch-up budget (30 s) is not a gap: it holds every tick at the last
+        commit's time until the grid passes it, and prices freeze for up to the
+        budget meanwhile (Phase 4 SD30, ADR 0003). A step back beyond the budget
+        is a gap and re-anchors instead.
+        """
         holder = self._holder
+        ticker = self
 
         async def step(view: MarketView) -> Outcome[int]:
             assert view.run_id is not None and view.spec is not None and view.state is not None
@@ -176,6 +189,7 @@ class Ticker:
                 source="tick",
                 wall_ts_ms=now_ms,
             )
+            ticker._last_stamp_ms = now_ms
             entry = TickEntry(
                 version=candidate.version,
                 wall_ts_ms=now_ms,

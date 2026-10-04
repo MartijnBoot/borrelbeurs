@@ -51,6 +51,14 @@ elapsed time — so today a gap makes prices **freeze**, not jump. Moving to rea
 would therefore make gaps strictly *worse* than v1 unless clamped. This is the main
 technical argument for the clamp, beyond the domain one.
 
+**Note on a small backward step (Phase 4 SD30).** A tick is stamped
+`max(grid slot, last commit's wall time)`, so stamps never go back and a candle is never
+reopened. The flip side: a wall clock that steps back by *less* than the catch-up budget
+(30 s) is not treated as a gap. Instead every tick is held at the last commit's time until
+the grid passes it again, and prices freeze for up to the budget meanwhile. A step back
+beyond the budget is a gap and re-anchors as above. This is a deliberate trade, documented
+in `Ticker._tick_step`, and does not change the decision.
+
 ## Consequences
 
 - Pricing cadence and display cadence are separated. This is what lets the client stop
