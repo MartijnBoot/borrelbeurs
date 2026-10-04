@@ -44,6 +44,7 @@ from app.api.news import router as news_router
 from app.api.orders import router as orders_router
 from app.api.security import LoginLimiter, OriginGuard
 from app.api.state import router as state_router
+from app.api.theme import theme_css_router, theme_router
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError, handle_app_error, handle_validation_error
 from app.core.logging import configure_logging
@@ -64,6 +65,7 @@ api_router.include_router(news_router)
 api_router.include_router(orders_router)
 api_router.include_router(market_router)
 api_router.include_router(admin_router)
+api_router.include_router(theme_router)
 
 # `pnpm --dir web build` output (T6). Not built by every checkout -- a Python
 # test run has no reason to have run pnpm first -- so its absence only means
@@ -174,6 +176,8 @@ def create_app(
     application.include_router(health_router)
     application.include_router(api_router)
     application.include_router(ws_router)
+    # Public (Phase 4 SD8), and in front of the SPA mount, which would otherwise catch it.
+    application.include_router(theme_css_router)
 
     # Mounted last, at "/", and after /api: everything above already owns its
     # namespace, so the SPA only ever catches what neither router claimed

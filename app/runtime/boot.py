@@ -10,10 +10,12 @@ Startup, in this order, and nothing is served until the end:
    calls `asyncio.run`, which cannot nest in this loop). A failure fails boot.
    The Alembic config is built without a file name, so `env.py` does not call
    `fileConfig` and reset the application's logging;
-4. **rehydrate** the live run (with the gap rule), or an empty holder (SD16);
-5. the hub and the publisher (the holder's sink);
-6. the ticker and the lock watchdog;
-7. ready.
+4. **the theme** (Phase 4 PD5): the stored row, or Blauw at revision 0, with
+   or without a live run;
+5. **rehydrate** the live run (with the gap rule), or an empty holder (SD16);
+6. the hub and the publisher (the holder's sink);
+7. the ticker and the lock watchdog;
+8. ready.
 
 Shutdown (SD10): not ready, draining, the ticker finishes its slot, every
 socket is closed with 1012, the lock is released, the engine disposed. Nothing
@@ -41,11 +43,13 @@ from app.core.config import Settings
 from app.db.advisory_lock import acquire, release, watchdog
 from app.db.models import Run
 from app.db.session import create_engine
+from app.db.theme import get_theme
 from app.realtime.hub import Hub
 from app.realtime.publish import Publisher, seeded_book
 from app.runtime.clock import Clock
 from app.runtime.holder import DomainEvent, MarketHolder
 from app.runtime.rehydrate import RehydratedRun, rehydrate
+from app.runtime.theme import DEFAULT_PRESET, Theme, resolve
 from app.runtime.ticker import Ticker
 
 logger = logging.getLogger(__name__)
@@ -82,6 +86,13 @@ async def _tick_interval_ms(engine: AsyncEngine, run_id: int) -> int:
             await conn.execute(select(Run.tick_interval_ms).where(Run.run_id == run_id))
         ).scalar_one()
     return int(value)
+
+
+async def _stored_theme(engine: AsyncEngine) -> Theme:
+    """The stored theme, or Blauw at revision 0 when none was ever stored (SD5)."""
+    async with engine.connect() as conn:
+        row = await get_theme(conn)
+    return resolve(DEFAULT_PRESET, 0) if row is None else resolve(row.preset, row.revision)
 
 
 class _LateSink:
@@ -123,6 +134,8 @@ async def start_runtime(
             except Exception as error:
                 logger.error("boot_failed", extra={"reason": "migration failed"})
                 raise BootFailure(f"migration failed: {type(error).__name__}") from error
+
+        app.state.theme = await _stored_theme(engine)
 
         sink = _LateSink()
         # Room for a statement to hit the engine's own timeout and report it first.

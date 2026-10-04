@@ -36,6 +36,8 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     ("POST", "/api/market/jumps"): WRITERS,
     ("POST", "/api/market/events"): WRITERS,
     ("POST", "/api/admin/shutdown"): ADMIN,
+    # Phase 4 SD5.
+    ("PUT", "/api/theme"): ADMIN,
 }
 
 ACTORS: Final = ("anonymous", "revoked", "display", "bar", "admin")
@@ -85,6 +87,8 @@ def _status(client: TestClient, method: str, path: str) -> int:
         except WebSocketDisconnect as closed:
             return 401 if closed.code == 1008 else 101
     body: dict[str, object] | None = {} if method in {"POST", "DELETE"} else None
+    if method == "PUT":
+        body = {"preset": "blauw"}  # valid, so a permitted role is not refused for its body
     response = client.request(method, url, json=body, headers={"Idempotency-Key": "k-matrix-0001"})
     return int(response.status_code)
 

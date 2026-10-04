@@ -5,8 +5,8 @@ covers every HTTP route, WebSocket route and mount on `create_app()`. A route
 passes if `require_role` (`app/api/deps.py`, found by the marker it carries)
 appears anywhere in its dependant tree -- its own dependencies, a router's, or
 a nested one -- or if it is in `PUBLIC_ROUTES`, which is SD1's public row plus
-SD3's three docs paths and nothing else. Adding to it needs the human (T17's
-autonomy note).
+SD3's three docs paths plus `GET /theme.css` (Phase 4 SD8) and nothing else.
+Adding to it needs the human (T17's autonomy note).
 
 The docs routes exist only after a non-production lifespan has run, so they are
 listed here even though a bare `create_app()` does not have them. The SPA mount
@@ -33,7 +33,8 @@ from starlette.routing import BaseRoute, Mount, WebSocketRoute
 import app.main
 from app.api.deps import REQUIRE_ROLE_MARKER, Principal, require_role
 
-# (kind, path): SD1's public row and SD3's docs. Nothing else, ever, without the human.
+# (kind, path): SD1's public row, SD3's docs and Phase 4 SD8's theme stylesheet.
+# Nothing else, ever, without the human.
 PUBLIC_ROUTES: Final = frozenset(
     {
         ("POST", "/api/auth/login"),
@@ -43,6 +44,7 @@ PUBLIC_ROUTES: Final = frozenset(
         ("GET", "/openapi.json"),
         ("GET", "/docs"),
         ("GET", "/redoc"),
+        ("GET", "/theme.css"),
     }
 )
 
@@ -120,7 +122,9 @@ def test_the_walk_reaches_the_routes_that_matter(built_frontend: None) -> None:
     assert {("POST", "/api/auth/login"), ("GET", "/api/auth/me"), ("MOUNT", "")} <= keys
 
 
-def test_the_allowlist_is_exactly_sd1_and_sd3() -> None:
+def test_the_allowlist_is_exactly_sd1_sd3_and_phase_4_sd8() -> None:
+    """`/theme.css` was authorised by the human in Phase 4 SD8: the login page must
+    paint themed too, and the tokens are not secret."""
     assert {path for _, path in PUBLIC_ROUTES} == {
         "/api/auth/login",
         "/healthz",
@@ -129,6 +133,7 @@ def test_the_allowlist_is_exactly_sd1_and_sd3() -> None:
         "/openapi.json",
         "/docs",
         "/redoc",
+        "/theme.css",
     }
 
 
