@@ -245,8 +245,14 @@ async def ws(
     finally:
         talking.cancel()
         expiring.cancel()
-        # Whatever either task raised, both are stopped and the connection is closed.
-        await asyncio.gather(talking, expiring, return_exceptions=True)
+        # `wait`, not `gather`: if this task is cancelled meanwhile, a cancelled `gather`
+        # raises a child's `CancelledError` instead of the one cancelling us, and an
+        # enclosing anyio scope only swallows its own.
+        await asyncio.wait({talking, expiring})
+        for task in (talking, expiring):
+            # Whatever either task raised is retrieved, so asyncio does not log it.
+            if not task.cancelled():
+                task.exception()
         if session.connection is not None:
             session.connection.close(1000)
         # Let the hub's close task send its frame before the handler returns.

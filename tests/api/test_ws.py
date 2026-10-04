@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import time
 from collections.abc import Callable, Iterator
@@ -132,6 +133,28 @@ def test_a_current_hello_gets_exactly_the_missed_broadcasts_and_no_snapshot(
     assert [f["type"] for f in frames] == ["tick", "tick", "tick"]
     assert [f["seq"] for f in frames] == [seen + 1, seen + 2, seen + 3]
     assert (live["type"], live["seq"]) == ("tick", seen + 4)
+
+
+def test_closing_a_session_never_leaks_a_foreign_cancellation(
+    live_client: TestClient, login: Login
+) -> None:
+    """Regression: on exit TestClient cancels the handler's anyio scope right after the
+    disconnect. If that lands while the handler's cleanup awaits its two tasks, the
+    `CancelledError` escaping must be anyio's own, which the scope swallows; a child's,
+    re-raised by `gather`, made `__exit__` raise `CancelledError` in about one exit in 40.
+    A race, so it is run many times: 300 exits failed 4-9 times before the fix."""
+    client = login("display")
+    leaked = 0
+    for _ in range(300):
+        try:
+            with _connect(client) as ws:
+                ws.receive_text()  # hello
+                ws.send_text(json.dumps({"type": "hello", "boot_id": "x", "last_seq": 0}))
+                ws.receive_text()  # snapshot
+        except concurrent.futures.CancelledError:
+            leaked += 1
+
+    assert leaked == 0
 
 
 def test_ping_gets_a_json_pong_and_every_frame_is_json(
