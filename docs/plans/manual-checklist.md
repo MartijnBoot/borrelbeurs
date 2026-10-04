@@ -190,20 +190,20 @@ Exit: every route authorized; integration tests green against real Postgres.
 - [x] audit — `/clear` then `/audit 3`
 - [x] merge the plan — per-phase loop step 5 with `<N>` = 3
 - [x] tasks (`/build 3 <T>`, `/review 3`):
-  - [ ] …
-- [ ] exit criterion — `/clear` then `/verify` shows the integration suite green against Postgres
+  - [x] …
+- [x] exit criterion — `/clear` then `/verify` shows the integration suite green against Postgres
 - known test debt (phase-3 review, 2026-10-04) — the code meets these criteria; the tests would not catch a regression:
-  - [ ] AC18d kill test (`tests/integration/test_real_process.py`) — "at most one tick lost" is never asserted, and the "mid-tick" kill points are fixed sleeps, so nothing guarantees a tick is in flight
-  - [ ] AC22 (`tests/unit/test_hub.py`) — drives `hub.broadcast` directly; the spec's wording wants the real ticker writing on the grid beside a never-reading client
+  - [x] AC18d kill test (`tests/integration/test_real_process.py`) — "at most one tick lost" is never asserted, and the "mid-tick" kill points are fixed sleeps, so nothing guarantees a tick is in flight
+  - [x] AC22 (`tests/unit/test_hub.py`) — drives `hub.broadcast` directly; the spec's wording wants the real ticker writing on the grid beside a never-reading client
 
 ## Phase 4 — React shell + theme + auth + koers
 Exit: big screen works end to end; theme propagates across machines.
 
-- [ ] spec — read `docs/specs/phase-4-web-koers.md` (`Draft`) → approve, or `/clear` then `/spec 4`
-- [ ] branch — `git switch main` then `git pull` then `git switch -c docs/phase-4-plan`
-- [ ] plan — `/clear` then `/plan 4`
-- [ ] audit — `/clear` then `/audit 4`
-- [ ] merge the plan — per-phase loop step 5 with `<N>` = 4
+- [x] spec — read `docs/specs/phase-4-web-koers.md` (`Draft`) → approve, or `/clear` then `/spec 4`
+- [x] branch — `git switch main` then `git pull` then `git switch -c docs/phase-4-plan`
+- [x] plan — `/clear` then `/plan 4`
+- [x] audit — `/clear` then `/audit 4`
+- [x] merge the plan — per-phase loop step 5 with `<N>` = 4
 - [ ] tasks (`/build 4 <T>`, `/review 4`):
   - [ ] …
 - [ ] exit criterion — open koers on two machines, change the theme on one, the other follows
