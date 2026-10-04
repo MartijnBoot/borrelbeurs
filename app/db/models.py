@@ -24,6 +24,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    SmallInteger,
     Text,
     UniqueConstraint,
     func,
@@ -265,3 +266,24 @@ class MarketEvent(Base):
     t_start_ms: Mapped[int] = mapped_column(BigInteger)
     t_end_ms: Mapped[int] = mapped_column(BigInteger)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Theme(Base):
+    """The one active display theme (Phase 4 SD5). A single row, `id = 1` (PD4);
+    no row means Blauw at revision 0."""
+
+    __tablename__ = "theme"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="theme_id_check"),
+        CheckConstraint(
+            "preset IN ('oudgeld', 'blauw', 'groen', 'paars', 'rood')", name="theme_preset_check"
+        ),
+        CheckConstraint("revision >= 1", name="theme_revision_check"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        SmallInteger, primary_key=True, autoincrement=False, server_default=text("1")
+    )
+    preset: Mapped[str] = mapped_column(Text)
+    revision: Mapped[int] = mapped_column(Integer)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

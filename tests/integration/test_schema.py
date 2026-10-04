@@ -29,6 +29,10 @@ PHASE_2_TABLES = frozenset(
     }
 )
 PHASE_3_TABLES = frozenset({"auth_key", "market_event"})
+PHASE_4_TABLES = frozenset({"theme"})
+
+# PD4: SD5's three columns plus the singleton key.
+THEME_COLUMNS = frozenset({"id", "preset", "revision", "updated_at"})
 
 # AC6c (schema half): an access key's secret is stored only as its argon2id hash.
 AUTH_KEY_COLUMNS = frozenset(
@@ -83,10 +87,10 @@ def money_violations(columns: Iterable[Column]) -> list[str]:
 
 
 def test_the_application_tables_are_the_ones_inspected(database_url: str) -> None:
-    """Anti-vacuity: the inspection below reaches every table of Phase 2 SD4 and Phase 3."""
+    """Anti-vacuity: the inspection below reaches every table of Phase 2 SD4, Phase 3, Phase 4."""
     tables = {table for table, _, _ in asyncio.run(_columns(database_url))}
 
-    assert tables == PHASE_2_TABLES | PHASE_3_TABLES
+    assert tables == PHASE_2_TABLES | PHASE_3_TABLES | PHASE_4_TABLES
 
 
 def test_every_money_column_is_integer_cents(database_url: str) -> None:
@@ -473,5 +477,56 @@ def test_zero_grace_versions_is_allowed(database_url: str) -> None:
         await connection.execute(
             text("UPDATE run SET quote_grace_versions = 0 WHERE run_id = :r"), {"r": run_id}
         )
+
+    _in_transaction(database_url, write)
+
+
+def test_the_theme_table_has_exactly_pd4s_columns(database_url: str) -> None:
+    """SD5 + PD4: any further column is a data-model change, a hard stop."""
+    columns = {c for t, c, _ in asyncio.run(_columns(database_url)) if t == "theme"}
+
+    assert columns == THEME_COLUMNS
+
+
+def test_the_theme_row_defaults_to_id_1_and_now(database_url: str) -> None:
+    found: list[tuple[int, bool]] = []
+
+    async def write(connection: AsyncConnection) -> None:
+        await connection.execute(text("INSERT INTO theme (preset, revision) VALUES ('blauw', 1)"))
+        row = (await connection.execute(text("SELECT id, updated_at IS NOT NULL FROM theme"))).one()
+        found.append((int(row[0]), bool(row[1])))
+
+    _in_transaction(database_url, write)
+
+    assert found == [(1, True)]
+
+
+@pytest.mark.parametrize(
+    ("statement", "constraint"),
+    [
+        ("INSERT INTO theme (id, preset, revision) VALUES (2, 'blauw', 1)", "theme_id_check"),
+        ("INSERT INTO theme (preset, revision) VALUES ('eigen', 1)", "theme_preset_check"),
+        ("INSERT INTO theme (preset, revision) VALUES ('blauw', 0)", "theme_revision_check"),
+    ],
+    ids=["second-row", "unknown-preset", "revision-0"],
+)
+def test_the_theme_row_is_constrained(database_url: str, statement: str, constraint: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        await connection.execute(text(statement))
+
+    with pytest.raises(IntegrityError, match=constraint):
+        _in_transaction(database_url, write)
+
+
+def test_the_five_presets_are_accepted(database_url: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        for preset in ("oudgeld", "blauw", "groen", "paars", "rood"):
+            await connection.execute(
+                text(
+                    "INSERT INTO theme (preset, revision) VALUES (:p, 1) "
+                    "ON CONFLICT (id) DO UPDATE SET preset = excluded.preset"
+                ),
+                {"p": preset},
+            )
 
     _in_transaction(database_url, write)

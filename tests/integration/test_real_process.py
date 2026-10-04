@@ -188,7 +188,7 @@ def test_a_second_instance_exits_fast_logs_the_lock_and_never_migrates(
         downgraded = alembic(empty_database, "downgrade", "-1")
         assert downgraded.returncode == 0, downgraded.stderr
         before = _rows(empty_database, "SELECT version_num FROM alembic_version")
-        assert before == [("0006",)]
+        assert before == [("0007",)]
         started = time.monotonic()
         second = spawn_app(empty_database, tmp_path / "second.stderr")
         code = second.wait(timeout=15)
