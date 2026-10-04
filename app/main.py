@@ -28,6 +28,7 @@ import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
+from typing import Final
 
 import uvicorn
 from fastapi import APIRouter, FastAPI, Request
@@ -35,6 +36,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException
+from starlette.responses import Response
+from starlette.types import Scope
 
 from app.api.admin import router as admin_router
 from app.api.auth import router as auth_router
@@ -42,7 +46,7 @@ from app.api.health import router as health_router
 from app.api.market import router as market_router
 from app.api.news import router as news_router
 from app.api.orders import router as orders_router
-from app.api.security import LoginLimiter, OriginGuard
+from app.api.security import ROLE_ROUTES, LoginLimiter, OriginGuard
 from app.api.state import router as state_router
 from app.api.theme import theme_css_router, theme_router
 from app.core.config import Settings, get_settings
@@ -71,6 +75,30 @@ api_router.include_router(theme_router)
 # test run has no reason to have run pnpm first -- so its absence only means
 # there is no frontend to serve, never a boot failure.
 WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
+
+# The client-side routes (Phase 4 PD8): the login page and every route the role
+# table grants, taken from the server's own table rather than copied.
+SPA_ROUTES: Final = frozenset({"/login"} | {r for routes in ROLE_ROUTES.values() for r in routes})
+
+
+class SpaStaticFiles(StaticFiles):
+    """`StaticFiles` with a history-mode fallback for the SPA's own routes only.
+
+    A `GET` of exactly one of `SPA_ROUTES` that matches no file serves
+    `index.html`, so a reload of `/koers` or a `/login?next=` redirect renders the
+    app. Every other unknown path stays a plain 404.
+    """
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except HTTPException as missing:
+            if missing.status_code != 404 or scope["method"] != "GET":
+                raise
+            if scope["path"] not in SPA_ROUTES:
+                raise
+            return await super().get_response("index.html", scope)
+
 
 # `start_runtime`'s shape (app/runtime/boot.py); tests pass a no-op one.
 Runtime = Callable[..., AbstractAsyncContextManager[None]]
@@ -181,13 +209,14 @@ def create_app(
 
     # Mounted last, at "/", and after /api: everything above already owns its
     # namespace, so the SPA only ever catches what neither router claimed
-    # (docs/design/architecture.md:36-38). `html=True` serves `index.html` for
-    # "/" and other directory-style requests; it does not add history-mode
-    # fallback for arbitrary unmatched paths -- Phase 0 has no client-side
-    # routes yet to justify that, and `/probe` or `/api/nope` must keep
-    # answering plain 404, not SPA HTML.
+    # (docs/design/architecture.md:36-38). It serves the files in `web/dist`;
+    # `html=True` adds `index.html` for "/" and directory-style requests, and
+    # `SpaStaticFiles` adds it for a reload of one of the client's own routes
+    # (`SPA_ROUTES`, Phase 4 PD8). Nothing else falls back: `/probe` and
+    # `/koers/x` stay a plain 404, and `/api/nope` is the API's JSON 404. The SPA
+    # paths are not FastAPI routes, so the public allowlist stays as it is.
     if WEB_DIST.is_dir():
-        application.mount("/", StaticFiles(directory=WEB_DIST, html=True), name="spa")
+        application.mount("/", SpaStaticFiles(directory=WEB_DIST, html=True), name="spa")
 
     return application
 
