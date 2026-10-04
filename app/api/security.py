@@ -224,7 +224,8 @@ async def verify_login(
     if parsed is None:
         return None
     row = await lookup(parsed.key_id)
-    stored = row.secret_hash if row is not None else dummy_hash()
+    # The first dummy_hash() is a full argon2 hash: build it off the loop too.
+    stored = row.secret_hash if row is not None else await asyncio.to_thread(dummy_hash)
     matched = await asyncio.to_thread(verifier, stored, parsed.secret)
     if row is None or not matched or row.revoked:
         return None

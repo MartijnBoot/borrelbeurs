@@ -236,6 +236,23 @@ def test_replay_is_none_once_the_seq_is_trimmed_from_the_window() -> None:
     assert kept == list(range(13, 21))
 
 
+def test_a_replay_that_would_overflow_the_queue_is_none() -> None:
+    """AC21: a replay is enqueued in one go, so one longer than the queue is a snapshot."""
+
+    async def scenario() -> tuple[bool, int]:
+        clock = FakeClock(T0)
+        hub = Hub(clock=clock, replay_window_ms=WINDOW_MS, boot_id="b00t")
+        for k in range(1, QUEUE_LIMIT + 2):
+            clock.advance(1_000)
+            hub.broadcast(_tick(clock, k))
+        too_long = hub.replay_after("b00t", 0) is None
+        fits = hub.replay_after("b00t", 1)
+        assert fits is not None
+        return too_long, len(fits)
+
+    assert asyncio.run(scenario()) == (True, QUEUE_LIMIT)
+
+
 def test_a_resync_frame_is_a_closed_envelope() -> None:
     async def scenario() -> list[str]:
         clock = FakeClock(T0)

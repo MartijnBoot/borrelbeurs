@@ -111,8 +111,10 @@ async def start_event(
         async with engine.begin() as conn:
             ended = []
             for active in view.market_events:
-                await end_event(conn, active.event_id, t_end_ms=now_ms)
-                ended.append(dataclasses.replace(active, t_end_ms=now_ms))
+                # Ends after it started even if the wall clock has not moved past its start.
+                t_end_ms = max(now_ms, active.t_start_ms + 1)
+                await end_event(conn, active.event_id, t_end_ms=t_end_ms)
+                ended.append(dataclasses.replace(active, t_end_ms=t_end_ms))
             rows = {row.drink_id: row for row in await active_drinks(conn, run_id)}
             for drink_id in view.drink_ids:
                 before = state

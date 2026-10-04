@@ -270,6 +270,37 @@ def test_an_unknown_key_is_verified_against_the_dummy_hash() -> None:
     assert [h for h, _ in verifier.calls] == [dummy_hash()]
 
 
+def test_the_first_unknown_key_builds_the_dummy_hash_off_the_loop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC6: the lazily built dummy hash is a full argon2 hash; it must not stall the loop."""
+    from app.api import security
+
+    real_hash = security.hash_secret
+    hashed_on: list[int] = []
+
+    def spy(secret: str) -> str:
+        hashed_on.append(threading.get_ident())
+        return real_hash(secret)
+
+    async def lookup(key_id: int) -> AuthKeyRow | None:
+        return None
+
+    async def scenario() -> int:
+        await verify_login(format_key(5, mint_secret()), lookup, verifier=CountingVerifier())
+        return threading.get_ident()
+
+    monkeypatch.setattr(security, "hash_secret", spy)
+    security.dummy_hash.cache_clear()
+    try:
+        loop_thread = asyncio.run(scenario())
+    finally:
+        security.dummy_hash.cache_clear()
+
+    assert len(hashed_on) == 1
+    assert hashed_on[0] != loop_thread
+
+
 # --- the cookie (SD8, AC6a) --------------------------------------------------------
 
 

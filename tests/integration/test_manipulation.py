@@ -280,6 +280,29 @@ def test_a_second_event_first_ends_the_first_with_its_rewritten_end(
     asyncio.run(scenario())
 
 
+def test_a_second_event_in_the_same_millisecond_ends_the_first_one_ms_after_its_start(
+    settings: Settings, database_url: str
+) -> None:
+    """AC19: an event always ends after it started, even when `now` has not moved past it."""
+
+    async def scenario() -> tuple[int, int]:
+        async with _market(settings, database_url) as m:
+            first = await start_event(m.holder, "crash", 30_000, clock=m.clock)
+            second = await start_event(m.holder, "bubble", 10_000, clock=m.clock)
+            assert m.holder.market_events == (second,)
+            async with m.engine.connect() as conn:
+                t_end_ms: int = (
+                    await conn.execute(
+                        text("SELECT t_end_ms FROM market_event WHERE event_id = :id"),
+                        {"id": first.event_id},
+                    )
+                ).scalar_one()
+            return first.t_start_ms, t_end_ms
+
+    t_start_ms, t_end_ms = asyncio.run(scenario())
+    assert t_end_ms == t_start_ms + 1
+
+
 @pytest.mark.parametrize(
     "statement", ["INSERT INTO news", "INSERT INTO market_event", "INSERT INTO price_tick"]
 )

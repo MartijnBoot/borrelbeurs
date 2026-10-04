@@ -5,7 +5,9 @@
 snapshot at `seq = S` means "state as of S" and the next broadcast is `S+1`.
 Each hub draws a random `boot_id`; with the replay log of broadcasts covering
 `replay_window_ms`, a reconnecting client's `(boot_id, last_seq)` either gets
-exactly the frames it missed or `None`, meaning "send a snapshot" (AC21).
+exactly the frames it missed or `None`, meaning "send a snapshot" (AC21). A
+replay longer than `QUEUE_LIMIT` is `None` too: it is enqueued before the
+writer can drain anything, so it would overflow into a `resync` mid-replay.
 
 **Backpressure (SD29, D-34).** Each connection has a bounded queue of
 `QUEUE_LIMIT` frames and one writer task. `broadcast` and `unicast` are plain
@@ -167,6 +169,8 @@ class Hub:
             return []
         if not self._log or self._log[0][0] > last_seq + 1:
             return None
+        if self._seq - last_seq > QUEUE_LIMIT:
+            return None  # enqueued in one go, it would overflow into a resync
         return [frame for seq, _, frame in self._log if seq > last_seq]
 
     async def close_all(self, code: int) -> None:

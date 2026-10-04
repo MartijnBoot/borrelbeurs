@@ -17,7 +17,9 @@ and the active events' start and end move by the same `gap_shift_ms`, with no
 
 **A failed commit (SD14)** is logged with the version and the slot skipped:
 memory keeps the last committed state and the next slot computes from it. It
-is never retried.
+is never retried. The exception is a failed `gap`: the grid still re-anchors,
+but the next slot is a `gap` again rather than a `tick`, so no `advance` ever
+runs across an uncommitted gap (AC18a).
 
 **No live run (SD16):** the ticker idles on the grid, mutating nothing.
 
@@ -73,6 +75,7 @@ class Ticker:
         self._wall_anchor = 0
         self._mono_anchor = 0.0
         self._k = 0
+        self._gap_pending = False
         self._stopping = False
         self._busy = False
         self._task: asyncio.Task[None] | None = None
@@ -129,8 +132,8 @@ class Ticker:
         now_wall = self._clock.wall_ms()
         lag_ms = (now_mono - due) * 1000
         drift_ms = abs((now_wall - self._wall_anchor) - (now_mono - self._mono_anchor) * 1000)
-        if lag_ms > self._budget_ms or drift_ms > self._budget_ms:
-            await self._guarded("gap", self._gap_step(now_wall))
+        if self._gap_pending or lag_ms > self._budget_ms or drift_ms > self._budget_ms:
+            self._gap_pending = not await self._guarded("gap", self._gap_step(now_wall))
             self._anchor()
             return
         while self._mono_anchor + (self._k + 1) * self._interval_ms / 1000 <= now_mono:

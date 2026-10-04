@@ -26,6 +26,7 @@ from typing import Any
 from sqlalchemy import pool, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from app.db.advisory_lock import ADVISORY_LOCK_KEY
 from tests.integration.conftest import RunAlembic
 from tests.integration.realapp.harness import (
     Client,
@@ -208,10 +209,13 @@ def test_a_dropped_lock_connection_makes_the_app_exit_non_zero(
     """AC18 / PD5: it can no longer prove it is the only writer, so it stops."""
     app = start_app(database_url, tmp_path / "app.stderr")
     try:
+        # pg_locks is cluster-wide: only this test database's app lock, never a dev stack's.
         terminated = _rows(
             database_url,
             "SELECT pg_terminate_backend(pid) FROM pg_locks"
-            " WHERE locktype = 'advisory' AND granted",
+            " WHERE locktype = 'advisory' AND granted"
+            " AND database = (SELECT oid FROM pg_database WHERE datname = current_database())"
+            f" AND classid = 0 AND objid = {ADVISORY_LOCK_KEY}",
         )
         assert terminated and all(row[0] for row in terminated)
         code = app.wait(timeout=15)

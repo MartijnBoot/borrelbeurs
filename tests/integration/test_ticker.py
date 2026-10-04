@@ -174,6 +174,42 @@ def test_a_stall_beyond_the_budget_writes_one_gap_row_and_moves_no_price(
     assert rows[-1][1:] == ("tick", T0 + 51 * INTERVAL)  # re-anchored on the gap
 
 
+def test_a_failed_gap_commit_is_retried_on_the_next_slot_and_moves_no_price(
+    settings: Settings, database_url: str
+) -> None:
+    """AC18a, SD14: a gap that did not commit is still a gap on the next slot, not a tick."""
+
+    async def scenario() -> tuple[list[tuple[int, str, int]], Any, Any]:
+        async with _running(settings, database_url) as h:
+            for _ in range(5):
+                await h.advance(INTERVAL)
+            before = h.holder.ring[-1]
+            fail = {"armed": True}
+
+            def drop_connection(*args: Any) -> None:
+                if fail["armed"] and args[2].startswith("INSERT INTO price_tick"):
+                    fail["armed"] = False
+                    raise OSError("injected: connection lost")
+
+            event.listen(h.engine.sync_engine, "before_cursor_execute", drop_connection)
+            try:
+                await h.advance(45 * INTERVAL)
+            finally:
+                event.remove(h.engine.sync_engine, "before_cursor_execute", drop_connection)
+            await h.advance(INTERVAL)
+            gap = h.holder.ring[-1]
+            await h.advance(INTERVAL)
+            return await h.ticks(), before, gap
+
+    rows, before, gap = asyncio.run(scenario())
+    assert [r[1] for r in rows[6:]] == ["gap", "tick"]
+    assert gap.source == "gap" and gap.version == before.version + 1
+    assert gap.wall_ts_ms == T0 + 51 * INTERVAL
+    assert {d: p["p_cont"] for d, p in gap.prices.items()} == {
+        d: p["p_cont"] for d, p in before.prices.items()
+    }
+
+
 def test_a_wall_clock_jump_re_anchors(settings: Settings, database_url: str) -> None:
     """SD13: wall and monotonic diverging past the budget is treated as a gap."""
 

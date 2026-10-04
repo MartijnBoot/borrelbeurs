@@ -304,8 +304,8 @@ class MarketHolder:
                 self._publish(outcome)
             finally:
                 held_ms = round((self._clock.monotonic() - started) * 1000)
-        if held_ms > LOCK_HOLD_WARNING_MS:
-            logger.warning("lock_hold_ms", extra={"op": op, "lock_hold_ms": held_ms})
+                if held_ms > LOCK_HOLD_WARNING_MS:
+                    logger.warning("lock_hold_ms", extra={"op": op, "lock_hold_ms": held_ms})
         if outcome.events:
             self._sink(outcome.events)
         return outcome.result

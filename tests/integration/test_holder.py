@@ -260,6 +260,35 @@ def test_a_long_hold_logs_exactly_one_warning_naming_the_op(
     assert warnings[0].__dict__["lock_hold_ms"] == 60
 
 
+def test_a_long_hold_that_fails_still_logs_the_warning(
+    settings: Settings, database_url: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """SD22: every release is measured, including one where the step raised."""
+    clock = FakeClock(T0)
+
+    async def scenario() -> None:
+        engine = _engine(settings, database_url)
+        try:
+            run = await _live(engine)
+            holder, _ = _holder(engine, run, clock)
+
+            async def slow_failure(view: MarketView) -> Outcome[int]:
+                clock.advance(60)
+                raise OSError("injected: the database stalled, then dropped")
+
+            with pytest.raises(PersistenceUnavailable):
+                await holder.mutate("order", slow_failure)
+        finally:
+            await engine.dispose()
+
+    with caplog.at_level(logging.WARNING, logger="app.runtime.holder"):
+        asyncio.run(scenario())
+    warnings = [r for r in caplog.records if r.getMessage() == "lock_hold_ms"]
+    assert len(warnings) == 1
+    assert warnings[0].__dict__["op"] == "order"
+    assert warnings[0].__dict__["lock_hold_ms"] >= 60
+
+
 def test_mutations_queued_behind_the_lock_run_in_arrival_order(
     settings: Settings, database_url: str
 ) -> None:

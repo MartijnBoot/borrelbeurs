@@ -167,6 +167,24 @@ def test_resync_request_gets_a_snapshot_and_garbage_gets_an_error(
     assert replies[1]["data"] == {"code": "invalid_message"}
 
 
+def test_a_binary_frame_gets_an_error_and_the_connection_stays_open(
+    live_client: TestClient, login: Login
+) -> None:
+    """SD30: a binary frame is "anything else", in the hello window and after it."""
+    client = login("display")
+    with _connect(client) as ws:
+        ws.receive_text()  # hello
+        ws.send_bytes(b"\x00\x01")
+        replies = [json.loads(ws.receive_text()) for _ in range(2)]  # snapshot, error
+        ws.send_bytes(b'{"type": "ping"}')
+        replies.append(json.loads(ws.receive_text()))
+        ws.send_text(json.dumps({"type": "ping"}))
+        replies.append(json.loads(ws.receive_text()))
+
+    assert [r["type"] for r in replies] == ["snapshot", "error", "error", "pong"]
+    assert replies[1]["data"] == replies[2]["data"] == {"code": "invalid_message"}
+
+
 def test_client_messages_never_touch_the_market_and_six_a_second_close_1008(
     live_client: TestClient, login: Login, mutations: list[str]
 ) -> None:

@@ -139,9 +139,17 @@ class _Session:
             self._arrivals.popleft()
         return len(self._arrivals) > CLIENT_RATE
 
+    async def next_frame(self) -> str:
+        """The next client frame; a binary one is `""`, which parses as no message (SD30)."""
+        message = await self.ws.receive()
+        if message["type"] == "websocket.disconnect":
+            raise WebSocketDisconnect(message.get("code", 1000), message.get("reason"))
+        text = message.get("text")
+        return text if isinstance(text, str) else ""
+
     async def receive(self, *, until: float | None = None) -> str | None:
-        """The next text frame, or `None` if `until` (monotonic) passes first."""
-        receiving = asyncio.ensure_future(self.ws.receive_text())
+        """The next frame, or `None` if `until` (monotonic) passes first."""
+        receiving = asyncio.ensure_future(self.next_frame())
         if until is None:
             return await receiving
         waiting = asyncio.ensure_future(self.clock.sleep_until(until))
@@ -235,10 +243,10 @@ async def ws(
     try:
         await asyncio.wait({talking, expiring}, return_when=asyncio.FIRST_COMPLETED)
     finally:
-        for task in (talking, expiring):
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError, WebSocketDisconnect, RuntimeError):
-                await task
+        talking.cancel()
+        expiring.cancel()
+        # Whatever either task raised, both are stopped and the connection is closed.
+        await asyncio.gather(talking, expiring, return_exceptions=True)
         if session.connection is not None:
             session.connection.close(1000)
         # Let the hub's close task send its frame before the handler returns.
