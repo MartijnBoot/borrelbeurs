@@ -127,10 +127,12 @@ def test_a_current_hello_gets_exactly_the_missed_broadcasts_and_no_snapshot(
             json.dumps({"type": "hello", "boot_id": hello["data"]["boot_id"], "last_seq": seen})
         )
         frames = [json.loads(ws.receive_text()) for _ in range(3)]
+        catch_up = json.loads(ws.receive_text())  # the theme (Phase 4 PD7)
         advance(1_000)
         live = json.loads(ws.receive_text())
 
     assert [f["type"] for f in frames] == ["tick", "tick", "tick"]
+    assert (catch_up["type"], catch_up["seq"]) == ("theme", seen + 3)
     assert [f["seq"] for f in frames] == [seen + 1, seen + 2, seen + 3]
     assert (live["type"], live["seq"]) == ("tick", seen + 4)
 
@@ -166,11 +168,12 @@ def test_ping_gets_a_json_pong_and_every_frame_is_json(
         frames = [ws.receive_text()]
         ws.send_text(json.dumps({"type": "ping"}))
         frames.append(ws.receive_text())  # snapshot (the ping was not a hello)
+        frames.append(ws.receive_text())  # theme (Phase 4 PD7)
         frames.append(ws.receive_text())  # pong
 
     decoded = [json.loads(f) for f in frames]
-    assert [d["type"] for d in decoded] == ["hello", "snapshot", "pong"]
-    assert decoded[2]["data"]["server_ts_ms"] == client.app.state.clock.wall_ms()  # type: ignore[attr-defined]
+    assert [d["type"] for d in decoded] == ["hello", "snapshot", "theme", "pong"]
+    assert decoded[3]["data"]["server_ts_ms"] == client.app.state.clock.wall_ms()  # type: ignore[attr-defined]
 
 
 def test_resync_request_gets_a_snapshot_and_garbage_gets_an_error(
@@ -181,13 +184,15 @@ def test_resync_request_gets_a_snapshot_and_garbage_gets_an_error(
         ws.receive_text()
         ws.send_text(json.dumps({"type": "hello", "boot_id": "x", "last_seq": 0}))
         ws.receive_text()  # snapshot
+        ws.receive_text()  # theme (Phase 4 PD7)
         replies = []
         for raw in ('{"type": "resync_request"}', "state", "{", '{"type": "ping", "x": 1}'):
             ws.send_text(raw)
             replies.append(json.loads(ws.receive_text()))
+        replies.append(json.loads(ws.receive_text()))  # the last error; the resync sent two
 
-    assert [r["type"] for r in replies] == ["snapshot", "error", "error", "error"]
-    assert replies[1]["data"] == {"code": "invalid_message"}
+    assert [r["type"] for r in replies] == ["snapshot", "theme", "error", "error", "error"]
+    assert replies[2]["data"] == {"code": "invalid_message"}
 
 
 def test_a_binary_frame_gets_an_error_and_the_connection_stays_open(
@@ -198,14 +203,14 @@ def test_a_binary_frame_gets_an_error_and_the_connection_stays_open(
     with _connect(client) as ws:
         ws.receive_text()  # hello
         ws.send_bytes(b"\x00\x01")
-        replies = [json.loads(ws.receive_text()) for _ in range(2)]  # snapshot, error
+        replies = [json.loads(ws.receive_text()) for _ in range(3)]  # snapshot, theme, error
         ws.send_bytes(b'{"type": "ping"}')
         replies.append(json.loads(ws.receive_text()))
         ws.send_text(json.dumps({"type": "ping"}))
         replies.append(json.loads(ws.receive_text()))
 
-    assert [r["type"] for r in replies] == ["snapshot", "error", "error", "pong"]
-    assert replies[1]["data"] == replies[2]["data"] == {"code": "invalid_message"}
+    assert [r["type"] for r in replies] == ["snapshot", "theme", "error", "error", "pong"]
+    assert replies[2]["data"] == replies[3]["data"] == {"code": "invalid_message"}
 
 
 def test_client_messages_never_touch_the_market_and_six_a_second_close_1008(
@@ -238,7 +243,8 @@ def test_five_a_second_is_allowed(live_client: TestClient, login: Login, advance
     with _connect(client) as ws:
         ws.receive_text()
         ws.send_text(json.dumps({"type": "hello", "boot_id": "x", "last_seq": 0}))
-        ws.receive_text()
+        ws.receive_text()  # snapshot
+        ws.receive_text()  # theme (Phase 4 PD7)
         for _ in range(4):
             ws.send_text('{"type": "ping"}')
         replies = [json.loads(ws.receive_text())["type"] for _ in range(4)]
@@ -273,9 +279,12 @@ def test_with_no_live_run_hello_has_no_run_and_no_snapshot_follows(login: Login)
         hello = json.loads(ws.receive_text())
         ws.send_text(json.dumps({"type": "hello", "boot_id": "x", "last_seq": 0}))
         ws.send_text('{"type": "ping"}')
+        catch_up = json.loads(ws.receive_text())
         reply = json.loads(ws.receive_text())
 
     assert hello["data"]["run_id"] is None and hello["run_id"] is None
+    # No snapshot: the theme catch-up (Phase 4 PD7) is the only frame before the pong.
+    assert catch_up["type"] == "theme"
     assert reply["type"] == "pong"
 
 

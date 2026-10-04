@@ -42,7 +42,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.runtime.theme import DEFAULT_PRESET, TOKEN_NAMES, PresetName, Theme, resolve
+from app.runtime.theme import TOKEN_NAMES, PresetName, Theme
 
 PROTOCOL_VERSION: Final = 1
 
@@ -201,8 +201,7 @@ class Hello(_Closed):
     tick_interval_ms: StrictInt
     protocol: StrictInt
     role: Role
-    # Temporary default until `ws.py` sends the stored theme (Phase 4 T5 removes it).
-    theme: ThemeData = Field(default_factory=lambda: theme_data(resolve(DEFAULT_PRESET, 0)))
+    theme: ThemeData
 
 
 class Pong(_Closed):

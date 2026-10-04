@@ -13,6 +13,12 @@ the broadcasts it missed; otherwise one `snapshot` at the current `seq`, or
 nothing with no live run (AC21, SD16). Only then is the connection added to
 the hub, with no await in between, so no broadcast can overtake the replay.
 
+**The theme (Phase 4 SD9, PD7).** `hello` carries the current theme. Because
+`hello` goes out before the connection joins the hub, a `theme` broadcast in
+between would reach nobody, and a `snapshot` carries no theme; so the handshake
+ends with a `theme` unicast, and so does every `resync_request`'s snapshot. The
+client applies a theme only when its revision is higher.
+
 **Client messages (SD30)** are parsed with the closed union: `ping` -> a JSON
 `pong` (AC24), `resync_request` -> a `snapshot`, anything else or invalid JSON
 -> `error {code}`, and the connection stays open. More than five in a rolling
@@ -55,6 +61,7 @@ from app.realtime.messages import (
     ServerData,
     ServerMessageType,
     parse_client_message,
+    theme_data,
 )
 from app.realtime.publish import snapshot
 from app.runtime.clock import Clock
@@ -109,6 +116,7 @@ class _Session:
         self.holder: MarketHolder = state.holder
         self.clock: Clock = state.clock
         self.tick_interval_ms: int = state.tick_interval_ms
+        self.app_state = state
         self.connection: Connection | None = None
         self._arrivals: deque[float] = deque()
 
@@ -131,6 +139,12 @@ class _Session:
         data = snapshot(self.holder, tick_interval_ms=self.tick_interval_ms)
         if data is not None:
             self.send("snapshot", data)
+
+    def send_theme(self) -> None:
+        """The current theme, as a unicast that does not move `seq` (PD7)."""
+        assert self.connection is not None
+        envelope = self.envelope("theme", theme_data(self.app_state.theme))
+        self.hub.unicast(self.connection, envelope.model_copy(update={"version": None}))
 
     def too_fast(self) -> bool:
         now = self.clock.monotonic()
@@ -177,6 +191,7 @@ class _Session:
             self.send("error", ErrorData(code="unexpected_hello"))
         else:
             self.send_snapshot()
+            self.send_theme()
 
     async def run(self) -> None:
         hello = self.envelope(
@@ -187,6 +202,7 @@ class _Session:
                 tick_interval_ms=self.tick_interval_ms,
                 protocol=PROTOCOL_VERSION,
                 role=self.principal.role,
+                theme=theme_data(self.app_state.theme),
             ),
         )
         await self.ws.send_text(hello.model_dump_json())
@@ -212,6 +228,7 @@ class _Session:
                 self.connection.enqueue(json.loads(frame)["type"], frame)
         else:
             self.send_snapshot()
+        self.send_theme()
         if first is not None and not isinstance(parsed, ClientHello):
             self.handle(first)
 
