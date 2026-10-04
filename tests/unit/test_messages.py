@@ -35,10 +35,13 @@ from app.realtime.messages import (
     ServerData,
     ServerMessageType,
     Snapshot,
+    ThemeData,
     TickData,
     TickDrink,
     parse_client_message,
+    theme_data,
 )
+from app.runtime.theme import TOKEN_NAMES, resolve
 from exchange import Params
 
 TS = 1_759_312_800_000
@@ -187,7 +190,18 @@ def test_a_float_price_is_rejected() -> None:
 
 @pytest.mark.parametrize(
     "model",
-    [DrinkPrice, TickData, Snapshot, OrderData, MarketEventData, NewsData, Hello, Pong, ErrorData],
+    [
+        DrinkPrice,
+        TickData,
+        Snapshot,
+        OrderData,
+        MarketEventData,
+        NewsData,
+        Hello,
+        Pong,
+        ErrorData,
+        ThemeData,
+    ],
 )
 def test_extra_keys_are_rejected(model: type[BaseModel]) -> None:
     """SD28: every model is closed."""
@@ -206,7 +220,14 @@ def test_every_server_type_round_trips() -> None:
     news = NewsItemData(news_id=1, ts_ms=TS, level="info", text="x")
     prices = {101: DrinkPrice(price_cents=250, chart_price_cents=253)}
     samples: dict[ServerMessageType, ServerData] = {
-        "hello": Hello(boot_id="ab12", run_id=None, tick_interval_ms=1000, protocol=1, role="bar"),
+        "hello": Hello(
+            boot_id="ab12",
+            run_id=None,
+            tick_interval_ms=1000,
+            protocol=1,
+            role="bar",
+            theme=theme_data(resolve("blauw", 0)),
+        ),
         "snapshot": Snapshot(
             version=7,
             run=RunInfo(
@@ -239,6 +260,7 @@ def test_every_server_type_round_trips() -> None:
         "pong": Pong(server_ts_ms=TS),
         "resync": Resync(),
         "error": ErrorData(code="unknown_message"),
+        "theme": theme_data(resolve("oudgeld", 3)),
     }
     assert set(samples) == set(SERVER_MESSAGE_MODELS)
     for kind, data in samples.items():
@@ -291,3 +313,74 @@ def test_anything_else_is_refused(raw: str) -> None:
     """SD30: v1's literal `"state"` and every other shape is a validation error, never a command."""
     with pytest.raises(ValidationError):
         parse_client_message(raw)
+
+
+# --- theme (Phase 4 T3: SD9; PD3) ----------------------------------------------
+
+
+def _theme_fields(**changes: Any) -> dict[str, Any]:
+    fields = theme_data(resolve("rood", 2)).model_dump()
+    fields.update(changes)
+    return fields
+
+
+def test_theme_data_carries_pd3s_four_fields() -> None:
+    assert set(ThemeData.model_fields) == {"preset", "revision", "tokens", "font_family"}
+
+
+def test_theme_data_is_the_resolved_preset() -> None:
+    theme = resolve("oudgeld", 4)
+    data = theme_data(theme)
+
+    assert (data.preset, data.revision, data.font_family) == ("oudgeld", 4, theme.font_family)
+    assert data.tokens == dict(theme.tokens)
+    assert tuple(data.tokens) == TOKEN_NAMES
+
+
+def test_a_theme_envelope_needs_theme_data() -> None:
+    with pytest.raises(ValidationError, match="theme"):
+        Envelope(
+            type="theme", seq=1, ts_ms=TS, run_id=None, version=None, data=Pong(server_ts_ms=TS)
+        )
+
+
+def test_a_theme_envelope_round_trips_from_json() -> None:
+    frame = Envelope(
+        type="theme",
+        seq=4,
+        ts_ms=TS,
+        run_id=None,
+        version=None,
+        data=theme_data(resolve("groen", 1)),
+    )
+
+    again = Envelope.model_validate_json(frame.model_dump_json())
+
+    assert isinstance(again.data, ThemeData)
+    assert again == frame
+
+
+@pytest.mark.parametrize(
+    "tokens",
+    [
+        {name: "#000000" for name in TOKEN_NAMES[:-1]},
+        {**{name: "#000000" for name in TOKEN_NAMES}, "--extra": "#000000"},
+        {**{name: "#000000" for name in TOKEN_NAMES if name != "--bg"}, "--bgx": "#000000"},
+    ],
+    ids=["missing", "extra", "renamed"],
+)
+def test_theme_tokens_must_be_exactly_the_manifest(tokens: dict[str, str]) -> None:
+    with pytest.raises(ValidationError, match="tokens"):
+        ThemeData.model_validate(_theme_fields(tokens=tokens))
+
+
+@pytest.mark.parametrize(
+    ("field", "value"), [("preset", "eigen"), ("revision", -1), ("revision", 1.0)]
+)
+def test_theme_preset_and_revision_are_constrained(field: str, value: object) -> None:
+    with pytest.raises(ValidationError):
+        ThemeData.model_validate(_theme_fields(**{field: value}))
+
+
+def test_hello_carries_a_theme() -> None:
+    assert Hello.model_fields["theme"].annotation is ThemeData

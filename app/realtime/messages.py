@@ -21,6 +21,10 @@ named fields: they are not size-bound.
 **`seq` (SD27)** is the hub's: every broadcast takes the next one, a unicast
 carries the current one. `version` is the committed engine version, `None` on
 messages that carry no prices.
+
+**`theme` (Phase 4 SD9, PD3)** carries the active preset's tokens and font, so
+the client holds no preset table (SD6). It carries no prices: `version` is
+`None`, and the hub keeps its resync metadata from the last priced broadcast.
 """
 
 from __future__ import annotations
@@ -34,8 +38,11 @@ from pydantic import (
     JsonValue,
     StrictInt,
     TypeAdapter,
+    field_validator,
     model_validator,
 )
+
+from app.runtime.theme import DEFAULT_PRESET, TOKEN_NAMES, PresetName, Theme, resolve
 
 PROTOCOL_VERSION: Final = 1
 
@@ -159,12 +166,43 @@ class NewsData(_Closed):
     item: NewsItemData
 
 
+class ThemeData(_Closed):
+    """The active theme (PD3): `revision` 0 is "no stored row, Blauw"."""
+
+    preset: PresetName
+    revision: NonNegative
+    # Exactly the manifest's 24 tokens (`app/runtime/theme.py`), name -> CSS value.
+    tokens: dict[str, str]
+    # The CSS font stack: EB Garamond for Oud Geld, Inter otherwise.
+    font_family: str
+
+    @field_validator("tokens")
+    @classmethod
+    def _tokens_are_the_manifest(cls, tokens: dict[str, str]) -> dict[str, str]:
+        if set(tokens) != set(TOKEN_NAMES):
+            missing = sorted(set(TOKEN_NAMES) - set(tokens))
+            extra = sorted(set(tokens) - set(TOKEN_NAMES))
+            raise ValueError(f"tokens must be the manifest's: missing {missing}, extra {extra}")
+        return tokens
+
+
+def theme_data(theme: Theme) -> ThemeData:
+    return ThemeData(
+        preset=theme.preset,
+        revision=theme.revision,
+        tokens=dict(theme.tokens),
+        font_family=theme.font_family,
+    )
+
+
 class Hello(_Closed):
     boot_id: str
     run_id: StrictInt | None
     tick_interval_ms: StrictInt
     protocol: StrictInt
     role: Role
+    # Temporary default until `ws.py` sends the stored theme (Phase 4 T5 removes it).
+    theme: ThemeData = Field(default_factory=lambda: theme_data(resolve(DEFAULT_PRESET, 0)))
 
 
 class Pong(_Closed):
@@ -180,7 +218,7 @@ class ErrorData(_Closed):
 
 
 ServerMessageType = Literal[
-    "hello", "snapshot", "tick", "order", "market_event", "news", "pong", "resync", "error"
+    "hello", "snapshot", "tick", "order", "market_event", "news", "pong", "resync", "error", "theme"
 ]
 
 SERVER_MESSAGE_MODELS: Final[dict[str, type[_Closed]]] = {
@@ -193,10 +231,20 @@ SERVER_MESSAGE_MODELS: Final[dict[str, type[_Closed]]] = {
     "pong": Pong,
     "resync": Resync,
     "error": ErrorData,
+    "theme": ThemeData,
 }
 
 ServerData = (
-    Hello | Snapshot | TickData | OrderData | MarketEventData | NewsData | Pong | Resync | ErrorData
+    Hello
+    | Snapshot
+    | TickData
+    | OrderData
+    | MarketEventData
+    | NewsData
+    | Pong
+    | Resync
+    | ErrorData
+    | ThemeData
 )
 
 

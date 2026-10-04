@@ -139,7 +139,9 @@ class Hub:
         """Stamp the next `seq`, serialise once, log it, enqueue it everywhere; the `seq`."""
         self._seq += 1
         frame = envelope.model_copy(update={"seq": self._seq}).model_dump_json()
-        self._run_id, self._version = envelope.run_id, envelope.version
+        # A message without prices (a `theme`, Phase 4 PD6) leaves the resync metadata alone.
+        if envelope.version is not None:
+            self._run_id, self._version = envelope.run_id, envelope.version
         self._log.append((self._seq, envelope.ts_ms, frame))
         self._trim(envelope.ts_ms)
         for connection in tuple(self._connections):

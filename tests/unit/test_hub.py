@@ -7,7 +7,8 @@ import inspect
 import json
 
 from app.realtime.hub import QUEUE_LIMIT, SEND_TIMEOUT_MS, Hub
-from app.realtime.messages import Envelope, Pong, Resync, TickData, TickDrink
+from app.realtime.messages import Envelope, Pong, Resync, TickData, TickDrink, theme_data
+from app.runtime.theme import resolve
 from tests.support.clock import FakeClock
 
 T0 = 1_759_312_800_000
@@ -279,3 +280,30 @@ def test_a_new_boot_id_per_hub() -> None:
     assert (
         Hub(clock=clock, replay_window_ms=1).boot_id != Hub(clock=clock, replay_window_ms=1).boot_id
     )
+
+
+def test_a_theme_broadcast_keeps_the_resync_run_and_version() -> None:
+    """Phase 4 PD6: a theme carries no prices (`version=None`), so the resync metadata
+    stays the last priced broadcast's, not null."""
+
+    async def scenario() -> tuple[str, int, str]:
+        clock = FakeClock(T0)
+        hub = Hub(clock=clock, replay_window_ms=WINDOW_MS)
+        hub.broadcast(_tick(clock, 9))
+        theme = Envelope(
+            type="theme",
+            seq=0,
+            ts_ms=clock.wall_ms(),
+            run_id=None,
+            version=None,
+            data=theme_data(resolve("rood", 1)),
+        )
+        seq = hub.broadcast(theme)
+        return hub.resync_frame(), seq, json.loads(hub.replay_after(hub.boot_id, 1)[0])["type"]  # type: ignore[index]
+
+    resync, seq, replayed = asyncio.run(scenario())
+
+    frame = json.loads(resync)
+    assert (frame["run_id"], frame["version"]) == (1, 9)
+    assert seq == 2
+    assert replayed == "theme"
