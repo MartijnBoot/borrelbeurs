@@ -208,6 +208,7 @@ def test_every_server_type_round_trips() -> None:
     samples: dict[ServerMessageType, ServerData] = {
         "hello": Hello(boot_id="ab12", run_id=None, tick_interval_ms=1000, protocol=1, role="bar"),
         "snapshot": Snapshot(
+            version=7,
             run=RunInfo(
                 run_id=1, tick_interval_ms=1000, candle_interval_ms=60_000, quote_grace_versions=2
             ),

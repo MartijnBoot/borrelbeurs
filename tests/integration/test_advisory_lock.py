@@ -11,6 +11,7 @@ from app.core.config import Settings
 from app.db.advisory_lock import ADVISORY_LOCK_KEY, acquire, release, watchdog
 from app.db.session import create_engine
 from tests.support.clock import FakeClock
+from tests.support.proxy import proxied
 
 START_MS = 1_759_312_800_000
 
@@ -111,3 +112,46 @@ def test_release_frees_the_lock_for_another_holder(settings: Settings, database_
             await engine.dispose()
 
     assert asyncio.run(scenario()) == 0
+
+
+def test_a_silent_lock_connection_trips_the_watchdog_within_its_timeout(
+    settings: Settings, database_url: str
+) -> None:
+    """The lock connection's packets are dropped, not refused: the probe must not wait
+    for the operating system to give up on the socket."""
+
+    async def scenario() -> tuple[list[str], float]:
+        proxy, url = await proxied(database_url)
+        engine = create_engine(
+            settings.model_copy(update={"database_url": url, "database_timeout_seconds": 0.5})
+        )
+        clock = FakeClock(START_MS)
+        lost: list[str] = []
+        conn = None
+        try:
+            conn = await acquire(engine)
+            assert conn is not None
+            task = asyncio.create_task(
+                watchdog(
+                    conn,
+                    clock=clock,
+                    interval_ms=1_000,
+                    on_lost=lambda: lost.append("lost"),
+                    timeout_s=1.0,
+                )
+            )
+            await asyncio.sleep(0)
+            proxy.blackhole()
+            started = asyncio.get_running_loop().time()
+            clock.advance(1_000)
+            await asyncio.wait_for(task, timeout=10)
+            return lost, asyncio.get_running_loop().time() - started
+        finally:
+            await proxy.close()  # the connection now fails at once instead of hanging
+            if conn is not None:
+                await release(conn)
+            await engine.dispose()
+
+    lost, took_s = asyncio.run(scenario())
+    assert lost == ["lost"]
+    assert took_s < 3

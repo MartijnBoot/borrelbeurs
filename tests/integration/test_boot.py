@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 import app.runtime.boot as boot
 from app.core.config import Settings, get_settings
-from app.db.advisory_lock import acquire, release, watchdog
+from app.db.advisory_lock import ADVISORY_LOCK_KEY, acquire, release, watchdog
 from app.db.runs import add_drink, create_draft_run, go_live
 from app.db.session import create_engine
 from app.runtime.boot import BootFailure, start_runtime
@@ -260,11 +260,16 @@ def test_a_lost_lock_connection_calls_on_lock_lost(on: str, settings: Settings) 
             killer = create_engine(_settings(settings, on))
             try:
                 async with killer.connect() as conn:
+                    # pg_locks is cluster-wide: only this database's app lock.
                     await conn.execute(
                         text(
                             "SELECT pg_terminate_backend(pid) FROM pg_locks"
                             " WHERE locktype = 'advisory' AND granted AND pid <> pg_backend_pid()"
-                        )
+                            " AND database = (SELECT oid FROM pg_database"
+                            " WHERE datname = current_database())"
+                            " AND classid = 0 AND objid = :key"
+                        ),
+                        {"key": ADVISORY_LOCK_KEY},
                     )
                     await conn.commit()
             finally:
@@ -275,6 +280,34 @@ def test_a_lost_lock_connection_calls_on_lock_lost(on: str, settings: Settings) 
                     await asyncio.sleep(0.01)
                     if lost:
                         break
+        return lost
+
+    assert asyncio.run(scenario()) == ["lost"]
+
+
+def test_a_diverged_state_calls_on_lock_lost(on: str, settings: Settings) -> None:
+    """Memory no longer matches the committed row (a lost commit acknowledgement): the
+    process cannot recover in place, so it takes the lost-lock exit and rehydrates on boot."""
+
+    async def scenario() -> list[str]:
+        await _go_live(settings, on)
+        lost: list[str] = []
+        clock = FakeClock(T0)
+        app = FastAPI()
+        async with start_runtime(
+            app,
+            _settings(settings, on),
+            clock=clock,
+            run_migrations=False,
+            on_lock_lost=lambda: lost.append("lost"),
+        ):
+            async with app.state.engine.begin() as conn:
+                await conn.execute(text("UPDATE engine_state SET version = version + 1"))
+            clock.advance(1_000)
+            for _ in range(300):
+                await asyncio.sleep(0.01)
+                if lost:
+                    break
         return lost
 
     assert asyncio.run(scenario()) == ["lost"]

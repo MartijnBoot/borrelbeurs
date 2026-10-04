@@ -2,11 +2,12 @@
 
 At start, and at every re-anchor, it records an anchor pair `(wall_ms,
 monotonic)`. Slot `k` fires at `monotonic_anchor + k * interval` and is stamped
-`wall_anchor + k * interval`. Every slot is one `holder.mutate("tick", ...)`:
-`advance(orders=None)` and a `tick` row, even when no price moved (Phase 2
-SD10/SD11: one row per accepted transition, never deduplicated). After a slot,
-any active market event whose `t_end_ms` has passed is ended in a second
-mutate, which emits `MarketEventEnded` (SD23, AC19).
+`wall_anchor + k * interval` -- or with the last commit's time if an order or a
+jump committed later than that, so stamps never go back. Every slot is one
+`holder.mutate("tick", ...)`: `advance(orders=None)` and a `tick` row, even
+when no price moved (Phase 2 SD10/SD11: one row per accepted transition, never
+deduplicated). After a slot, any active market event whose `t_end_ms` has
+passed is ended in a second mutate, which emits `MarketEventEnded` (SD23, AC19).
 
 **Lag.** Missed slots whose total lag is within the catch-up budget run back to
 back, each with its own stamp. Beyond the budget -- or when wall and monotonic
@@ -154,11 +155,16 @@ class Ticker:
             return False
         return True
 
-    def _tick_step(self, now_ms: int) -> Callable[[MarketView], Awaitable[Outcome[int]]]:
+    def _tick_step(self, grid_ms: int) -> Callable[[MarketView], Awaitable[Outcome[int]]]:
         holder = self._holder
 
         async def step(view: MarketView) -> Outcome[int]:
             assert view.run_id is not None and view.spec is not None and view.state is not None
+            # Never before the commit this tick follows: an order or a jump that took
+            # the lock between slots is stamped with the wall clock, which can be ahead
+            # of the grid (catch-up, small drift). A stamp going back would reopen the
+            # previous candle (SD25).
+            now_ms = max(grid_ms, view.last_commit_wall_ms or grid_ms)
             candidate = advance(view.spec, view.state, now_ms=now_ms, run_seed=view.run_seed).state
             await save_transition(
                 holder.engine,

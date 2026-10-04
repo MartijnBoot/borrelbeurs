@@ -384,6 +384,35 @@ def test_a_bad_login_rate_fails_naming_the_variable(
     assert "LOGIN_RATE_PER_MINUTE" in str(excinfo.value)
 
 
+# --- the database timeout (Phase 3 follow-up: no unbounded wait on a silent database) ---
+
+
+def test_the_database_timeout_defaults_to_five_seconds(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_env(monkeypatch)
+
+    assert get_settings().database_timeout_seconds == 5.0
+
+
+def test_the_database_timeout_is_read_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_env(monkeypatch, DATABASE_TIMEOUT_SECONDS="0.5")
+
+    assert get_settings().database_timeout_seconds == 0.5
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "banana"])
+def test_a_bad_database_timeout_fails_naming_the_variable(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    _set_env(monkeypatch, DATABASE_TIMEOUT_SECONDS=value)
+
+    with pytest.raises(ConfigError) as excinfo:
+        get_settings()
+
+    assert "DATABASE_TIMEOUT_SECONDS" in str(excinfo.value)
+
+
 def test_production_refuses_an_insecure_session_cookie(monkeypatch: pytest.MonkeyPatch) -> None:
     """AC6a (boot half), SD8: `Secure` may be switched off locally, never in production."""
     _set_env(monkeypatch, APP_ENV="production", SESSION_COOKIE_SECURE="false")

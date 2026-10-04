@@ -206,6 +206,77 @@ def test_a_stale_state_becomes_persistence_unavailable_and_memory_is_unchanged(
     assert record.__dict__["memory_version"] == 0
 
 
+def test_a_step_that_outlives_its_timeout_is_persistence_unavailable_and_frees_the_lock(
+    settings: Settings, database_url: str
+) -> None:
+    """A silent database must not hold the market's lock past the step timeout."""
+
+    async def scenario() -> float:
+        engine = _engine(settings, database_url)
+        try:
+            run = await _live(engine)
+            holder = MarketHolder.from_rehydrated(
+                run,
+                engine=engine,
+                clock=FakeClock(T0),
+                sink=lambda events: None,
+                step_timeout_s=0.2,
+            )
+            before = holder.state
+
+            async def hangs(view: MarketView) -> Outcome[None]:
+                await asyncio.sleep(30)
+                return Outcome(result=None, view=view)
+
+            loop = asyncio.get_running_loop()
+            started = loop.time()
+            with pytest.raises(PersistenceUnavailable):
+                await holder.mutate("tick", hangs)
+            assert holder.state is before
+            assert not holder.lock.locked()
+            return loop.time() - started
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(scenario()) < 2
+
+
+def test_a_stale_state_calls_on_diverged_and_a_database_error_does_not(
+    settings: Settings, database_url: str
+) -> None:
+    """A lost commit acknowledgement wedges every later mutate; the process must give up."""
+
+    async def scenario() -> list[str]:
+        engine = _engine(settings, database_url)
+        diverged: list[str] = []
+        try:
+            run = await _live(engine)
+            holder = MarketHolder.from_rehydrated(
+                run,
+                engine=engine,
+                clock=FakeClock(T0),
+                sink=lambda events: None,
+                on_diverged=lambda: diverged.append("diverged"),
+            )
+
+            async def broken(view: MarketView) -> Outcome[None]:
+                raise OSError("injected: connection lost")
+
+            with pytest.raises(PersistenceUnavailable):
+                await holder.mutate("order", broken)
+            assert diverged == []
+
+            async with engine.begin() as conn:
+                await conn.execute(text("UPDATE engine_state SET version = version + 1"))
+            with pytest.raises(PersistenceUnavailable):
+                await holder.mutate("tick", _tick_step(holder, T0 + 1_000))
+            return diverged
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(scenario()) == ["diverged"]
+
+
 def test_a_database_error_becomes_persistence_unavailable(
     settings: Settings, database_url: str
 ) -> None:

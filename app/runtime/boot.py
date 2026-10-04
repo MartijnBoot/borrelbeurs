@@ -64,7 +64,8 @@ class BootFailure(RuntimeError):
 
 
 def exit_process() -> None:
-    """Production's reaction to a lost lock: no graceful path that might write."""
+    """Production's reaction to a lost lock or a diverged state: no graceful path that
+    might write; the next boot rehydrates from what was committed."""
     os._exit(LOCK_LOST_EXIT)
 
 
@@ -124,9 +125,18 @@ async def start_runtime(
                 raise BootFailure(f"migration failed: {type(error).__name__}") from error
 
         sink = _LateSink()
+        # Room for a statement to hit the engine's own timeout and report it first.
+        step_timeout_s = 2 * settings.database_timeout_seconds
         run = await rehydrate(engine, now_ms=clock.wall_ms())
         if isinstance(run, RehydratedRun):
-            holder = MarketHolder.from_rehydrated(run, engine=engine, clock=clock, sink=sink)
+            holder = MarketHolder.from_rehydrated(
+                run,
+                engine=engine,
+                clock=clock,
+                sink=sink,
+                on_diverged=on_lock_lost,
+                step_timeout_s=step_timeout_s,
+            )
             tick_interval_ms = await _tick_interval_ms(engine, run.run_id)
             replay_window_ms = round(run.spec.params.history_window_minutes * 60_000)
         else:
@@ -149,7 +159,13 @@ async def start_runtime(
         tasks.append(ticker.start())
         tasks.append(
             asyncio.get_running_loop().create_task(
-                watchdog(lock, clock=clock, interval_ms=tick_interval_ms, on_lost=on_lock_lost)
+                watchdog(
+                    lock,
+                    clock=clock,
+                    interval_ms=tick_interval_ms,
+                    on_lost=on_lock_lost,
+                    timeout_s=step_timeout_s,
+                )
             )
         )
         app.state.ready = True

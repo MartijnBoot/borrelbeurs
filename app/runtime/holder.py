@@ -13,7 +13,13 @@ through `mutate(op, step)`, in this order:
 
 If the step raises, nothing is published, the lock is released and the error
 propagates; a stale state or a database error becomes 503
-`persistence_unavailable` (SD21, plan PD21). The sink is injected (plan PD11):
+`persistence_unavailable` (SD21, plan PD21). A stale state also calls
+`on_diverged`: with the advisory lock held there is no other writer, so it means
+a commit landed whose acknowledgement was lost, memory is behind the row, and
+every later mutate would fail the same way. Boot wires it to the lost-lock exit;
+the restart rehydrates from what was committed. `step_timeout_s` bounds each
+step in real time, so a database that drops packets cannot hold the lock for as
+long as the operating system takes to give up on the socket. The sink is injected (plan PD11):
 in production the publisher (T19) turns domain events into messages for the
 hub, so this module never imports the hub, and the sink is never called with
 the lock held (AC14). Inside the lock there is pure computation and one short
@@ -174,6 +180,8 @@ class MarketHolder:
         engine: AsyncEngine,
         clock: Clock,
         sink: Sink,
+        on_diverged: Callable[[], None] | None = None,
+        step_timeout_s: float | None = None,
     ) -> None:
         self._view = view
         self._ring = ring
@@ -181,11 +189,20 @@ class MarketHolder:
         self._engine = engine
         self._clock = clock
         self._sink = sink
+        self._on_diverged = on_diverged
+        self._step_timeout_s = step_timeout_s
         self._lock = asyncio.Lock()
 
     @classmethod
     def from_rehydrated(
-        cls, run: RehydratedRun, *, engine: AsyncEngine, clock: Clock, sink: Sink
+        cls,
+        run: RehydratedRun,
+        *,
+        engine: AsyncEngine,
+        clock: Clock,
+        sink: Sink,
+        on_diverged: Callable[[], None] | None = None,
+        step_timeout_s: float | None = None,
     ) -> MarketHolder:
         view = MarketView(
             run_id=run.run_id,
@@ -201,7 +218,14 @@ class MarketHolder:
             candle_interval_ms=run.candle_interval_ms,
         )
         return cls(
-            view, ring=run.ring, earnings=run.earnings, engine=engine, clock=clock, sink=sink
+            view,
+            ring=run.ring,
+            earnings=run.earnings,
+            engine=engine,
+            clock=clock,
+            sink=sink,
+            on_diverged=on_diverged,
+            step_timeout_s=step_timeout_s,
         )
 
     @classmethod
@@ -313,12 +337,17 @@ class MarketHolder:
     async def _run(self, op: str, step: Step[T]) -> Outcome[T]:
         before = self._view.state
         try:
-            return await step(self._view)
+            # Real time, not the injected clock: this bounds database I/O, which the
+            # fake clock does not see. A TimeoutError is an OSError, so a 503 below.
+            async with asyncio.timeout(self._step_timeout_s):
+                return await step(self._view)
         except StaleState as error:
             logger.error(
                 "stale_state",
                 extra={"op": op, "memory_version": None if before is None else before.version},
             )
+            if self._on_diverged is not None:
+                self._on_diverged()
             raise PersistenceUnavailable(
                 "the market's state moved underneath this process"
             ) from error

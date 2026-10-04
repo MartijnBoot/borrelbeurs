@@ -192,6 +192,9 @@ Exit: every route authorized; integration tests green against real Postgres.
 - [x] tasks (`/build 3 <T>`, `/review 3`):
   - [ ] …
 - [ ] exit criterion — `/clear` then `/verify` shows the integration suite green against Postgres
+- known test debt (phase-3 review, 2026-10-04) — the code meets these criteria; the tests would not catch a regression:
+  - [ ] AC18d kill test (`tests/integration/test_real_process.py`) — "at most one tick lost" is never asserted, and the "mid-tick" kill points are fixed sleeps, so nothing guarantees a tick is in flight
+  - [ ] AC22 (`tests/unit/test_hub.py`) — drives `hub.broadcast` directly; the spec's wording wants the real ticker writing on the grid beside a never-reading client
 
 ## Phase 4 — React shell + theme + auth + koers
 Exit: big screen works end to end; theme propagates across machines.
@@ -204,6 +207,10 @@ Exit: big screen works end to end; theme propagates across machines.
 - [ ] tasks (`/build 4 <T>`, `/review 4`):
   - [ ] …
 - [ ] exit criterion — open koers on two machines, change the theme on one, the other follows
+- carried over from the phase-3 follow-ups (engine-guardian, 2026-10-04) — fold into the phase-4 plan:
+  - [ ] document the freeze — a wall clock stepping back by less than the catch-up budget (30 s) holds tick stamps at the last commit's time until the grid passes it, so prices freeze for at most the budget (`app/runtime/ticker.py`, `_tick_step`); say so in the ticker docstring and ADR 0003
+  - [ ] end due market events against the tick's actual stamp, not the grid stamp (`app/runtime/ticker.py`, `_iterate` → `_end_due_events`) — today an event can end one tick late
+  - [ ] in `test_a_tick_is_never_stamped_before_the_commit_it_follows`, also assert the jumped drink's price after the tick equals the price on the jump row (pins "no backwards easing" directly)
 
 ## Phase 5 — Bar + order path
 Exit: price shown equals price charged, enforced by a property test. **Build on opus.**

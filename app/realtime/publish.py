@@ -198,6 +198,7 @@ def snapshot(holder: MarketHolder, *, tick_interval_ms: int) -> Snapshot | None:
     latest = holder.ring[-1]
     names: Mapping[int, str] = dict(zip(holder.drink_ids, holder.spec.names, strict=True))
     return Snapshot(
+        version=latest.version,
         run=RunInfo(
             run_id=holder.run_id,
             tick_interval_ms=tick_interval_ms,

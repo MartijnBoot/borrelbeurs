@@ -13,6 +13,7 @@ writer in waiting, and boot must fail fast instead (AC18).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from typing import Final
@@ -61,16 +62,27 @@ async def release(conn: AsyncConnection) -> None:
 
 
 async def watchdog(
-    conn: AsyncConnection, *, clock: Clock, interval_ms: int, on_lost: Callable[[], None]
+    conn: AsyncConnection,
+    *,
+    clock: Clock,
+    interval_ms: int,
+    on_lost: Callable[[], None],
+    timeout_s: float | None = None,
 ) -> None:
-    """Probe the lock connection once per interval; on any failure log and call `on_lost`."""
+    """Probe the lock connection once per interval; on any failure log and call `on_lost`.
+
+    `timeout_s` bounds each probe in real time: on a connection whose packets are
+    dropped, asyncpg's own statement timeout is followed by a cancel request that
+    waits for the operating system to give up on the socket.
+    """
     deadline = clock.monotonic()
     while True:
         deadline += interval_ms / 1000
         await clock.sleep_until(deadline)
         try:
-            await conn.execute(text("SELECT 1"))
-            await conn.commit()
+            async with asyncio.timeout(timeout_s):
+                await conn.execute(text("SELECT 1"))
+                await conn.commit()
         except Exception as error:
             logger.error("advisory_lock_lost", extra={"error": type(error).__name__})
             on_lost()

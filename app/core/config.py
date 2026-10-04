@@ -97,6 +97,11 @@ class Settings(BaseSettings):
     # makes production refuse it.
     session_cookie_secure: bool = True
 
+    # Optional. The bound on connecting to Postgres and on every statement. A
+    # database that drops packets instead of refusing them would otherwise hang
+    # a tick inside the holder's lock, and the lock watchdog's probe, for ever.
+    database_timeout_seconds: float = Field(default=5.0, gt=0)
+
     @field_validator("log_level", mode="before")
     @classmethod
     def _normalise_log_level(cls, value: object) -> object:

@@ -115,6 +115,8 @@ class MarketEventInfo(_Closed):
 class Snapshot(_Closed):
     """The whole client-visible market, built from holder memory (T19)."""
 
+    # The engine version these prices belong to: what an HTTP poller quotes (SD18).
+    version: StrictInt
     run: RunInfo
     drinks: list[DrinkInfo]
     # The engine's `Params` as JSON (`params_to_json`), as v1 sent them.

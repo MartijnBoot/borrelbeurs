@@ -62,6 +62,18 @@ def test_the_state_is_the_snapshot(live_client: TestClient, login: Login, live_r
     assert data.earnings == {}
 
 
+def test_the_state_carries_the_version_its_prices_belong_to(
+    live_client: TestClient, login: Login, live_run: int
+) -> None:
+    """realtime-protocol.md: the snapshot holds `version`, so a client polling this route
+    can quote honestly (`quote_version`, SD18) without a WebSocket."""
+    client = login("bar")
+
+    body = client.get("/api/state").json()
+
+    assert body["version"] == client.app.state.holder.state.version  # type: ignore[attr-defined]
+
+
 def test_with_no_live_run_state_is_409(login: Login) -> None:
     """AC18c (HTTP half), SD16."""
     client = login("display")

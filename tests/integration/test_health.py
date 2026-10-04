@@ -25,7 +25,11 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 import app.main
 from app.core.config import Settings, get_settings
+from app.db.runs import add_drink, create_draft_run, go_live
+from app.db.session import create_engine
+from exchange import Params
 from tests.support.clock import FakeClock
+from tests.support.proxy import proxied
 
 
 async def _get(target: Any, path: str) -> tuple[int, Any]:
@@ -164,25 +168,75 @@ def test_a_stalled_ticker_fails_healthz_after_three_intervals(scratch_env: str) 
     assert stale[1] == {"status": "stale", "last_tick_age_ms": 3_001, "last_commit_age_ms": None}
 
 
-def test_a_dead_database_fails_readyz_but_not_healthz(scratch_env: str, settings: Settings) -> None:
-    """AC17: the platform must not restart-loop a healthy process against a dead database."""
-    target = app.main.create_app(clock=FakeClock(T0), run_migrations=False)
-
-    async def scenario() -> tuple[tuple[int, Any], tuple[int, Any]]:
-        async with target.router.lifespan_context(target):
-            live = target.state.engine
-            dead = create_async_engine(
-                "postgresql+asyncpg://nobody:nothing@127.0.0.1:1/none",
-                connect_args={"timeout": 0.5},
+async def _go_live(settings: Settings, url: str) -> None:
+    engine = create_engine(settings.model_copy(update={"database_url": url}))
+    try:
+        async with engine.begin() as conn:
+            run_id = await create_draft_run(conn, params=Params(step_quant=0.1), run_seed=7)
+            await add_drink(
+                conn,
+                run_id,
+                name="Bier",
+                slot=0,
+                p_min_cents=150,
+                p0_cents=260,
+                p_max_cents=500,
+                a=1.0,
+                d=0.1,
+                s0=1.0,
+                c=0.1,
+                bar_price_cents=260,
             )
-            target.state.engine = dead
-            try:
-                return await _get(target, "/healthz"), await _get(target, "/readyz")
-            finally:
-                target.state.engine = live
-                await dead.dispose()
+        await go_live(engine, run_id, now_ms=T0)
+    finally:
+        await engine.dispose()
 
-    healthz, readyz = asyncio.run(scenario())
-    assert healthz[0] == 200
+
+def test_a_silent_database_fails_readyz_but_not_healthz(
+    database_url: str, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC17: the platform must not restart-loop a healthy process against a dead database.
+
+    The database goes silent under a live run -- packets dropped, not refused -- on the
+    very engine the ticker writes through. Every tick fails within the database timeout
+    and the loop keeps turning, so /healthz stays 200 while /readyz is 503. Without the
+    timeout a tick would hang inside the holder's lock and /healthz would go stale.
+    """
+    clock = FakeClock(T0)
+    lost: list[str] = []
+
+    async def scenario() -> tuple[tuple[int, Any], tuple[int, Any], int]:
+        await _go_live(settings, database_url)
+        proxy, url = await proxied(database_url)
+        monkeypatch.setenv("DATABASE_URL", url)
+        monkeypatch.setenv("DATABASE_TIMEOUT_SECONDS", "0.5")
+        get_settings.cache_clear()
+        target = app.main.create_app(
+            clock=clock, run_migrations=False, on_lock_lost=lambda: lost.append("lost")
+        )
+        try:
+            async with target.router.lifespan_context(target):
+                ticker = target.state.ticker
+                assert not target.state.holder.is_empty
+                proxy.blackhole()
+                for _ in range(5):
+                    clock.advance(1_000)
+                    for _ in range(500):  # real time: each failure takes up to the timeouts
+                        await asyncio.sleep(0.01)
+                        if ticker.last_iteration_monotonic == clock.monotonic():
+                            break
+                healthz, readyz = await _get(target, "/healthz"), await _get(target, "/readyz")
+                committed = target.state.holder.state.version
+                await proxy.close()  # let shutdown fail fast rather than wait on silence
+                return healthz, readyz, committed
+        finally:
+            await proxy.close()
+            get_settings.cache_clear()
+
+    healthz, readyz, committed = asyncio.run(scenario())
+    assert healthz[0] == 200, healthz
+    assert healthz[1]["last_tick_age_ms"] == 0
     assert readyz[0] == 503
     assert readyz[1]["error"]["code"] == "not_ready"
+    assert committed == 0  # nothing reached the silent database
+    assert lost == ["lost"]  # the watchdog's probe timed out too

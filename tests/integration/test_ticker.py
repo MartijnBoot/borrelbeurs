@@ -19,6 +19,7 @@ from app.db.runs import add_drink, create_draft_run, go_live
 from app.db.session import create_engine
 from app.runtime.gap import DEFAULT_CATCH_UP_BUDGET_MS
 from app.runtime.holder import DomainEvent, MarketEventEnded, MarketHolder, TickCommitted
+from app.runtime.manipulation import schedule
 from app.runtime.rehydrate import RehydratedRun, rehydrate
 from app.runtime.ticker import Ticker
 from exchange import Params
@@ -208,6 +209,31 @@ def test_a_failed_gap_commit_is_retried_on_the_next_slot_and_moves_no_price(
     assert {d: p["p_cont"] for d, p in gap.prices.items()} == {
         d: p["p_cont"] for d, p in before.prices.items()
     }
+
+
+def test_a_tick_is_never_stamped_before_the_commit_it_follows(
+    settings: Settings, database_url: str
+) -> None:
+    """Grid stamps lag the wall clock an order or a jump is stamped with (catch-up, small
+    drift); a tick after such a commit takes the commit's time, never an earlier one --
+    a stamp going back reopens the previous candle (SD25)."""
+
+    async def scenario() -> list[tuple[int, str, int]]:
+        async with _running(settings, database_url) as h:
+            await h.advance(INTERVAL)
+            h.clock.set_wall(h.clock.wall_ms() + 1_500)  # within the budget: no gap
+            assert h.holder.drink_ids
+            await schedule(h.holder, h.holder.drink_ids[0], 400, 10_000, clock=h.clock)
+            await h.advance(INTERVAL)
+            await h.advance(INTERVAL)
+            return await h.ticks()
+
+    rows = asyncio.run(scenario())
+    assert [r[1] for r in rows] == ["reset", "tick", "jump", "tick", "tick"]
+    stamps = [r[2] for r in rows]
+    assert stamps == sorted(stamps), stamps
+    assert rows[2][2] == rows[3][2] == T0 + 2_500  # the tick takes the jump's time
+    assert rows[4][2] == T0 + 3_000  # and the grid takes over again once it is ahead
 
 
 def test_a_wall_clock_jump_re_anchors(settings: Settings, database_url: str) -> None:
