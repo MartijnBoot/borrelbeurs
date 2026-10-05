@@ -1,9 +1,17 @@
-/* Ported from koers.html:73-94 and 121-133: the viewport-locked grid, its
-   clamp() sizes and its two breakpoints. Hardcoded rgba colours are tokens;
-   the pulse uses --tile-rising / --tile-falling (SD6, AC26). */
+/* Ported from koers.html:52-94, 121-133 and 175-194: the marquee pills, the
+   viewport-locked grid, its clamp() sizes and its two breakpoints, and the
+   tiles' market-event animations. Hardcoded rgba colours are tokens; the
+   pulse uses --tile-rising / --tile-falling (SD6, AC26). */
+
+.page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
 
 .container {
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   padding: 18px;
   width: 100%;
   display: grid;
@@ -120,9 +128,131 @@
   background: var(--input-bg);
 }
 
+/* Market events (SD21): crash shakes the tiles, bubble pulses them. The
+   overlay and banner are global, in styles/keyframes.css. */
+.tiles[data-market='crash'] .tile {
+  animation: tile-shake 0.45s ease-in-out infinite;
+}
+
+.tiles[data-market='bubble'] .tile {
+  animation: tile-bubble 1.2s ease-in-out infinite;
+}
+
+@keyframes tile-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  20% {
+    transform: translateX(-3px) rotate(-0.4deg);
+  }
+
+  40% {
+    transform: translateX(3px) rotate(0.4deg);
+  }
+
+  60% {
+    transform: translateX(-2px) rotate(-0.2deg);
+  }
+
+  80% {
+    transform: translateX(2px) rotate(0.2deg);
+  }
+}
+
+@keyframes tile-bubble {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: none;
+  }
+
+  50% {
+    transform: scale(1.025);
+    box-shadow: 0 0 14px color-mix(in srgb, var(--warn) 40%, transparent);
+  }
+}
+
+/* Marquee pills (koers.html:52-71): the box carries the colour, not the text. */
+.tick {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--pillb);
+  background: var(--pill);
+}
+
+.tick.rising {
+  --tint: var(--tile-rising);
+}
+
+.tick.falling {
+  --tint: var(--tile-falling);
+}
+
+.newsItem.success {
+  --tint: var(--ok);
+}
+
+.newsItem.danger {
+  --tint: var(--danger);
+}
+
+.newsItem.warning {
+  --tint: var(--warn);
+}
+
+.tick.rising,
+.tick.falling,
+.newsItem.success,
+.newsItem.warning,
+.newsItem.danger {
+  border-color: color-mix(in srgb, var(--tint) 50%, transparent);
+  background: color-mix(in srgb, var(--tint) 10%, transparent);
+}
+
+.tickName {
+  font-weight: 700;
+}
+
+.newsItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--pillb);
+  background: var(--ticker-bg);
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+
+.badge {
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--grid);
+  background: var(--panel);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.newsTime {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.newsText {
+  color: var(--text);
+}
+
 @media (max-width: 700px) {
-  .container {
+  .page {
     height: auto;
+  }
+
+  .container {
+    flex: none;
   }
 
   .board {

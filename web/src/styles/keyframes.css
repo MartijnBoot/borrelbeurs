@@ -1,0 +1,85 @@
+/* Market-event overlay and banner, ported from koers.html:135-173 (SD21).
+   Global, not a CSS module: the layer renders these classes over the whole
+   page. Hardcoded colours are tokens -- crash on --danger, bubble on --warn.
+   The tiles' shake and pulse live in KoersPage.module.css, because a CSS
+   module's animation names are scoped to that module. */
+
+.market-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100;
+  opacity: 0;
+}
+
+.market-overlay.crash {
+  --event: var(--danger);
+  animation: market-border 1.4s ease-in-out infinite;
+}
+
+.market-overlay.bubble {
+  --event: var(--warn);
+  animation: market-border 2s ease-in-out infinite;
+}
+
+@keyframes market-border {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 0 transparent;
+    opacity: 0;
+  }
+
+  50% {
+    box-shadow: inset 0 0 60px 12px color-mix(in srgb, var(--event) 50%, transparent);
+    opacity: 1;
+  }
+}
+
+.market-banner {
+  position: fixed;
+  top: var(--header-h, 62px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  padding: 8px 28px;
+  border-radius: 8px;
+  font-size: clamp(16px, 2vw, 22px);
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  white-space: nowrap;
+}
+
+.market-banner.crash,
+.market-banner.bubble {
+  background: color-mix(in srgb, var(--event) 85%, black);
+  border: 2px solid var(--event);
+  color: #fff;
+  box-shadow: 0 0 30px color-mix(in srgb, var(--event) 65%, transparent);
+}
+
+.market-banner.crash {
+  --event: var(--danger);
+  animation: banner-throb 0.7s ease-in-out infinite alternate;
+}
+
+.market-banner.bubble {
+  --event: var(--warn);
+  animation: banner-throb 1s ease-in-out infinite alternate;
+}
+
+/* No overlay, no animation: the defect register's calm correction (AC31). */
+.market-banner.correction {
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  color: var(--text);
+}
+
+@keyframes banner-throb {
+  from {
+    transform: translateX(-50%) scale(1);
+  }
+
+  to {
+    transform: translateX(-50%) scale(1.06);
+  }
+}

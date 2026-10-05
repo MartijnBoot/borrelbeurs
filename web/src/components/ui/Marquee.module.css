@@ -1,0 +1,26 @@
+/* Ported from koers.html:38-46. The animation itself is the component's
+   (Web Animations API), so there is no `animation` here, and hover pausing
+   is the component's too. */
+.wrap {
+  width: 100%;
+  overflow: hidden;
+  border-bottom: 1px solid var(--grid);
+  background: var(--ticker-bg);
+}
+
+.track {
+  display: flex;
+  gap: 24px;
+  white-space: nowrap;
+  padding: 8px 0;
+  will-change: transform;
+}
+
+/* koers.html:42, 47 */
+.news {
+  background: var(--news-bg);
+}
+
+.news .track {
+  gap: 18px;
+}

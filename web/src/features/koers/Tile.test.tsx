@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // The board's tiles and empty state (AC26, AC32, AC34). The chart is T19's
-// and is stubbed here.
+// and the marquees T21's (MarketEventLayer.test.tsx); both are stubbed here.
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { exchangeStore, type ExchangeState } from '../exchange'
@@ -10,6 +10,8 @@ import { Tile } from './Tile'
 vi.mock('./ui/DrinkChart', () => ({
   DrinkChart: ({ drinkId }: { drinkId: number }) => <div data-testid={`chart-${drinkId}`} />,
 }))
+vi.mock('./PriceMarquee', () => ({ PriceMarquee: () => null }))
+vi.mock('./NewsMarquee', () => ({ NewsMarquee: () => null }))
 
 const NBSP = ' '
 const XSS = '<img src=x onerror=alert(1)>'

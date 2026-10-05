@@ -6,6 +6,9 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppRoutes } from '../../app/routes'
 
+// jsdom has no Web Animations API; the board's marquees are tested on their own.
+vi.mock('../../components/ui/Marquee', () => ({ Marquee: () => null }))
+
 type Role = 'display' | 'bar' | 'admin'
 
 // Phase 3 SD2, as GET /api/auth/me returns it.
