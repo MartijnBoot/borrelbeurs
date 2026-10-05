@@ -1,0 +1,62 @@
+/* Ported from koers.html:98-118; hardcoded colours replaced by tokens. */
+.nav {
+  position: relative;
+}
+
+.button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--input-border);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 40;
+  background: var(--panel);
+  border: 1px solid var(--grid);
+  border-radius: 10px;
+  min-width: 220px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  padding: 6px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.item:hover,
+.item:focus-visible {
+  background: var(--panel2);
+}
+
+.logout {
+  color: var(--danger);
+}
+
+.sep {
+  height: 1px;
+  background: var(--grid);
+  margin: 6px 0;
+}

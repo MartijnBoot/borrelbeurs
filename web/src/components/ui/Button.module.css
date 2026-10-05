@@ -1,0 +1,20 @@
+.button {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.selected {
+  border-color: var(--primary);
+  color: var(--primary);
+}

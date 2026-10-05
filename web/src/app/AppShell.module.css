@@ -1,0 +1,41 @@
+/* Ported from koers.html:24-33. */
+.page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--grid);
+  background: linear-gradient(180deg, var(--header-top), var(--header-bot));
+}
+
+.brand {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: 0.5px;
+}
+
+.logo {
+  height: 22px;
+  width: auto;
+  display: block;
+}
+
+.main {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
