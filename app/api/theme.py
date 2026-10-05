@@ -3,7 +3,10 @@
 **`/theme.css` is public (SD8):** the login page must paint themed too, and the
 tokens are not secret. It renders `app.state.theme` -- loaded at boot, replaced
 after each write (PD5) -- with `Cache-Control: no-cache` and an ETag from the
-revision, so a reload revalidates cheaply. `index.html` links it as a blocking
+revision and the preset, so a reload revalidates cheaply. The preset is in it
+because revisions restart at 1 when the `theme` table is recreated (a fresh
+database, a migration round trip, the cutover): a revision alone would 304 a
+browser's cached preset over a different one. `index.html` links it as a blocking
 stylesheet before any script (ADR 0005).
 
 **`PUT /api/theme {preset}`** is admin-only and takes one of the five presets.
@@ -41,7 +44,7 @@ class ThemeRequest(BaseModel):
 @theme_css_router.get("/theme.css", response_class=Response)
 async def theme_css(request: Request) -> Response:
     theme: Theme = request.app.state.theme
-    etag = f'"theme-{theme.revision}"'
+    etag = f'"theme-{theme.revision}-{theme.preset}"'
     headers = {"Cache-Control": "no-cache", "ETag": etag}
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers=headers)

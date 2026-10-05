@@ -219,7 +219,7 @@ The web tests use per-file `// @vitest-environment jsdom` only where a DOM is ne
 
   `theme_css_router`, no prefix:
   - `GET /theme.css` returns `render_css(app.state.theme)`.
-  - `media_type="text/css"`, `Cache-Control: no-cache`, `ETag: "theme-<revision>"`.
+  - `media_type="text/css"`, `Cache-Control: no-cache`, `ETag: "theme-<revision>-<preset>"`.
   - 304 on a matching `If-None-Match`.
 
   `theme_router` under `/api`:
@@ -617,7 +617,7 @@ The web tests use per-file `// @vitest-environment jsdom` only where a DOM is ne
     - **AC20/PD10:** clear cookies while on `/koers`, force a socket close via `routeWebSocket`, and the browser reaches `/login?next=%2Fkoers`; logging in returns to `/koers`.
   - **Gate, setup and CI:**
     - `web/package.json` gets `"e2e": "playwright test"`.
-    - `scripts/check.sh` gets an "e2e" step after the built-output check (it needs the compose `db`, as the integration step does).
+    - `scripts/check.sh` gets an "e2e" step after the integration step, last (SD28; it needs the compose `db`, as the integration step does).
     - `scripts/setup.sh` runs `pnpm --dir web exec playwright install chromium`.
     - `.github/workflows/ci.yml` installs Chromium with deps before `check.sh`.
 - **Verification:**

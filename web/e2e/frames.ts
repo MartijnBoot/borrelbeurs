@@ -107,6 +107,18 @@ export function snapshot(options: SnapshotOptions): Of<'snapshot'> {
   }
 }
 
+/** The recorded order, next after `snapshot` (seq 1), moving `drinkId` to `priceCents`. */
+export function order(drinkId: number, priceCents: number): Of<'order'> {
+  const frame = recorded('order', 'order')
+  const price = { price_cents: priceCents, chart_price_cents: priceCents }
+  return {
+    ...frame,
+    seq: 1,
+    ts_ms: Date.now(),
+    data: { ...frame.data, prices: { [drinkId]: price } },
+  }
+}
+
 export function newsItem(text: string, tsMs = Date.now()): NewsItem {
   return { news_id: 1, ts_ms: tsMs, level: 'danger', text }
 }

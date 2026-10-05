@@ -138,6 +138,21 @@
   animation: tile-bubble 1.2s ease-in-out infinite;
 }
 
+/* A price change still pulses during an event (AC26), as v1's static rise and
+   fall colouring stayed visible: both run, on different properties, and the
+   pulse's animationend still clears it. */
+.tiles[data-market='crash'] .tile[data-pulse] {
+  animation:
+    tile-pulse 1.2s ease-out,
+    tile-shake 0.45s ease-in-out infinite;
+}
+
+.tiles[data-market='bubble'] .tile[data-pulse] {
+  animation:
+    tile-pulse 1.2s ease-out,
+    tile-bubble 1.2s ease-in-out infinite;
+}
+
 @keyframes tile-shake {
   0%,
   100% {

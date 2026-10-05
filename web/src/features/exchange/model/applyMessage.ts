@@ -9,8 +9,10 @@
  * -- `hello`, `snapshot`, `pong`, `error`, and the `theme` catch-up (PD7) --
  * carry the held seq without moving it. A `theme` is the exception to the gap
  * rule: it applies by revision (AC7) and never starts a resync, because with
- * no live run the server has no snapshot to end one. During a resync it is
- * ignored like everything else; the snapshot's theme catch-up follows.
+ * no live run the server has no snapshot to end one. For the same reason it
+ * applies during a resync too, without taking its seq: with no live run the
+ * server answers the request with only the theme catch-up, and nothing would
+ * ever end the resync for a theme waiting behind it.
  *
  * **boot (AC19, SD16).** A `hello` with a `boot_id` other than the held one
  * discards all live state and takes the hello's seq as the baseline; the
@@ -88,13 +90,16 @@ export function applyMessage(state: ExchangeState, message: ServerMessage): Exch
   if (message.type === 'hello') return applyHello(state, message)
   if (message.type === 'snapshot') return applySnapshot(state, message.seq, message.data)
   if (message.type === 'resync') return { ...state, awaitingResync: true }
-  if (state.awaitingResync || state.seq === null) return state
+  if (state.seq === null) return state
   if (message.type === 'theme') {
-    // Ordered by revision, not seq, so it never starts a resync: with no live run
-    // there is no snapshot to end one (PD7). It still takes its seq when next in line.
+    // Ordered by revision, not seq, so it never starts or waits on a resync: with
+    // no live run there is no snapshot to end one (PD7). It still takes its seq
+    // when next in line and no resync is pending.
     const next = applyTheme(state, message.data)
-    return message.seq === state.seq + 1 ? { ...next, seq: message.seq } : next
+    const inLine = !state.awaitingResync && message.seq === state.seq + 1
+    return inLine ? { ...next, seq: message.seq } : next
   }
+  if (state.awaitingResync) return state
   if (message.seq === state.seq) {
     return UNICAST.has(message.type) ? applyBroadcast(state, message) : state
   }
@@ -146,8 +151,8 @@ function applyHello(state: ExchangeState, message: Of<'hello'>): ExchangeState {
 
 /**
  * A `GET /api/state` result while offline (SD17): a snapshot with no seq, so
- * the held seq stays. On reconnect the server replays from it, or sends a
- * snapshot, and either converges on the live state.
+ * the held seq stays. The client then reconnects with no `boot_id`, so the
+ * server sends a snapshot rather than replaying older frames over it.
  */
 export function applyPolledState(state: ExchangeState, data: SnapshotData): ExchangeState {
   return applySnapshot(state, state.seq, data)

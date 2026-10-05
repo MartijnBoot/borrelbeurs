@@ -5,7 +5,7 @@
  */
 import type { Page, TestInfo } from '@playwright/test'
 import { expect, test, type Role } from './fixtures'
-import { drinks, hello, mockSocket, newsItem, snapshot, XSS } from './frames'
+import { drinks, hello, mockSocket, newsItem, order, snapshot, XSS } from './frames'
 import type { ServerMessage } from '../src/features/exchange/model/schemas'
 
 // CSS-module classes keep their local name as a prefix in the build
@@ -164,3 +164,42 @@ test('a crash ends at t_end_ms on server time, with the client 5 min slow and no
   await expect(banner).toHaveCount(0, { timeout: tEnd + 1_500 - Date.now() })
   expect(Date.now() - tEnd).toBeLessThanOrEqual(1_500)
 })
+
+for (const kind of ['crash', 'bubble'] as const) {
+  test(`a price change pulses during a ${kind}, alongside the event's animation (AC26)`, async ({
+    page,
+    loginAs,
+  }) => {
+    const socket = await openBoard(page, loginAs, { width: 1920, height: 1080 }, () => {
+      const now = Date.now()
+      return [
+        hello(1, now),
+        snapshot({
+          drinks: drinks(6),
+          tsMs: now,
+          marketEvents: [
+            { event_id: 1, kind, drink_ids: [1], t_start_ms: now - 1_000, t_end_ms: now + 60_000 },
+          ],
+        }),
+      ]
+    })
+    const tile = page.locator(TILE).first()
+    await expect(tile).toBeVisible()
+
+    socket.send(order(1, 300))
+
+    await expect(tile).toHaveAttribute('data-pulse', 'rising')
+    const running = await tile.evaluate((el) =>
+      el.getAnimations().map((a) => (a as CSSAnimation).animationName),
+    )
+    // CSS-module keyframes keep their local name inside a hashed one.
+    for (const name of ['tile-pulse', kind === 'crash' ? 'tile-shake' : 'tile-bubble']) {
+      expect(
+        running.some((n) => n.includes(name)),
+        `${name} in ${running.join(', ')}`,
+      ).toBe(true)
+    }
+    // The pulse still ends while the event runs, so the next change pulses again.
+    await expect(tile).not.toHaveAttribute('data-pulse', /./, { timeout: 3_000 })
+  })
+}

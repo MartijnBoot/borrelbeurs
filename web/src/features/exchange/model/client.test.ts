@@ -91,11 +91,29 @@ function connect(): FakeSocket {
 
 describe('on open', () => {
   it('sends hello with nothing held, then with the held boot and seq', async () => {
+    fetchState.mockRejectedValue(new TypeError('network')) // no poll lands meanwhile
     const first = connect()
     expect(first.sent[0]).toEqual({ type: 'hello', boot_id: '', last_seq: 0 })
     first.receive(at(fixture.snapshot, 5))
     first.drop()
     await vi.advanceTimersByTimeAsync(500)
+    latest().open()
+    expect(latest().sent[0]).toEqual({ type: 'hello', boot_id: 'BOOT', last_seq: 5 })
+  })
+
+  it('after a polled state lands, asks for a snapshot, not a replay', async () => {
+    // The poll is newer than the held seq; a replay from it would tick the board
+    // backwards (and pulse) until it caught up (SD17, SD23).
+    const first = connect()
+    first.receive(at(fixture.snapshot, 5))
+    first.drop()
+    await vi.advanceTimersByTimeAsync(500)
+    latest().open()
+    expect(latest().sent[0]).toEqual({ type: 'hello', boot_id: '', last_seq: 5 })
+
+    fetchState.mockRejectedValue(new TypeError('network'))
+    latest().drop() // nothing polled since that open: replay again
+    await vi.advanceTimersByTimeAsync(1000)
     latest().open()
     expect(latest().sent[0]).toEqual({ type: 'hello', boot_id: 'BOOT', last_seq: 5 })
   })

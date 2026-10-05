@@ -6,11 +6,13 @@ Playwright's global setup runs this; it is not a pytest module. On the server
 `DATABASE_URL` names (the compose `db` locally, the service container in CI;
 use `127.0.0.1`, not `localhost`, on Windows), it:
 
-1. creates `borrelbeurs_e2e_<pid>` and migrates it, in a child process
+1. drops every `borrelbeurs_e2e_*` a killed run left behind, then creates
+   `borrelbeurs_e2e_<pid>` and migrates it, in a child process
    (`tests/integration/conftest.py`'s reasons);
 2. seeds v1's live run and mints a display, a bar and an admin key, through
    the CLIs (`harness.py`);
-3. starts `python -m app.main` on a free port and waits for `/readyz`;
+3. starts `python -m app.main` on a free port and waits for `/readyz`, with no
+   watchdog: step 5 owns its lifetime, however long the suite runs;
 4. writes `{base_url, keys, log}` to `--out` -- under the OS temp dir, never in
    the repository (`tests/meta/test_repo_hygiene.py` bans key literals) -- and
    prints `ready`;
@@ -37,7 +39,7 @@ import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 
-from tests.integration.conftest import _admin, run_alembic, scratch_url
+from tests.integration.conftest import _admin, _drop, run_alembic, scratch_url
 from tests.integration.realapp.harness import mint_key, seed_live_run, start_app
 
 ROLES = ("display", "bar", "admin")
@@ -56,6 +58,12 @@ def main(argv: Sequence[str]) -> int:
         )
         return 2
 
+    leftovers = asyncio.run(
+        _admin(base_url, f"SELECT datname FROM pg_database WHERE datname LIKE '{E2E_PREFIX}%'")
+    )
+    for leftover in leftovers:
+        _drop(base_url, leftover)
+
     database = f"{E2E_PREFIX}{os.getpid()}"
     url = scratch_url(base_url, database)
     drop = f'DROP DATABASE IF EXISTS "{database}" WITH (FORCE)'
@@ -71,7 +79,7 @@ def main(argv: Sequence[str]) -> int:
         os.environ["LOGIN_RATE_PER_MINUTE"] = "1000"
         log = Path(tempfile.gettempdir()) / f"{database}.log"
         log.unlink(missing_ok=True)
-        app = start_app(url, log)
+        app = start_app(url, log, watchdog_s=None)
         try:
             out.write_text(
                 json.dumps({"base_url": app.base, "keys": keys, "log": str(log)}),

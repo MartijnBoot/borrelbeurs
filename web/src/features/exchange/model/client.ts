@@ -8,7 +8,9 @@
  *
  * - **Open:** send `hello {boot_id, last_seq}` (SD16), ping every 15 s (SD14),
  *   arm a 45 s deadline that any inbound frame resets, stop polling, reset
- *   the backoff.
+ *   the backoff. After a polled state landed the `boot_id` is empty: the held
+ *   seq is older than what the board shows, so a replay from it would tick the
+ *   board backwards, and the server sends a snapshot instead.
  * - **Deadline:** force-close and handle it as a lost connection (AC13).
  * - **Close:** 4401 or 1008 is a lost session (SD12). Anything else goes
  *   `offline`: poll `GET /api/state` at once and every 5 s (SD17), and
@@ -67,6 +69,7 @@ export function createExchangeClient(deps: ExchangeClientDeps): ExchangeClient {
   let pollTimer: Timer | null = null
   let polling = 0 // a generation: a poll answered after polling stopped is dropped
   let resyncSent = false
+  let polledSinceOpen = false // the held seq is older than the polled state shown
   let pingsInFlight: number[] = []
   const skew = new SkewEstimator()
 
@@ -93,7 +96,8 @@ export function createExchangeClient(deps: ExchangeClientDeps): ExchangeClient {
     stopPolling()
     store.setState({ status: 'open' })
     const { bootId, seq } = store.getState()
-    send({ type: 'hello', boot_id: bootId ?? '', last_seq: seq ?? 0 })
+    send({ type: 'hello', boot_id: polledSinceOpen ? '' : (bootId ?? ''), last_seq: seq ?? 0 })
+    polledSinceOpen = false
     pingTimer = setInterval(() => {
       pingsInFlight.push(deps.now())
       send({ type: 'ping' })
@@ -200,7 +204,10 @@ export function createExchangeClient(deps: ExchangeClientDeps): ExchangeClient {
       update(applyNoLiveRun)
     } else if (result.status === 200) {
       const data = SnapshotData.safeParse(result.body)
-      if (data.success) update((state) => applyPolledState(state, data.data))
+      if (data.success) {
+        update((state) => applyPolledState(state, data.data))
+        polledSinceOpen = true
+      }
     }
   }
 

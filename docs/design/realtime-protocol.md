@@ -76,8 +76,8 @@ countdown and animation locally, with no polling.
   hello's `seq` as the baseline; with the same `boot_id`, the held `seq` stays and the server
   replays from it.
 - A `theme` is ordered by `revision`, not `seq`: it applies only when its revision is higher
-  than the held one, and it never starts a resync, because with no live run there is no
-  snapshot to end one. A theme broadcast does not move the server's resync metadata
+  than the held one, and it never starts or waits on a resync, because with no live run there
+  is no snapshot to end one. A theme broadcast does not move the server's resync metadata
   (`run_id`, `version`) either.
 
 ## Client to server

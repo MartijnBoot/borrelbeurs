@@ -89,7 +89,7 @@ class AppProcess:
     proc: subprocess.Popen[bytes]
     port: int
     stderr_path: Path
-    _watchdog: threading.Timer = field(repr=False)
+    _watchdog: threading.Timer | None = field(repr=False)
 
     @property
     def base(self) -> str:
@@ -101,17 +101,29 @@ class AppProcess:
     def kill(self) -> int:
         self.proc.kill()
         code = self.proc.wait(timeout=30)
-        self._watchdog.cancel()
+        if self._watchdog is not None:
+            self._watchdog.cancel()
         return code
 
     def wait(self, timeout: float) -> int:
         code = self.proc.wait(timeout=timeout)
-        self._watchdog.cancel()
+        if self._watchdog is not None:
+            self._watchdog.cancel()
         return code
 
 
-def spawn_app(database_url: str, stderr_path: Path, *, port: int | None = None) -> AppProcess:
-    """Start `python -m app.main`; do not wait for it."""
+def spawn_app(
+    database_url: str,
+    stderr_path: Path,
+    *,
+    port: int | None = None,
+    watchdog_s: float | None = WATCHDOG_S,
+) -> AppProcess:
+    """Start `python -m app.main`; do not wait for it.
+
+    The watchdog kills a test's app that outlives it; `None` arms none, for a
+    caller that owns the app's lifetime itself (`serve.py`).
+    """
     port = port or free_port()
     stderr = stderr_path.open("ab")
     proc = subprocess.Popen(
@@ -123,14 +135,18 @@ def spawn_app(database_url: str, stderr_path: Path, *, port: int | None = None) 
         stderr=stderr,
     )
     stderr.close()
-    watchdog = threading.Timer(WATCHDOG_S, proc.kill)
-    watchdog.start()
+    watchdog = None
+    if watchdog_s is not None:
+        watchdog = threading.Timer(watchdog_s, proc.kill)
+        watchdog.start()
     return AppProcess(proc=proc, port=port, stderr_path=stderr_path, _watchdog=watchdog)
 
 
-def start_app(database_url: str, stderr_path: Path) -> AppProcess:
+def start_app(
+    database_url: str, stderr_path: Path, *, watchdog_s: float | None = WATCHDOG_S
+) -> AppProcess:
     """Start the app and wait until `/readyz` answers 200."""
-    app = spawn_app(database_url, stderr_path)
+    app = spawn_app(database_url, stderr_path, watchdog_s=watchdog_s)
     deadline = time.monotonic() + READY_TIMEOUT_S
     while time.monotonic() < deadline:
         if app.proc.poll() is not None:

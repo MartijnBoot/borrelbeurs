@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.db.session import create_engine
 from app.db.theme import ThemeRow, get_theme
-from app.runtime.theme import PRESETS
+from app.runtime.theme import PRESETS, resolve
 from tests.api.conftest import Login
 
 BLAUW_BG = PRESETS["blauw"].tokens["--bg"]
@@ -47,7 +47,7 @@ def test_a_fresh_database_serves_blauw_in_inter(client: TestClient) -> None:
     assert response.headers["content-type"].startswith("text/css")
     assert f"--bg:{BLAUW_BG};" in response.text
     assert f"font-family:{INTER}" in response.text
-    assert response.headers["etag"] == '"theme-0"'
+    assert response.headers["etag"] == '"theme-0-blauw"'
 
 
 def test_theme_css_is_public(client: TestClient) -> None:
@@ -71,6 +71,24 @@ def test_theme_css_revalidates_with_its_etag(client: TestClient) -> None:
     assert stale.status_code == 200
 
 
+def test_an_etag_from_before_a_reset_never_revalidates_another_preset(
+    client: TestClient, login: Login
+) -> None:
+    """AC4: a recreated `theme` table restarts revisions at 1, so the ETag names the preset too.
+
+    Without it, a browser that cached Oud Geld at revision 1 would get a 304 for
+    Rood at revision 1 on the same origin and keep painting Oud Geld.
+    """
+    login("admin").put("/api/theme", json={"preset": "oudgeld"})
+    cached = client.get("/theme.css").headers["etag"]
+    client.app.state.theme = resolve("rood", 1)  # type: ignore[attr-defined]
+
+    after = client.get("/theme.css", headers={"if-none-match": cached})
+
+    assert after.status_code == 200
+    assert f"--bg:{PRESETS['rood'].tokens['--bg']};" in after.text
+
+
 def test_an_admin_put_stores_returns_and_serves_the_preset(
     client: TestClient, login: Login, settings: Settings, api_env: str
 ) -> None:
@@ -83,7 +101,7 @@ def test_an_admin_put_stores_returns_and_serves_the_preset(
     assert body["tokens"] == dict(PRESETS["oudgeld"].tokens)
     css = client.get("/theme.css")
     assert f"font-family:{GARAMOND}" in css.text
-    assert css.headers["etag"] == '"theme-1"'
+    assert css.headers["etag"] == '"theme-1-oudgeld"'
     stored = _stored(settings, api_env)
     assert stored is not None and (stored.preset, stored.revision) == ("oudgeld", 1)
 
@@ -167,7 +185,7 @@ def test_two_puts_give_increasing_revisions(client: TestClient, login: Login) ->
     second = admin.put("/api/theme", json={"preset": "rood"}).json()
 
     assert (first["revision"], second["revision"]) == (1, 2)
-    assert client.get("/theme.css").headers["etag"] == '"theme-2"'
+    assert client.get("/theme.css").headers["etag"] == '"theme-2-rood"'
 
 
 def test_a_put_never_takes_the_engine_state_lock(live_client: TestClient, login: Login) -> None:

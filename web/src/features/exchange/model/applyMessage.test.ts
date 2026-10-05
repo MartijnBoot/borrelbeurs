@@ -122,7 +122,9 @@ describe('seq (AC18)', () => {
     state = applyMessage(state, at(theme, S + 4, { revision: 9, preset: 'rood' }))
     expect(state.prices).toBe(live.prices)
     expect(state.news).toBe(live.news)
-    expect(state.theme).toBe(live.theme)
+    expect(state.seq).toBe(S)
+    // Only a theme gets through, by revision: it never waits on a resync (AC5).
+    expect(state.theme?.preset).toBe('rood')
 
     state = applyMessage(state, at(snapshot, S + 5))
     expect(state.awaitingResync).toBe(false)
@@ -288,5 +290,15 @@ describe('theme (AC7)', () => {
     const state = applyMessage(empty, at(theme, 5, { revision: 1, preset: 'groen' }))
     expect(state.theme?.preset).toBe('groen')
     expect(state.seq).toBe(5)
+  })
+
+  it('with no live run, a resync no snapshot can end still re-themes (AC5)', () => {
+    // A hub overflow sends `resync`; the server answers the request with only
+    // the theme catch-up, because there is no snapshot to send.
+    const empty = run(at(hello, 4, { run_id: null }), at(frame('resync'), 4))
+    let state = applyMessage(empty, at(theme, 4, { revision: 1, preset: 'groen' }))
+    state = applyMessage(state, at(theme, 6, { revision: 2, preset: 'paars' }))
+    expect(state.theme?.preset).toBe('paars')
+    expect(state.seq).toBe(4)
   })
 })
