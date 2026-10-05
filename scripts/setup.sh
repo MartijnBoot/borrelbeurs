@@ -53,6 +53,8 @@ fi
 # --- dependencies, frozen ------------------------------------------------------
 uv sync --frozen
 pnpm --dir web install --frozen-lockfile
+# The gate's e2e step drives Chromium (Phase 4 T23); a no-op once installed.
+pnpm --dir web exec playwright install chromium
 
 # --- Postgres, waited for rather than assumed ---------------------------------
 # `--wait` blocks until docker-compose.yml's healthcheck reports healthy, or

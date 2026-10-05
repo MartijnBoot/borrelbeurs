@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Playwright (T23): failure screenshots and reports
+test-results
+playwright-report

@@ -15,6 +15,12 @@
 # absolute URL with a host in a reference position of web/dist -- the
 # offline-borrel guarantee (D-13), checked on what is actually served.
 #
+# "web e2e" (Phase 4 T23, SD28): Playwright in Chromium against the real app,
+# serving that build -- web/e2e/global-setup.ts starts
+# tests/integration/realapp/serve.py on a scratch database on the same
+# Postgres the integration step uses. Needs Playwright's Chromium, which
+# scripts/setup.sh installs.
+#
 # Needs a running Postgres for the last step: locally the compose `db` that
 # scripts/setup.sh starts, in CI a service container. The environment comes
 # from .env.local when it exists (local), and from the process otherwise (CI).
@@ -47,7 +53,7 @@ if [ -f .env.local ]; then
   set +a
 fi
 
-TOTAL=12
+TOTAL=13
 STEP=0
 
 step() {
@@ -66,6 +72,16 @@ step() {
 # so a collection error (exit 2) or a directory whose tests all vanished is
 # still red (plan R10). Empty since Phase 1 filled tests/engine.
 ALLOW_EMPTY=""
+
+web_e2e() {
+  # A fresh clone without the browser fails here, named, rather than with
+  # Playwright's error from inside every test (plan R13).
+  if ! pnpm --dir web exec node -e     "process.exit(require('fs').existsSync(require('@playwright/test').chromium.executablePath()) ? 0 : 1)"; then
+    echo "scripts/check.sh: Playwright's Chromium is not installed. Run: pnpm --dir web exec playwright install chromium" >&2
+    return 1
+  fi
+  pnpm --dir web run e2e
+}
 
 pytest_each() {
   local dir status
@@ -94,6 +110,7 @@ step "web tsc -b" pnpm --dir web exec tsc -b
 step "web api types drift" api_types_drift
 step "web build" pnpm --dir web build
 step "built output references" uv run python scripts/check_built_assets.py web/dist
+step "web e2e" web_e2e
 step "pytest tests/unit tests/meta tests/engine" pytest_each tests/unit tests/meta tests/engine
 # `run test`, not `test`: pnpm's `test` shorthand parses `--run` as its own
 # option and rejects it; `run <script>` passes it through to vitest.

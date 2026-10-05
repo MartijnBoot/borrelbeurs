@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "test": "vitest --passWithNoTests",
+    "e2e": "playwright test",
     "preview": "vite preview"
   },
   "dependencies": {

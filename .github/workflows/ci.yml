@@ -83,6 +83,11 @@ jobs:
       - name: Install web dependencies (frozen)
         run: pnpm --dir web install --frozen-lockfile
 
+      # The gate's e2e step (Phase 4 T23) drives Chromium; --with-deps adds the
+      # system libraries the runner image lacks.
+      - name: Install Playwright's Chromium
+        run: pnpm --dir web exec playwright install --with-deps chromium
+
       # AC2 (fail-fast boot) needs a JWT_SECRET at least 32 characters long,
       # and .env.example deliberately ships one too short to pass validation
       # (a committed one would be a leaked one). Generated fresh per run, the
