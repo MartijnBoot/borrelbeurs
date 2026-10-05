@@ -1,23 +1,24 @@
 /**
  * The page frame every route renders inside (SD4): v1's header -- logo,
- * title, nav (`koers.html:238-261`) -- then a slot for the connection banner
- * (T17) and the page itself. `headerExtra` is where a page puts its own
- * header content, as the board does with its clock.
+ * title, nav (`koers.html:238-261`) -- then SD19's connection banner while
+ * the WebSocket is offline, and the page itself. `headerExtra` is where a
+ * page puts its own header content, as the board does with its clock.
  */
 import type { ReactNode } from 'react'
 import logo from '../assets/logo.png'
 import { NavMenu } from '../components/ui/NavMenu'
+import { selectStatus, useExchange } from '../features/exchange'
 import styles from './AppShell.module.css'
 
 export interface AppShellProps {
   routes: readonly string[]
   onLogout: () => void
-  banner?: ReactNode
   headerExtra?: ReactNode
   children: ReactNode
 }
 
-export function AppShell({ routes, onLogout, banner, headerExtra, children }: AppShellProps) {
+export function AppShell({ routes, onLogout, headerExtra, children }: AppShellProps) {
+  const offline = useExchange(selectStatus) === 'offline'
   return (
     <div className={styles.page}>
       <header className={styles.header}>
@@ -28,7 +29,11 @@ export function AppShell({ routes, onLogout, banner, headerExtra, children }: Ap
         {headerExtra}
         <NavMenu routes={routes} onLogout={onLogout} />
       </header>
-      {banner}
+      {offline && (
+        <div className={styles.banner} role="status">
+          Verbinding verbroken — opnieuw verbinden…
+        </div>
+      )}
       <main className={styles.main}>{children}</main>
     </div>
   )

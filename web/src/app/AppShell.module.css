@@ -39,3 +39,11 @@
   min-height: 0;
   overflow: auto;
 }
+
+.banner {
+  padding: 8px 18px;
+  background: var(--warn);
+  color: var(--bg);
+  font-weight: 600;
+  text-align: center;
+}

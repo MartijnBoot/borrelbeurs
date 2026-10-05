@@ -1,16 +1,18 @@
-/* Base reset. Phase 4 (docs/design/frontend-architecture.md:40) adds
-   tokens.css and keyframes.css alongside this file; there is nothing to
-   theme yet. */
-
-:root {
-  color-scheme: light dark;
-  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
-}
+/* Base reset. The theme's tokens and body font come from the server's
+   blocking /theme.css (ADR 0005), then live from the WebSocket (T17); this
+   file only uses them. No `color-scheme`: the theme, not the OS, decides. */
 
 * {
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   margin: 0;
+  background: var(--bg);
+  color: var(--text);
 }

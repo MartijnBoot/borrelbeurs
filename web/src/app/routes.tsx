@@ -15,6 +15,7 @@ import { setOnUnauthenticated } from '../lib/http'
 import { AppShell } from './AppShell'
 import { NoAccess } from './pages/NoAccess'
 import { Placeholder } from './pages/Placeholder'
+import { Providers } from './providers'
 
 const PAGES: readonly (readonly [string, ReactNode])[] = [
   ['/', <Placeholder />],
@@ -61,6 +62,7 @@ export function AppRoutes() {
   return (
     <SessionProvider>
       <UnauthenticatedHook />
+      <Providers />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route element={<ShellLayout />}>
