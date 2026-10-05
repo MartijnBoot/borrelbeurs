@@ -10,6 +10,11 @@
 # the app's OpenAPI schema (scripts/gen_api_types.sh) and fails on any diff:
 # a response model changed without regenerating the web's types is red.
 #
+# "web build" then "built output references" (Phase 4 T22, AC2): the
+# production bundle must build, and scripts/check_built_assets.py fails on any
+# absolute URL with a host in a reference position of web/dist -- the
+# offline-borrel guarantee (D-13), checked on what is actually served.
+#
 # Needs a running Postgres for the last step: locally the compose `db` that
 # scripts/setup.sh starts, in CI a service container. The environment comes
 # from .env.local when it exists (local), and from the process otherwise (CI).
@@ -42,7 +47,7 @@ if [ -f .env.local ]; then
   set +a
 fi
 
-TOTAL=10
+TOTAL=12
 STEP=0
 
 step() {
@@ -87,6 +92,8 @@ step "web lint" pnpm --dir web lint
 step "mypy app db exchange tests" uv run mypy app db exchange tests
 step "web tsc -b" pnpm --dir web exec tsc -b
 step "web api types drift" api_types_drift
+step "web build" pnpm --dir web build
+step "built output references" uv run python scripts/check_built_assets.py web/dist
 step "pytest tests/unit tests/meta tests/engine" pytest_each tests/unit tests/meta tests/engine
 # `run test`, not `test`: pnpm's `test` shorthand parses `--run` as its own
 # option and rejects it; `run <script>` passes it through to vitest.
