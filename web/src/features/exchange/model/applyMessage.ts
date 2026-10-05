@@ -142,7 +142,25 @@ function applyHello(state: ExchangeState, message: Of<'hello'>): ExchangeState {
   return applyTheme({ ...base, awaitingResync: false, empty: run_id === null }, theme)
 }
 
-function applySnapshot(state: ExchangeState, seq: number, data: SnapshotData): ExchangeState {
+/**
+ * A `GET /api/state` result while offline (SD17): a snapshot with no seq, so
+ * the held seq stays. On reconnect the server replays from it, or sends a
+ * snapshot, and either converges on the live state.
+ */
+export function applyPolledState(state: ExchangeState, data: SnapshotData): ExchangeState {
+  return applySnapshot(state, state.seq, data)
+}
+
+/** A poll's 409 `no_live_run` (SD17). */
+export function applyNoLiveRun(state: ExchangeState): ExchangeState {
+  return state.empty ? state : { ...state, empty: true }
+}
+
+function applySnapshot(
+  state: ExchangeState,
+  seq: number | null,
+  data: SnapshotData,
+): ExchangeState {
   const prices = keyed(data.prices)
   const prevPriceCents: Record<DrinkId, number> = {}
   for (const [id, price] of Object.entries(prices)) prevPriceCents[Number(id)] = price.price_cents

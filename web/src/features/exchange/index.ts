@@ -5,3 +5,9 @@ export type { Bar, DrinkPrice, MarketEventInfo, NewsItem, ThemeData } from './mo
 export { exchangeStore, useExchange } from './model/store'
 export * from './model/selectors'
 export { SMA_WINDOW, smaSeries, type SmaPoint } from './model/sma'
+export {
+  createExchangeClient,
+  type ExchangeClient,
+  type ExchangeClientDeps,
+  type SocketLike,
+} from './model/client'
