@@ -65,7 +65,7 @@ Settled at the spec interview (2026-10-01). The planner must not reopen them.
 - **SD4 — Authorization is checked by a meta test, not by review.** A test enumerates every
   route and WebSocket route on `create_app()`. It fails if one has neither an explicit role
   dependency nor membership in a single, named public allowlist (SD1's public row plus SD3's
-  docs routes).
+  docs routes, and `GET /theme.css` from Phase 4 SD8).
 
 **Keys and sessions**
 

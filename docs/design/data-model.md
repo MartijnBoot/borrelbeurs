@@ -31,7 +31,7 @@ both environments.
 | `news` | News ticker items | `run_id`, `level` stored **lowercase**, `deleted_at` for soft delete |
 | `market_event` | Crash / bubble / correction | `run_id`, `kind` crash/bubble/correction, `drink_ids` jsonb, `t_start_ms`, **`t_end_ms`** (> `t_start_ms`), `ended_at` (NULL while active; indexed per run) |
 | `auth_key` | Access keys | `key_id`, `label` (1–100 characters), `role` display/bar/admin, **argon2id `secret_hash`**, `created_at`, `revoked_at`, `last_used_at` |
-| `theme` | Server-side theming | *Arrives with Phase 4+.* The 21 CSS custom properties plus image references |
+| `theme` | Server-side theming | **A single row:** `id` SMALLINT PK, default 1, `CHECK (id = 1)`; `preset` (one of `oudgeld`, `blauw`, `groen`, `paars`, `rood`); `revision` (≥ 1, bumped by every write); `updated_at`. No row means Blauw at revision 0. Token values are not stored: each preset's 24 tokens and its font live in the server's manifest, `app/runtime/theme.py`. Images arrive with Phase 6 |
 | `asset` | Uploaded images | *Arrives with Phase 4+.* `filename`, `content_type`, `bytes` |
 
 ### `price_tick.source`

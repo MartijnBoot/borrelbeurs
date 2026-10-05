@@ -31,7 +31,8 @@ web/src/
   features/
     exchange/     THE core: live state, WS client, message reducer, selectors
     auth/         login form, session hook, RequireRole
-    theme/        token manifest, ThemeProvider, theme editor
+    theme/        ThemeProvider, ThemeSection (preset picker); Phase 6 adds the editor.
+                  The token manifest (24 tokens) is server-side, app/runtime/theme.py
     koers/  bar/  manipulation/  settings/  home/
   components/ui/  Button, Field, NumberField, Select, Switch, Marquee, NavMenu,
                   MobileSectionNav, ConfirmDialog, Toast, StatusDot
@@ -41,7 +42,10 @@ web/src/
 ```
 
 Each feature exposes one `index.ts`. Enforced with `eslint-plugin-boundaries`, which the
-way-of-working calls a lint rule rather than a suggestion (§5.2).
+way-of-working calls a lint rule rather than a suggestion (§5.2). The other invariants are
+core ESLint rules, with no React plugin: `no-restricted-syntax` bans `dangerouslySetInnerHTML`
+and `innerHTML`/`outerHTML`/`insertAdjacentHTML`, and `no-restricted-globals` and
+`no-restricted-properties` ban `localStorage`/`sessionStorage`.
 
 **Dependency direction, which is the part that matters:** `exchange` may be imported by any
 feature; `exchange` may import nothing from `features/`. Everything else is sibling-isolated.

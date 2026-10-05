@@ -31,9 +31,9 @@ Two caveats when slimming, both easy to get wrong:
 ```
 
 `seq` is global per process (Phase 3 SD27). Every **broadcast** takes the next `seq`;
-a **unicast** (`hello`, `snapshot`, `pong`, `error`) carries the current `seq` without
-incrementing it, so a snapshot at `seq = S` means "state as of S" and the next broadcast
-the client sees is `S+1`. Each boot draws a random `boot_id`.
+a **unicast** (`hello`, `snapshot`, `pong`, `error`, and the `theme` catch-up below) carries
+the current `seq` without incrementing it, so a snapshot at `seq = S` means "state as of S"
+and the next broadcast the client sees is `S+1`. Each boot draws a random `boot_id`.
 
 `seq` lets a client detect a dropped message and request a resync. Without it, a dropped
 `tick` leaves a permanent gap in the client's bar array that nothing will ever repair. It
@@ -46,14 +46,14 @@ what makes absolute end-timestamps usable.
 
 | Type | Contents | When |
 |---|---|---|
-| `hello` | Server time, `run_id`, `tick_interval_ms`, protocol version, your role | On connect |
+| `hello` | Server time, `boot_id`, `run_id` (`null` with no live run), `tick_interval_ms`, protocol version, your role, and the current `theme` (as below) | On connect |
 | `snapshot` | Drinks, client-relevant params, prices, the history window, recent news, earnings **aggregates only**, active market events, `version` | On connect, or on resync |
 | `tick` | `version`, `ts_ms`, prices, display prices, and a **server-bucketed bar**. ~200 bytes | 1 Hz |
 | `order` | `order_id`, lines, `total_cents`, **earnings delta**, and every drink's new `price_cents` / `chart_price_cents` (carried with the envelope's `version`) | Per accepted order |
 | `market_event` | `kind`, `drink_ids`, `t_start_ms`, **`t_end_ms`** | On start and end |
 | `news` | `{op: add\|delete, item}` | On change |
 | `config` | Params and drinks. *Deferred: defined by the phase that produces it (Phase 6)* | On admin change |
-| `theme` | The 21 tokens plus image references. *Deferred: defined by the phase that produces it (Phase 4+)* | On theme change |
+| `theme` | `{preset, revision, tokens, font_family}`: the preset's name, a `revision` (0 = nothing stored, Blauw), all **24 tokens** of the server's manifest (`app/runtime/theme.py`), and the body's font stack. No images (Phase 6). Broadcast with `version: null`, with or without a live run; also sent as a **catch-up unicast** after every handshake replay or snapshot and every `resync_request` snapshot, so a client never misses a change across a reconnect or a gap | On theme change; after every replay or snapshot |
 | `resync` | "You are too far behind, or I restarted" | On backpressure overflow or version gap |
 
 ### Why `t_end_ms` matters
@@ -65,6 +65,20 @@ broadcast** — which means a 30-second crash overlay can linger for up to ten m
 
 With an absolute `t_end_ms`, the client subtracts its learned clock skew and runs its own
 countdown and animation locally, with no polling.
+
+### How the client applies `seq`
+
+- A broadcast applies only as the held `seq + 1`. One further ahead means a frame was lost:
+  the client sends one `resync_request` and applies nothing more until the `snapshot` that
+  answers it. An older one is dropped.
+- A unicast carries the held `seq` and applies without moving it.
+- A `hello` whose `boot_id` differs from the held one discards all live state and takes the
+  hello's `seq` as the baseline; with the same `boot_id`, the held `seq` stays and the server
+  replays from it.
+- A `theme` is ordered by `revision`, not `seq`: it applies only when its revision is higher
+  than the held one, and it never starts a resync, because with no live run there is no
+  snapshot to end one. A theme broadcast does not move the server's resync metadata
+  (`run_id`, `version`) either.
 
 ## Client to server
 
