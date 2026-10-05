@@ -15,6 +15,7 @@ import { setOnUnauthenticated } from '../lib/http'
 import { AppShell } from './AppShell'
 import { NoAccess } from './pages/NoAccess'
 import { Placeholder } from './pages/Placeholder'
+import { SettingsPage } from './pages/SettingsPage'
 import { Providers } from './providers'
 
 const PAGES: readonly (readonly [string, ReactNode])[] = [
@@ -22,7 +23,7 @@ const PAGES: readonly (readonly [string, ReactNode])[] = [
   ['/koers', <Placeholder />],
   ['/bar', <Placeholder />],
   ['/manipulation', <Placeholder />],
-  ['/settings', <Placeholder />],
+  ['/settings', <SettingsPage />],
 ]
 
 function ShellLayout() {

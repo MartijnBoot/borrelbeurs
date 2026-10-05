@@ -1,0 +1,19 @@
+.section {
+  padding: 18px;
+}
+
+.section h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.error {
+  margin: 12px 0 0;
+  color: var(--danger);
+}
