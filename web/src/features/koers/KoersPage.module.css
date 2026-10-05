@@ -1,0 +1,158 @@
+/* Ported from koers.html:73-94 and 121-133: the viewport-locked grid, its
+   clamp() sizes and its two breakpoints. Hardcoded rgba colours are tokens;
+   the pulse uses --tile-rising / --tile-falling (SD6, AC26). */
+
+.container {
+  height: 100%;
+  padding: 18px;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.board {
+  background: var(--panel);
+  border: 1px solid var(--grid);
+  border-radius: 12px;
+  padding: 12px;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.legend {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.clock {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.empty {
+  margin: 48px auto;
+  font-size: 20px;
+  color: var(--muted);
+}
+
+.tiles {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.tile {
+  background: var(--panel2);
+  border: 1px solid var(--grid);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tile[data-pulse='rising'] {
+  --pulse: var(--tile-rising);
+  animation: tile-pulse 1.2s ease-out;
+}
+
+.tile[data-pulse='falling'] {
+  --pulse: var(--tile-falling);
+  animation: tile-pulse 1.2s ease-out;
+}
+
+@keyframes tile-pulse {
+  from {
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--pulse) 12%, transparent),
+        color-mix(in srgb, var(--pulse) 3%, transparent)
+      ),
+      var(--panel2);
+    border-color: color-mix(in srgb, var(--pulse) 40%, transparent);
+  }
+}
+
+.name {
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.price {
+  font-size: clamp(18px, 2vw, 30px);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.change {
+  font-size: max(14px, 1.2vw);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.spark {
+  display: block;
+  width: 100%;
+  flex: 1;
+  min-height: 60px;
+  border: 1px solid var(--grid);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--input-bg);
+}
+
+@media (max-width: 700px) {
+  .container {
+    height: auto;
+  }
+
+  .board {
+    overflow: visible;
+  }
+
+  .tiles {
+    grid-template-columns: 1fr;
+    grid-auto-rows: auto;
+  }
+
+  .tile {
+    min-height: 260px;
+  }
+
+  .spark {
+    min-height: 140px;
+  }
+}
+
+@media (max-width: 700px) and (orientation: landscape) {
+  .tiles {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .tile {
+    min-height: 200px;
+  }
+
+  .spark {
+    min-height: 110px;
+  }
+}

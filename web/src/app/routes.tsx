@@ -11,6 +11,7 @@
 import { useEffect, type ReactNode } from 'react'
 import { Outlet, Route, Routes, useNavigate } from 'react-router'
 import { LoginPage, RequireRole, SessionProvider, useGoToLogin, useSession } from '../features/auth'
+import { KoersPage } from '../features/koers'
 import { setOnUnauthenticated } from '../lib/http'
 import { AppShell } from './AppShell'
 import { NoAccess } from './pages/NoAccess'
@@ -20,7 +21,7 @@ import { Providers } from './providers'
 
 const PAGES: readonly (readonly [string, ReactNode])[] = [
   ['/', <Placeholder />],
-  ['/koers', <Placeholder />],
+  ['/koers', <KoersPage />],
   ['/bar', <Placeholder />],
   ['/manipulation', <Placeholder />],
   ['/settings', <SettingsPage />],
