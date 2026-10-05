@@ -63,12 +63,18 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       // Every feature exposes exactly one entry point (index.ts); nothing
-      // outside a feature may reach into its internals.
+      // outside a feature may reach into its internals. The shared folders
+      // (lib, components, api, app) have no single entry point: any of their
+      // files may be imported. Without that second policy `default:
+      // 'disallow'` refused every import of lib/ or components/.
       'boundaries/entry-point': [
         'error',
         {
           default: 'disallow',
-          policies: [{ target: { element: { type: 'features' } }, allow: ['index.ts'] }],
+          policies: [
+            { target: { element: { type: 'features' } }, allow: ['index.ts'] },
+            { target: { element: { type: '!features' } }, allow: ['**'] },
+          ],
         },
       ],
       // SD27: features are sibling-isolated. exchange is the shared one --

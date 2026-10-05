@@ -23,6 +23,10 @@ beforeAll(async () => {
   }
   mkdirSync(join(root, 'src/lib'), { recursive: true })
   writeFileSync(join(root, 'src/lib/format.ts'), 'export const x = 1\n')
+  mkdirSync(join(root, 'src/components/ui'), { recursive: true })
+  writeFileSync(join(root, 'src/components/ui/Button.ts'), 'export const x = 1\n')
+  mkdirSync(join(root, 'src/features/koers/ui'), { recursive: true })
+  writeFileSync(join(root, 'src/features/koers/ui/Thing.ts'), 'export const x = 1\n')
   eslint = new ESLint({ cwd: root, overrideConfigFile: resolve('eslint.config.js') })
   await eslint.lintText('export {}\n', { filePath: join(root, 'src/features/exchange/warm.ts') })
 }, 60_000)
@@ -63,6 +67,22 @@ describe('feature boundaries', () => {
 
   it('lets the app layer import any feature', async () => {
     expect(await ruleIds(importX('../features/koers'), 'src/app/a.ts')).toEqual([])
+  })
+
+  it('keeps the internals of a feature behind its index.ts', async () => {
+    expect(await ruleIds(importX('../features/koers/ui/Thing'), 'src/app/a.ts')).toContain(
+      'boundaries/entry-point',
+    )
+  })
+
+  it.each([
+    ['app', 'lib', '../lib/format', 'src/app/a.ts'],
+    ['app', 'components', '../components/ui/Button', 'src/app/a.ts'],
+    ['a feature', 'lib', '../../lib/format', 'src/features/exchange/a.ts'],
+    ['a feature', 'components', '../../components/ui/Button', 'src/features/koers/a.ts'],
+    ['components', 'lib', '../../lib/format', 'src/components/ui/a.ts'],
+  ])('lets %s import %s', async (_from, _to, from, filePath) => {
+    expect(await ruleIds(importX(from), filePath)).toEqual([])
   })
 })
 
