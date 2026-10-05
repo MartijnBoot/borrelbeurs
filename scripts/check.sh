@@ -6,6 +6,10 @@
 # rather than restating its steps in YAML, so "green locally" and "green in CI"
 # are the same claim.
 #
+# "web api types drift" (Phase 4 T11) regenerates web/src/api/generated from
+# the app's OpenAPI schema (scripts/gen_api_types.sh) and fails on any diff:
+# a response model changed without regenerating the web's types is red.
+#
 # Needs a running Postgres for the last step: locally the compose `db` that
 # scripts/setup.sh starts, in CI a service container. The environment comes
 # from .env.local when it exists (local), and from the process otherwise (CI).
@@ -38,7 +42,7 @@ if [ -f .env.local ]; then
   set +a
 fi
 
-TOTAL=9
+TOTAL=10
 STEP=0
 
 step() {
@@ -71,12 +75,18 @@ pytest_each() {
   done
 }
 
+api_types_drift() {
+  ./scripts/gen_api_types.sh
+  git diff --exit-code -- web/src/api/generated
+}
+
 step "ruff format --check" uv run ruff format --check .
 step "ruff check" uv run ruff check .
 step "web format:check" pnpm --dir web format:check
 step "web lint" pnpm --dir web lint
 step "mypy app db exchange tests" uv run mypy app db exchange tests
 step "web tsc -b" pnpm --dir web exec tsc -b
+step "web api types drift" api_types_drift
 step "pytest tests/unit tests/meta tests/engine" pytest_each tests/unit tests/meta tests/engine
 # `run test`, not `test`: pnpm's `test` shorthand parses `--run` as its own
 # option and rejects it; `run <script>` passes it through to vitest.
