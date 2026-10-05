@@ -22,5 +22,7 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Lints with ESLint's Node API, so it is type-checked as Node code (tsconfig.node.json).
+  "exclude": ["src/lint-rules.test.ts"]
 }

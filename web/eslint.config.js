@@ -5,6 +5,29 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 import boundaries from 'eslint-plugin-boundaries'
 
+// AC32 (D-25): user text is only ever a text node -- no HTML sink anywhere in
+// the bundle. Shared with the src/lib/config.ts override below, which lifts
+// only the import.meta.env ban.
+const htmlSinks = [
+  {
+    selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+    message: 'Render user text as a text node, never as HTML.',
+  },
+  {
+    selector:
+      'AssignmentExpression > MemberExpression.left[property.name=/^(innerHTML|outerHTML)$/]',
+    message: 'Render user text as a text node, never as HTML.',
+  },
+  {
+    selector: "CallExpression > MemberExpression.callee[property.name='insertAdjacentHTML']",
+    message: 'Render user text as a text node, never as HTML.',
+  },
+]
+
+// AC12 (D-14): nothing in the bundle persists to web storage; the theme and
+// every other setting live on the server.
+const storageMessage = 'Web storage is banned; state lives on the server.'
+
 export default tseslint.config(
   { ignores: ['dist'] },
   {
@@ -26,7 +49,7 @@ export default tseslint.config(
       // from a file that belongs to no element, so without them src/app --
       // the features' main consumer -- would go unchecked.
       'boundaries/elements': [
-        { type: 'features', pattern: 'src/features/*' },
+        { type: 'features', pattern: 'src/features/*', capture: ['feature'] },
         { type: 'app', pattern: 'src/app' },
         { type: 'lib', pattern: 'src/lib' },
         { type: 'components', pattern: 'src/components' },
@@ -48,6 +71,26 @@ export default tseslint.config(
           policies: [{ target: { element: { type: 'features' } }, allow: ['index.ts'] }],
         },
       ],
+      // SD27: features are sibling-isolated. exchange is the shared one --
+      // it imports no feature, and the others import only exchange among
+      // features. The last matching policy wins, so the allow refines the
+      // blanket disallow. (`element-types` is this rule's deprecated name.)
+      'boundaries/dependencies': [
+        'error',
+        {
+          default: 'allow',
+          policies: [
+            {
+              from: { element: { type: 'features' } },
+              disallow: { to: { element: { type: 'features' } } },
+            },
+            {
+              from: { element: { type: 'features', captured: { feature: '!exchange' } } },
+              allow: { to: { element: { type: 'features', captured: { feature: 'exchange' } } } },
+            },
+          ],
+        },
+      ],
       // AC3 (web half): import.meta.env is read only in src/lib/config.ts —
       // everywhere else must go through that module.
       'no-restricted-syntax': [
@@ -57,13 +100,24 @@ export default tseslint.config(
             "MemberExpression[object.type='MetaProperty'][object.meta.name='import'][object.property.name='meta'][property.name='env']",
           message: 'Read env vars only in src/lib/config.ts.',
         },
+        ...htmlSinks,
+      ],
+      'no-restricted-globals': [
+        'error',
+        { name: 'localStorage', message: storageMessage },
+        { name: 'sessionStorage', message: storageMessage },
+      ],
+      'no-restricted-properties': [
+        'error',
+        { object: 'window', property: 'localStorage', message: storageMessage },
+        { object: 'window', property: 'sessionStorage', message: storageMessage },
       ],
     },
   },
   {
     files: ['src/lib/config.ts'],
     rules: {
-      'no-restricted-syntax': 'off',
+      'no-restricted-syntax': ['error', ...htmlSinks],
     },
   },
 )
