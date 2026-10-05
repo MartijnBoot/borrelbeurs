@@ -1,6 +1,6 @@
 # Spec: Phase 8 — Deploy and cutover
 
-Status: Draft · Depends on: Phase 7 · Fixes: D-43 (properly)
+Status: Approved · Depends on: Phase 7 · Fixes: D-43 (properly)
 
 ## Problem
 

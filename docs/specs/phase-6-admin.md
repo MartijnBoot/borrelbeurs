@@ -1,6 +1,6 @@
 # Spec: Phase 6 — Manipulation and settings
 
-Status: Draft · Depends on: Phase 5 · Fixes: D-02, D-03, D-04, D-19, D-26, D-29
+Status: Approved · Depends on: Phase 5 · Fixes: D-02, D-03, D-04, D-19, D-26, D-29
 
 ## Problem
 

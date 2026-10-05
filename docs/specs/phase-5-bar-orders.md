@@ -1,6 +1,6 @@
 # Spec: Phase 5 — Bar page and the order path
 
-Status: Draft · Depends on: Phase 4 · Fixes: D-05
+Status: Approved · Depends on: Phase 4 · Fixes: D-05
 
 ## Problem
 

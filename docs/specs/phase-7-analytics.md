@@ -1,6 +1,6 @@
 # Spec: Phase 7 — Analytics, run lifecycle and export
 
-Status: Draft · Depends on: Phase 6 · Fixes: D-20, D-31
+Status: Approved · Depends on: Phase 6 · Fixes: D-20, D-31
 
 ## Problem
 
