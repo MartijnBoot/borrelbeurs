@@ -1,0 +1,391 @@
+{
+  "hello": {
+    "v": 1,
+    "type": "hello",
+    "seq": 0,
+    "ts_ms": 1759312800000,
+    "run_id": 1,
+    "version": 0,
+    "data": {
+      "boot_id": "BOOT",
+      "run_id": 1,
+      "tick_interval_ms": 1000,
+      "protocol": 1,
+      "role": "admin",
+      "theme": {
+        "preset": "blauw",
+        "revision": 0,
+        "tokens": {
+          "--bg": "#070b16",
+          "--panel": "#0b1220",
+          "--panel2": "#0e1628",
+          "--grid": "#1a2744",
+          "--text": "#e6edf3",
+          "--muted": "#9aa7bd",
+          "--accent": "#60a5fa",
+          "--primary": "#2563eb",
+          "--ok": "#10b981",
+          "--danger": "#dc2626",
+          "--warn": "#f59e0b",
+          "--candle-up": "#10b981",
+          "--candle-down": "#ef4444",
+          "--tile-rising": "#ef4444",
+          "--tile-falling": "#10b981",
+          "--pill": "#111827",
+          "--pillb": "#374151",
+          "--input-bg": "#091226",
+          "--input-border": "#243253",
+          "--header-top": "#0b1325",
+          "--header-bot": "#090f1c",
+          "--ticker-bg": "#0a1324",
+          "--news-bg": "#0b1325",
+          "--sma-line": "#fbbf24"
+        },
+        "font_family": "Inter, system-ui, sans-serif"
+      }
+    }
+  },
+  "theme": {
+    "v": 1,
+    "type": "theme",
+    "seq": 0,
+    "ts_ms": 1759312800000,
+    "run_id": 1,
+    "version": null,
+    "data": {
+      "preset": "blauw",
+      "revision": 0,
+      "tokens": {
+        "--bg": "#070b16",
+        "--panel": "#0b1220",
+        "--panel2": "#0e1628",
+        "--grid": "#1a2744",
+        "--text": "#e6edf3",
+        "--muted": "#9aa7bd",
+        "--accent": "#60a5fa",
+        "--primary": "#2563eb",
+        "--ok": "#10b981",
+        "--danger": "#dc2626",
+        "--warn": "#f59e0b",
+        "--candle-up": "#10b981",
+        "--candle-down": "#ef4444",
+        "--tile-rising": "#ef4444",
+        "--tile-falling": "#10b981",
+        "--pill": "#111827",
+        "--pillb": "#374151",
+        "--input-bg": "#091226",
+        "--input-border": "#243253",
+        "--header-top": "#0b1325",
+        "--header-bot": "#090f1c",
+        "--ticker-bg": "#0a1324",
+        "--news-bg": "#0b1325",
+        "--sma-line": "#fbbf24"
+      },
+      "font_family": "Inter, system-ui, sans-serif"
+    }
+  },
+  "pong": {
+    "v": 1,
+    "type": "pong",
+    "seq": 0,
+    "ts_ms": 1759312800000,
+    "run_id": 1,
+    "version": 0,
+    "data": {
+      "server_ts_ms": 1759312800000
+    }
+  },
+  "error": {
+    "v": 1,
+    "type": "error",
+    "seq": 0,
+    "ts_ms": 1759312800000,
+    "run_id": 1,
+    "version": 0,
+    "data": {
+      "code": "invalid_message"
+    }
+  },
+  "tick": {
+    "v": 1,
+    "type": "tick",
+    "seq": 1,
+    "ts_ms": 1759312801000,
+    "run_id": 1,
+    "version": 1,
+    "data": {
+      "candle_t_ms": 1759312800000,
+      "drinks": {
+        "1": {
+          "price_cents": 260,
+          "chart_price_cents": 260,
+          "candle": [
+            260,
+            260,
+            260,
+            260
+          ]
+        },
+        "2": {
+          "price_cents": 260,
+          "chart_price_cents": 264,
+          "candle": [
+            260,
+            264,
+            260,
+            264
+          ]
+        },
+        "3": {
+          "price_cents": 260,
+          "chart_price_cents": 256,
+          "candle": [
+            260,
+            260,
+            256,
+            256
+          ]
+        }
+      }
+    }
+  },
+  "order": {
+    "v": 1,
+    "type": "order",
+    "seq": 2,
+    "ts_ms": 1759312801000,
+    "run_id": 1,
+    "version": 2,
+    "data": {
+      "order_id": 1,
+      "lines": [
+        {
+          "drink_id": 1,
+          "qty": 2,
+          "unit_price_cents": 260,
+          "line_total_cents": 520
+        }
+      ],
+      "total_cents": 520,
+      "earnings_delta": {
+        "1": {
+          "qty": 2,
+          "revenue_cents": 520
+        }
+      },
+      "prices": {
+        "1": {
+          "price_cents": 270,
+          "chart_price_cents": 265
+        },
+        "2": {
+          "price_cents": 260,
+          "chart_price_cents": 260
+        },
+        "3": {
+          "price_cents": 250,
+          "chart_price_cents": 253
+        }
+      }
+    }
+  },
+  "news": {
+    "v": 1,
+    "type": "news",
+    "seq": 3,
+    "ts_ms": 1759312801000,
+    "run_id": 1,
+    "version": 2,
+    "data": {
+      "op": "add",
+      "item": {
+        "news_id": 1,
+        "ts_ms": 1759312801000,
+        "level": "warning",
+        "text": "Happy hour!"
+      }
+    }
+  },
+  "market_event_start": {
+    "v": 1,
+    "type": "market_event",
+    "seq": 4,
+    "ts_ms": 1759312801000,
+    "run_id": 1,
+    "version": 5,
+    "data": {
+      "op": "start",
+      "event_id": 1,
+      "kind": "correction",
+      "drink_ids": [
+        1,
+        2,
+        3
+      ],
+      "t_start_ms": 1759312801000,
+      "t_end_ms": 1759312804000
+    }
+  },
+  "snapshot": {
+    "v": 1,
+    "type": "snapshot",
+    "seq": 5,
+    "ts_ms": 1759312801000,
+    "run_id": 1,
+    "version": 5,
+    "data": {
+      "version": 5,
+      "run": {
+        "run_id": 1,
+        "tick_interval_ms": 1000,
+        "candle_interval_ms": 60000,
+        "quote_grace_versions": 2
+      },
+      "drinks": [
+        {
+          "drink_id": 1,
+          "name": "Bier"
+        },
+        {
+          "drink_id": 2,
+          "name": "Wijn"
+        },
+        {
+          "drink_id": 3,
+          "name": "Fris"
+        }
+      ],
+      "params": {
+        "alpha_price": 0.0,
+        "lambda_orders": 0.8,
+        "eta": 0.6,
+        "K": 12.0,
+        "step_quant": 0.1,
+        "phi_persist": 0.03,
+        "decay_rho": 0.98,
+        "history_window_minutes": 15.0,
+        "refresh_minutes": 1.0,
+        "idle_decay_minutes": 1.0,
+        "idle_strength": 0.5,
+        "idle_targets": [],
+        "idle_rise_minutes": 1.0,
+        "idle_rise_strength": 0.5,
+        "idle_rise_targets": [],
+        "bm_enabled": true,
+        "bm_sigma": 0.15,
+        "bm_dt_minutes": 1.0,
+        "bm_sigma_y": 0.18,
+        "flow_vol_amp": 0.7,
+        "flow_beta": 0.25,
+        "y_clip": 6.0,
+        "auto_calibrate_s0": false,
+        "demand_enabled": true
+      },
+      "prices": {
+        "1": {
+          "price_cents": 270,
+          "chart_price_cents": 265
+        },
+        "2": {
+          "price_cents": 260,
+          "chart_price_cents": 260
+        },
+        "3": {
+          "price_cents": 250,
+          "chart_price_cents": 253
+        }
+      },
+      "bars": {
+        "1": [
+          {
+            "t_ms": 1759312800000,
+            "o": 260,
+            "h": 265,
+            "l": 260,
+            "c": 265
+          }
+        ],
+        "2": [
+          {
+            "t_ms": 1759312800000,
+            "o": 260,
+            "h": 264,
+            "l": 260,
+            "c": 260
+          }
+        ],
+        "3": [
+          {
+            "t_ms": 1759312800000,
+            "o": 260,
+            "h": 260,
+            "l": 253,
+            "c": 253
+          }
+        ]
+      },
+      "news": [
+        {
+          "news_id": 2,
+          "ts_ms": 1759312801000,
+          "level": "info",
+          "text": "Marktcorrectie: Prijzen keren terug naar startpositie."
+        },
+        {
+          "news_id": 1,
+          "ts_ms": 1759312801000,
+          "level": "warning",
+          "text": "Happy hour!"
+        }
+      ],
+      "earnings": {
+        "1": {
+          "qty": 2,
+          "revenue_cents": 520
+        }
+      },
+      "market_events": [
+        {
+          "event_id": 1,
+          "kind": "correction",
+          "drink_ids": [
+            1,
+            2,
+            3
+          ],
+          "t_start_ms": 1759312801000,
+          "t_end_ms": 1759312804000
+        }
+      ]
+    }
+  },
+  "market_event_end": {
+    "v": 1,
+    "type": "market_event",
+    "seq": 9,
+    "ts_ms": 1759312804000,
+    "run_id": 1,
+    "version": 8,
+    "data": {
+      "op": "end",
+      "event_id": 1,
+      "kind": "correction",
+      "drink_ids": [
+        1,
+        2,
+        3
+      ],
+      "t_start_ms": 1759312801000,
+      "t_end_ms": 1759312804000
+    }
+  },
+  "resync": {
+    "v": 1,
+    "type": "resync",
+    "seq": 9,
+    "ts_ms": 1759312804000,
+    "run_id": 1,
+    "version": 8,
+    "data": {}
+  }
+}
