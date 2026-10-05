@@ -21,7 +21,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import BigInteger, func, insert, select, type_coerce, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from app.db import models
@@ -165,3 +165,36 @@ async def earnings_by_drink(conn: AsyncConnection, run_id: int) -> list[tuple[in
         .order_by(line.drink_id)
     )
     return [(int(drink_id), int(qty), int(revenue)) for drink_id, qty, revenue in result]
+
+
+async def earnings_series(
+    conn: AsyncConnection, run_id: int, *, bucket_ms: int = 60_000
+) -> list[tuple[int, int]]:
+    """`(bucket_end_ms, cumulative_revenue_cents)` for the run, ascending (Phase 5 SD16, PD12).
+
+    A bucket ends at `floor(wall_ts_ms / bucket_ms) * bucket_ms + bucket_ms`. Only
+    buckets holding an order are returned, so the size is bounded by run length /
+    `bucket_ms` whatever the order count (AC20); no orders is `[]`. The bucket is
+    named once in a subquery: a bound `bucket_ms` written twice, in the select and
+    the `GROUP BY`, would be two parameters Postgres cannot match.
+    """
+    line = models.OrderLine
+    order = models.Order
+    lines = (
+        select(
+            ((order.wall_ts_ms // bucket_ms) * bucket_ms + bucket_ms).label("t_ms"),
+            line.line_total_cents,
+        )
+        .join(order, order.order_id == line.order_id)
+        .where(order.run_id == run_id)
+        .subquery()
+    )
+    # Typing only (no SQL): the subquery's columns and the window are untyped to mypy.
+    bucket = type_coerce(lines.c.t_ms, BigInteger)
+    running = type_coerce(
+        func.sum(func.sum(lines.c.line_total_cents)).over(order_by=lines.c.t_ms), BigInteger
+    )
+    result = await conn.execute(
+        select(bucket, running).group_by(lines.c.t_ms).order_by(lines.c.t_ms)
+    )
+    return [(int(t_ms), int(cumulative)) for t_ms, cumulative in result]

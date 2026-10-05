@@ -38,6 +38,8 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     ("POST", "/api/admin/shutdown"): ADMIN,
     # Phase 4 SD5.
     ("PUT", "/api/theme"): ADMIN,
+    # Phase 5 SD19.
+    ("GET", "/api/earnings/series"): WRITERS,
 }
 
 ACTORS: Final = ("anonymous", "revoked", "display", "bar", "admin")
