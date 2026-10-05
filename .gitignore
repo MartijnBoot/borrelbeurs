@@ -54,3 +54,6 @@ Thumbs.db
 # Swarm task worktrees. Unused since ADR 0010 (builders work on a branch in the primary
 # checkout); kept so a stray worktree can never be committed.
 /.worktrees/
+
+# dev.ps1 state: pids and server logs
+.dev/

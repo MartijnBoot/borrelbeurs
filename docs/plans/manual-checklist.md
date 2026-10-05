@@ -204,8 +204,8 @@ Exit: big screen works end to end; theme propagates across machines.
 - [x] plan — `/clear` then `/plan 4`
 - [x] audit — `/clear` then `/audit 4`
 - [x] merge the plan — per-phase loop step 5 with `<N>` = 4
-- [ ] tasks (`/build 4 <T>`, `/review 4`):
-  - [ ] …
+- [x] tasks (`/build 4 <T>`, `/review 4`):
+  - [x] …
 - [ ] exit criterion — open koers on two machines, change the theme on one, the other follows
 - carried over from the phase-3 follow-ups (engine-guardian, 2026-10-04) — fold into the phase-4 plan:
   - [ ] document the freeze — a wall clock stepping back by less than the catch-up budget (30 s) holds tick stamps at the last commit's time until the grid passes it, so prices freeze for at most the budget (`app/runtime/ticker.py`, `_tick_step`); say so in the ticker docstring and ADR 0003
