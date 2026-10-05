@@ -12,7 +12,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 let root: string
 let eslint: ESLint
 
-beforeAll(() => {
+// The first lint loads the config and its plugins (typescript-eslint
+// especially), which takes several seconds cold -- too close to a test's
+// default 5 s timeout. It is paid once here, under a generous hook timeout.
+beforeAll(async () => {
   root = mkdtempSync(join(tmpdir(), 'bb-lint-rules-'))
   for (const feature of ['exchange', 'koers', 'theme']) {
     mkdirSync(join(root, 'src/features', feature), { recursive: true })
@@ -21,7 +24,8 @@ beforeAll(() => {
   mkdirSync(join(root, 'src/lib'), { recursive: true })
   writeFileSync(join(root, 'src/lib/format.ts'), 'export const x = 1\n')
   eslint = new ESLint({ cwd: root, overrideConfigFile: resolve('eslint.config.js') })
-})
+  await eslint.lintText('export {}\n', { filePath: join(root, 'src/features/exchange/warm.ts') })
+}, 60_000)
 
 afterAll(() => {
   rmSync(root, { recursive: true, force: true })
