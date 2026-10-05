@@ -143,6 +143,32 @@ describe('next (AC20, SD12)', () => {
     expect(where()).toBe('/koers')
   })
 
+  it('a session lost on the socket restarts the live client after login', async () => {
+    const sockets: FakeSocket[] = []
+    class FakeSocket {
+      onopen: (() => void) | null = null
+      onmessage: ((event: { data: unknown }) => void) | null = null
+      onclose: ((event: { code: number }) => void) | null = null
+      constructor() {
+        sockets.push(this)
+      }
+      send() {}
+      close() {}
+    }
+    vi.stubGlobal('WebSocket', FakeSocket)
+    session = 'display'
+    await open('/koers')
+    expect(sockets).toHaveLength(1)
+
+    session = null
+    await act(async () => sockets[0].onclose?.({ code: 4401 }))
+    expect(where()).toBe('/login?next=%2Fkoers')
+
+    await logIn('key-display')
+    expect(where()).toBe('/koers')
+    expect(sockets).toHaveLength(2)
+  })
+
   it('is ignored when it is not a path of this app', async () => {
     await open('/login?next=https%3A%2F%2Fevil.example')
     await logIn('key-admin')

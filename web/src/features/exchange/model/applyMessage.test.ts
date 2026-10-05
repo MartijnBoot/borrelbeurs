@@ -264,6 +264,25 @@ describe('theme (AC7)', () => {
     expect(lower.theme?.preset).toBe('paars')
   })
 
+  it('a theme past a gap applies by revision and starts no resync', () => {
+    const state = applyMessage(live, at(theme, S + 2, { revision: 7, preset: 'rood' }))
+    expect(state.theme?.preset).toBe('rood')
+    expect(state.awaitingResync).toBe(false)
+    expect(state.seq).toBe(S)
+    // The gap is still there: the next priced broadcast finds it and resyncs.
+    expect(applyMessage(state, at(tick, S + 3)).awaitingResync).toBe(true)
+  })
+
+  it('with no live run, a reconnect the server cannot replay still re-themes', () => {
+    // Same boot, held seq 4; the missed frames aged out, so no snapshot follows.
+    const held = run(at(hello, 4, { run_id: null }))
+    let state = applyMessage(held, at(hello, 9, { run_id: null }))
+    state = applyMessage(state, at(theme, 9, { revision: 1, preset: 'groen' }))
+    state = applyMessage(state, at(theme, 10, { revision: 2, preset: 'paars' }))
+    expect(state.awaitingResync).toBe(false)
+    expect(state.theme?.preset).toBe('paars')
+  })
+
   it('with no live run, theme broadcasts still apply (AC5)', () => {
     const empty = run(at(hello, 4, { run_id: null }))
     const state = applyMessage(empty, at(theme, 5, { revision: 1, preset: 'groen' }))
