@@ -43,7 +43,7 @@ export const TickData = z.strictObject({
   drinks: z.record(IdKey, TickDrink),
 })
 
-const RunInfo = z.strictObject({
+export const RunInfo = z.strictObject({
   run_id: Int,
   tick_interval_ms: Int,
   candle_interval_ms: Int,
@@ -172,3 +172,11 @@ export const ClientMessage = z.discriminatedUnion('type', [
 ])
 
 export type ClientMessage = z.infer<typeof ClientMessage>
+
+export type DrinkPrice = z.infer<typeof DrinkPrice>
+export type Bar = z.infer<typeof Bar>
+export type RunInfo = z.infer<typeof RunInfo>
+export type NewsItem = z.infer<typeof NewsItem>
+export type MarketEventInfo = z.infer<typeof MarketEventInfo>
+export type SnapshotData = z.infer<typeof SnapshotData>
+export type ThemeData = z.infer<typeof ThemeData>
