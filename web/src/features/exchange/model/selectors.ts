@@ -18,3 +18,4 @@ export const selectMarketEvents = (state: ExchangeState) => state.marketEvents
 export const selectTheme = (state: ExchangeState) => state.theme
 export const selectStatus = (state: ExchangeState) => state.status
 export const selectEmpty = (state: ExchangeState) => state.empty
+export const selectQuote = (state: ExchangeState) => state.quote

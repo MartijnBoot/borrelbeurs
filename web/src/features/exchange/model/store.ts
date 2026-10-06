@@ -13,8 +13,9 @@ import type { ServerMessage } from './schemas'
 
 export const exchangeStore = createStore<ExchangeState>(() => initialState)
 
-export function dispatch(message: ServerMessage): void {
-  exchangeStore.setState((state) => applyMessage(state, message), true)
+/** `receivedAt`: the monotonic clock when the message arrived (Phase 5 PD1). */
+export function dispatch(message: ServerMessage, receivedAt: number): void {
+  exchangeStore.setState((state) => applyMessage(state, message, receivedAt), true)
 }
 
 export function setStatus(status: Status): void {

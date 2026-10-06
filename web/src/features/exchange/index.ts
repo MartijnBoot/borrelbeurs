@@ -3,6 +3,7 @@
 export type { DrinkId, ExchangeState, Status } from './model/applyMessage'
 export type { Bar, DrinkPrice, MarketEventInfo, NewsItem, ThemeData } from './model/schemas'
 export { exchangeStore, useExchange } from './model/store'
+export { type PriceChanged, type Quote, quoteFromPriceChanged } from './model/quote'
 export * from './model/selectors'
 export { SMA_WINDOW, smaSeries, type SmaPoint } from './model/sma'
 export {

@@ -66,6 +66,7 @@ export function Providers() {
       onSessionLost: () => goToLoginRef.current(),
       random: Math.random,
       now: Date.now,
+      monotonicNow: () => performance.now(),
       store: exchangeStore,
     })
     client.start()
