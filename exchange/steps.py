@@ -2,6 +2,12 @@
 
 Ported from v1 (tests/engine/v1_reference/engine.py) with every expression
 unchanged; nothing here mutates its arguments.
+
+Phase 6 (SD14, PD17) adds the active mask, `spec.active`. Every mean and sum
+ranges over active slots, and an inactive slot's `y`, `cum_orders`,
+`flow_ema` and `last_order_ts` are carried through untouched. With every slot
+active, boolean indexing and `np.where` hand back the same floats in the same
+order, so the outputs are bitwise v1's (`tests/engine/test_mask.py`).
 """
 
 from __future__ import annotations
@@ -44,10 +50,12 @@ def apply_orders(
     updated only by orders and never decays (D-23, ADR 0012).
     """
     p = spec.params
-    flow_ema = (1.0 - p.flow_beta) * state.flow_ema + p.flow_beta * orders
+    flow_ema = np.where(
+        spec.active, (1.0 - p.flow_beta) * state.flow_ema + p.flow_beta * orders, state.flow_ema
+    )
     last_order_ts = np.array(state.last_order_ts)
     for i, q in enumerate(orders):
-        if q > 0:
+        if q > 0 and spec.active[i]:
             last_order_ts[i] = now_ms
     ordered = dataclasses.replace(state, flow_ema=flow_ema, last_order_ts=last_order_ts)
     stepped, diagnostics = _single_step(spec, ordered, orders)
@@ -62,8 +70,9 @@ def _single_step(
     Shared by the order path and the idle step, which feeds it a signed vector.
     """
     p = spec.params
+    active = spec.active
     p_cont, p_q = prices_from_y(state.y, spec.p_min, spec.p_max, p.step_quant)
-    p_mean = float(np.mean(p_q))
+    p_mean = float(np.mean(p_q[active]))
     exp_flow = (
         expected_flow_from_price(p_q, p_mean, spec.a, spec.d, spec.s0, spec.c)
         if p.demand_enabled
@@ -71,11 +80,11 @@ def _single_step(
     )
 
     dev = orders_vec - exp_flow
-    N = len(spec.names)
+    N = int(np.count_nonzero(active))
     if np.allclose(orders_vec, 0.0):
         order_pressure = np.zeros_like(dev)
     else:
-        others_avg_dev = (np.sum(dev) - dev) / max(N - 1, 1)
+        others_avg_dev = (np.sum(dev[active]) - dev) / max(N - 1, 1)
         order_pressure = dev - p.lambda_orders * others_avg_dev
 
     cum_orders = p.decay_rho * state.cum_orders + dev
@@ -96,7 +105,9 @@ def _single_step(
     # away from, but which would not move by itself, is moved one step.
     step = p.step_quant
     tol = 1e-9
-    for i in range(N):
+    for i in range(len(spec.names)):
+        if not active[i]:
+            continue
         lo, hi = spec.p_min[i], spec.p_max[i]
         if (
             ((E[i] > 0) or (orders_vec[i] > 0))
@@ -117,6 +128,9 @@ def _single_step(
             f = np.clip((target - lo) / (hi - lo), FRAC_EPS, 1 - FRAC_EPS)
             y_next[i] = inv_sigmoid(f)
 
+    # An inactive slot's y and cum_orders are frozen (SD14).
+    y_next = np.where(active, y_next, state.y)
+    cum_orders = np.where(active, cum_orders, state.cum_orders)
     diagnostics = OrderDiagnostics(
         order_pressure=order_pressure, cross_price_pressure=cross, cum_orders=cum_orders
     )
@@ -136,10 +150,13 @@ def schedule_jump(
 
     The target is quantised to `step_quant` and its fraction clipped into
     (0, 1), so a target outside `[p_min, p_max]` saturates at the bound rather
-    than raising (AC8). A jump already running on that drink is replaced.
+    than raising (AC8). A jump already running on that drink is replaced. An
+    inactive drink takes no jump (SD14).
     """
     if not 0 <= drink < len(spec.names):
         raise ValueError(f"unknown drink index {drink} (market has {len(spec.names)} drinks)")
+    if not spec.active[drink]:
+        raise ValueError(f"drink index {drink} is inactive")
     step = float(spec.params.step_quant)
     p_target_q = float(quantize_step(p_target, step))
     lo, hi = spec.p_min[drink], spec.p_max[drink]
@@ -205,14 +222,15 @@ def apply_idle(spec: MarketSpec, state: EngineState, *, now_ms: int) -> EngineSt
         return dataclasses.replace(state, last_idle_ms=now_ms)
 
     _, p_q = prices_from_y(state.y, spec.p_min, spec.p_max, p.step_quant)
-    p_mean = float(np.mean(p_q))
+    p_mean = float(np.mean(p_q[spec.active]))
     exp_flow = (
         expected_flow_from_price(p_q, p_mean, spec.a, spec.d, spec.s0, spec.c)
         if p.demand_enabled
         else np.zeros_like(p_q)
     )
 
-    name_to_idx = {nm: i for i, nm in enumerate(spec.names)}
+    # Active slots only: a removed drink may share its name with a re-added one (PD17).
+    name_to_idx = {nm: i for i, nm in enumerate(spec.names) if spec.active[i]}
     f = np.zeros(len(spec.names), float)
     any_adj = False
 
@@ -272,12 +290,14 @@ def apply_brownian(
         return dataclasses.replace(state, last_bm_ms=now_ms)
 
     ranges = spec.p_max - spec.p_min
-    mean_range = float(np.mean(ranges)) if float(np.mean(ranges)) > 0 else 1.0
+    active_ranges = ranges[spec.active]
+    mean_range = float(np.mean(active_ranges)) if float(np.mean(active_ranges)) > 0 else 1.0
     range_scale = ranges / mean_range
     scale = range_scale * (1.0 + p.flow_vol_amp * np.log1p(state.flow_ema))
+    # One value per slot, so a removal shifts no other drink's draw (SD14).
     draw = _normal(run_seed, state.rng_counter, sigma_y * np.sqrt(dt_min), len(spec.names))
     dy = draw * scale
-    y = np.clip(state.y + dy, -p.y_clip, p.y_clip)
+    y = np.where(spec.active, np.clip(state.y + dy, -p.y_clip, p.y_clip), state.y)
     return dataclasses.replace(state, y=y, last_bm_ms=now_ms, rng_counter=state.rng_counter + 1)
 
 

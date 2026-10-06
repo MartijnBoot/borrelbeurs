@@ -76,6 +76,8 @@ def _validated_orders(spec: MarketSpec, orders: Any) -> FloatArray:
         raise ValueError("orders must be finite")
     if np.any(vec < 0):
         raise ValueError("orders must be non-negative")
+    if np.any(vec[~spec.active] > 0):
+        raise ValueError("orders name an inactive drink")
     return vec
 
 

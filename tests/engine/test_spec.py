@@ -26,8 +26,16 @@ def _spec_from_v1_config(config: dict[str, Any]) -> MarketSpec:
     )
 
 
-def _drinks(**overrides: float) -> list[DrinkSpec]:
-    base = {"p_min": 1.0, "p_max": 4.0, "p0": 2.0, "a": 0.0, "d": 0.0, "s0": 0.0, "c": 0.0}
+def _drinks(**overrides: Any) -> list[DrinkSpec]:
+    base: dict[str, Any] = {
+        "p_min": 1.0,
+        "p_max": 4.0,
+        "p0": 2.0,
+        "a": 0.0,
+        "d": 0.0,
+        "s0": 0.0,
+        "c": 0.0,
+    }
     return [
         DrinkSpec(name="Bier", **{**base, **overrides}),
         DrinkSpec(name="Fris", **base),
