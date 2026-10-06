@@ -1,7 +1,8 @@
 """Boot: rebuild the live run's in-memory market from Postgres (D-01, D-30).
 
 `rehydrate` reads, in one REPEATABLE READ transaction so every read sees the
-same snapshot: the live run, its active drinks, the engine state keyed by
+same snapshot: the live run, all its drinks (a removed one is an inactive
+slot, SD15), the engine state keyed by
 `drink_id`, the price ticks in the history window, the earnings aggregate, the
 news and the active market events. Then it applies the gap rule (SD2). Only if
 that returns a state is anything written, in one transaction of its own: the
@@ -31,7 +32,7 @@ from app.db.market_events import active_events, shift_active_events
 from app.db.models import Run
 from app.db.news import NewsItem, list_news
 from app.db.orders import earnings_by_drink
-from app.db.runs import active_drinks
+from app.db.runs import all_drinks
 from app.runtime.earnings import EarningsAggregate
 from app.runtime.gap import DEFAULT_CATCH_UP_BUDGET_MS, apply_gap_rule, gap_shift_ms
 from app.runtime.history import HistoryRing, TickEntry
@@ -84,7 +85,7 @@ async def rehydrate(
             run_id = int(run.run_id)
             params = Params.from_dict(run.params)
 
-            drinks = await active_drinks(conn, run_id)
+            drinks = await all_drinks(conn, run_id)
             spec, drink_ids = spec_from_rows(drinks, params)
             loaded = await load_state(conn, run_id, drink_ids)
             if loaded is None:

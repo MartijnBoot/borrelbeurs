@@ -37,12 +37,16 @@ class DrinkRow:
     s0: float
     c: float
     bar_price_cents: int
+    removed: bool = False
 
 
 def spec_from_rows(
     drinks: Iterable[DrinkRow], params: Params
 ) -> tuple[MarketSpec, tuple[int, ...]]:
-    """The market in slot order, and the `drink_id` at each position."""
+    """The market in slot order, and the `drink_id` at each position.
+
+    A removed row keeps its slot as an inactive one (SD15).
+    """
     ordered = sorted(drinks, key=lambda row: row.slot)
     spec = MarketSpec.from_drinks(
         (
@@ -55,6 +59,7 @@ def spec_from_rows(
                 d=row.d,
                 s0=row.s0,
                 c=row.c,
+                active=not row.removed,
             )
             for row in ordered
         ),

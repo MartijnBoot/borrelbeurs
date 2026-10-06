@@ -147,8 +147,8 @@ async def append_config_revision(
     return int(result.scalar_one())
 
 
-async def active_drinks(conn: AsyncConnection, run_id: int) -> list[DrinkRow]:
-    """The run's drinks that are not removed, in slot order."""
+async def all_drinks(conn: AsyncConnection, run_id: int) -> list[DrinkRow]:
+    """Every drink of the run, removed ones included, in slot order (SD15)."""
     result = await conn.execute(
         select(
             Drink.drink_id,
@@ -162,11 +162,17 @@ async def active_drinks(conn: AsyncConnection, run_id: int) -> list[DrinkRow]:
             Drink.s0,
             Drink.c,
             Drink.bar_price_cents,
+            Drink.removed_at.is_not(None).label("removed"),
         )
-        .where(Drink.run_id == run_id, Drink.removed_at.is_(None))
+        .where(Drink.run_id == run_id)
         .order_by(Drink.slot)
     )
     return [DrinkRow(**row._asdict()) for row in result]
+
+
+async def active_drinks(conn: AsyncConnection, run_id: int) -> list[DrinkRow]:
+    """The run's drinks that are not removed, in slot order."""
+    return [row for row in await all_drinks(conn, run_id) if not row.removed]
 
 
 async def go_live(engine: AsyncEngine, run_id: int, *, now_ms: int) -> EngineState:

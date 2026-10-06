@@ -81,6 +81,18 @@ def test_slots_need_not_be_contiguous() -> None:
     assert spec.names == ("Fris", "Bier")
 
 
+def test_a_removed_row_keeps_its_slot_as_an_inactive_one() -> None:
+    """SD15: every row is a slot; `removed` is the mask, not a filter."""
+    rows = _rows_from_live_config()
+    rows[2] = dataclasses.replace(rows[2], removed=True)
+
+    spec, drink_ids = spec_from_rows(rows, Params.from_dict(LIVE_CONFIG["params"]))
+
+    assert drink_ids == (101, 102, 103, 104, 105, 106)
+    assert spec.active.tolist() == [True, True, False, True, True, True]
+    assert spec.names == tuple(LIVE_CONFIG["names"])
+
+
 def test_cents_from_quantised_is_exact_on_every_tenth_up_to_fifty_euros() -> None:
     """SD7: `step_quant` is a multiple of 0.01, so `round(p_q * 100)` is exact."""
     for k in range(501):

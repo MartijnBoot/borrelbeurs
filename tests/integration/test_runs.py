@@ -21,6 +21,7 @@ from app.db.runs import (
     DuplicateDrinkName,
     active_drinks,
     add_drink,
+    all_drinks,
     append_config_revision,
     create_draft_run,
     set_bar_price,
@@ -211,6 +212,7 @@ def test_active_drinks_are_the_non_removed_ones_in_slot_order(
     drinks = _transaction(settings, database_url, body)
 
     assert [(d.name, d.slot) for d in drinks] == [("Bier", 1), ("Stelz", 2), ("Wijn", 4)]
+    assert not any(d.removed for d in drinks)
     assert drinks[0] == DrinkRow(
         drink_id=drinks[0].drink_id,
         slot=1,
@@ -224,3 +226,29 @@ def test_active_drinks_are_the_non_removed_ones_in_slot_order(
         c=0.0,
         bar_price_cents=260,
     )
+
+
+def test_all_drinks_are_every_row_in_slot_order_flagging_the_removed(
+    settings: Settings, database_url: str
+) -> None:
+    """SD15: a removed drink keeps its slot, so the engine's arrays keep their shape."""
+
+    async def body(connection: AsyncConnection) -> list[DrinkRow]:
+        run_id = await _draft(connection)
+        ids = {
+            name: await _bier(connection, run_id, name=name, slot=slot)
+            for name, slot in (("Wijn", 4), ("Bier", 1), ("Fris", 9))
+        }
+        await connection.execute(
+            text("UPDATE drink SET removed_at = now() WHERE drink_id = :d"), {"d": ids["Bier"]}
+        )
+        await _bier(connection, await _draft(connection), name="Elders", slot=0)
+        return await all_drinks(connection, run_id)
+
+    drinks = _transaction(settings, database_url, body)
+
+    assert [(d.name, d.slot, d.removed) for d in drinks] == [
+        ("Bier", 1, True),
+        ("Wijn", 4, False),
+        ("Fris", 9, False),
+    ]

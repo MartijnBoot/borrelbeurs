@@ -339,6 +339,36 @@ def test_a_drink_added_behind_the_states_back_raises_naming_it(
     asyncio.run(scenario())
 
 
+def test_a_removed_drink_boots_as_an_inactive_slot_with_its_stored_values(
+    settings: Settings, database_url: str
+) -> None:
+    """SD15, AC20 (boot half): `engine_state` keys every row, removed ones included."""
+
+    async def scenario() -> None:
+        engine = _engine(settings, database_url)
+        try:
+            run_id = await _draft(engine)
+            _, drink_ids, state, wall = await _trade(engine, run_id)
+            removed = drink_ids[3]
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text("UPDATE drink SET removed_at = now() WHERE drink_id = :d"),
+                    {"d": removed},
+                )
+
+            result = await rehydrate(engine, now_ms=wall)
+
+            assert isinstance(result, RehydratedRun)
+            assert result.drink_ids == drink_ids
+            assert result.spec.active.tolist() == [True, True, True, False, True, True]
+            assert_states_identical(result.state, state)
+            assert result.bar_price_cents[removed] == round(LIVE_CONFIG["p0"][3] * 100)
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
 def test_a_bar_price_set_before_trading_survives_rehydrate(
     settings: Settings, database_url: str
 ) -> None:

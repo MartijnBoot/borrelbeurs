@@ -177,9 +177,8 @@ async def _market(settings: Settings, url: str, *, grace: int = 2) -> AsyncItera
                 c=0.1,
                 bar_price_cents=260,
             )
-            await conn.execute(
-                text("UPDATE drink SET removed_at = now() WHERE drink_id = :d"), {"d": removed}
-            )
+            # A draft removal is a hard delete (Phase 6 SD13); the id stays unknown.
+            await conn.execute(text("DELETE FROM drink WHERE drink_id = :d"), {"d": removed})
         await go_live(engine, run_id, now_ms=T0)
         run = await rehydrate(engine, now_ms=T0)
         assert isinstance(run, RehydratedRun)
