@@ -39,6 +39,12 @@ const unauthenticated = () =>
 beforeEach(() => {
   session = null
   loginStatus = null
+  // Narrow, so the bar page's revenue chart is not built: jsdom has no canvas.
+  vi.stubGlobal('matchMedia', () => ({
+    matches: true,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }))
   vi.stubGlobal(
     'fetch',
     vi.fn(async (path: string, init?: RequestInit) => {
@@ -187,11 +193,18 @@ describe('routes (AC22, AC23, SD4, SD13)', () => {
     expect(where()).toBe('/settings')
   })
 
-  it('bar on /bar sees the placeholder inside the shell', async () => {
+  it('bar on /bar sees the bar page inside the shell (Phase 5 AC28)', async () => {
     session = 'bar'
     await open('/bar')
-    expect(screen.getByText('Nog niet beschikbaar')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: '🍺 Bar — Bestellen' })).toBeTruthy()
     expect(screen.getByRole('button', { name: /Menu/ })).toBeTruthy()
+  })
+
+  it('display on /bar sees "Geen toegang" (Phase 5 AC28)', async () => {
+    session = 'display'
+    await open('/bar')
+    expect(screen.getByText('Geen toegang')).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: '🍺 Bar — Bestellen' })).toBeNull()
   })
 
   it('an unknown route sees "Geen toegang" inside the shell', async () => {

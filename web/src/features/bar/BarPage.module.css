@@ -1,0 +1,60 @@
+/* Phase 5 SD18: v1's bar layout (bar.html); theme tokens only. */
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.6rem;
+  color: var(--text);
+}
+
+.empty {
+  margin: 48px auto;
+  font-size: 20px;
+  color: var(--muted);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--grid);
+  background: var(--panel);
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 1.2rem;
+  color: var(--text);
+}
+
+.chart {
+  height: 260px;
+}
+
+@media (max-width: 1000px) {
+  .cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .chart {
+    display: none;
+  }
+}
