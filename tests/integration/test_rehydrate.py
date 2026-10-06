@@ -63,7 +63,7 @@ async def _draft(engine: AsyncEngine) -> int:
     """A draft run holding the live config's six drinks, in cents, and one news item."""
     async with engine.begin() as conn:
         run_id = await create_draft_run(
-            conn, params=Params.from_dict(LIVE_CONFIG["params"]), run_seed=SEED
+            conn, name="Borrel", params=Params.from_dict(LIVE_CONFIG["params"]), run_seed=SEED
         )
         for slot, name in enumerate(LIVE_CONFIG["names"]):
             await add_drink(

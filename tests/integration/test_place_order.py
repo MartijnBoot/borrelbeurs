@@ -141,7 +141,9 @@ async def _market(settings: Settings, url: str, *, grace: int = 2) -> AsyncItera
     clock = FakeClock(T0)
     try:
         async with engine.begin() as conn:
-            run_id = await create_draft_run(conn, params=Params(step_quant=0.1), run_seed=7)
+            run_id = await create_draft_run(
+                conn, name="Borrel", params=Params(step_quant=0.1), run_seed=7
+            )
             for slot, name in enumerate(("Bier", "Wijn", "Fris")):
                 await add_drink(
                     conn,

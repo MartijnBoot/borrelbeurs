@@ -24,6 +24,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    LargeBinary,
     SmallInteger,
     Text,
     UniqueConstraint,
@@ -47,6 +48,7 @@ class Run(Base):
         CheckConstraint("run_seed >= 0", name="run_run_seed_check"),
         CheckConstraint("quote_grace_versions >= 0", name="run_quote_grace_versions_check"),
         CheckConstraint("candle_interval_ms > 0", name="run_candle_interval_ms_check"),
+        CheckConstraint("char_length(btrim(name)) BETWEEN 1 AND 100", name="run_name_check"),
         Index(
             "run_one_live",
             text("(true)"),
@@ -65,6 +67,7 @@ class Run(Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     quote_grace_versions: Mapped[int] = mapped_column(Integer, server_default=text("2"))
     candle_interval_ms: Mapped[int] = mapped_column(Integer, server_default=text("60000"))
+    name: Mapped[str] = mapped_column(Text)
 
 
 class RunConfigRevision(Base):
@@ -154,7 +157,7 @@ class PriceTick(Base):
     __tablename__ = "price_tick"
     __table_args__ = (
         CheckConstraint(
-            "source IN ('tick', 'order', 'jump', 'idle', 'reset', 'gap')",
+            "source IN ('tick', 'order', 'jump', 'idle', 'reset', 'gap', 'config')",
             name="price_tick_source_check",
         ),
     )
@@ -268,17 +271,47 @@ class MarketEvent(Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class Asset(Base):
+    """An uploaded image (Phase 6 SD29), at most 5 MB, served at `/assets/{asset_id}`."""
+
+    __tablename__ = "asset"
+    __table_args__ = (
+        CheckConstraint(
+            "content_type IN ('image/png', 'image/jpeg', 'image/webp', 'image/gif')",
+            name="asset_content_type_check",
+        ),
+        CheckConstraint(
+            "bytes BETWEEN 1 AND 5242880 AND bytes = octet_length(data)",
+            name="asset_bytes_check",
+        ),
+    )
+
+    asset_id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    content_type: Mapped[str] = mapped_column(Text)
+    sha256: Mapped[str] = mapped_column(Text)
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    bytes: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Theme(Base):
     """The one active display theme (Phase 4 SD5). A single row, `id = 1` (PD4);
-    no row means Blauw at revision 0."""
+    no row means Blauw at revision 0. Phase 6 adds the custom tokens and font
+    (SD28) and one image pointer per slot (SD29)."""
 
     __tablename__ = "theme"
     __table_args__ = (
         CheckConstraint("id = 1", name="theme_id_check"),
         CheckConstraint(
-            "preset IN ('oudgeld', 'blauw', 'groen', 'paars', 'rood')", name="theme_preset_check"
+            "preset IN ('oudgeld', 'blauw', 'groen', 'paars', 'rood', 'custom')",
+            name="theme_preset_check",
         ),
         CheckConstraint("revision >= 1", name="theme_revision_check"),
+        CheckConstraint("custom_font IN ('inter', 'garamond')", name="theme_custom_font_check"),
+        CheckConstraint(
+            "preset <> 'custom' OR (custom_tokens IS NOT NULL AND custom_font IS NOT NULL)",
+            name="theme_custom_check",
+        ),
     )
 
     id: Mapped[int] = mapped_column(
@@ -287,3 +320,17 @@ class Theme(Base):
     preset: Mapped[str] = mapped_column(Text)
     revision: Mapped[int] = mapped_column(Integer)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    custom_tokens: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    custom_font: Mapped[str | None] = mapped_column(Text)
+    bg_asset_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("asset.asset_id", name="theme_bg_asset_id_fkey")
+    )
+    header_asset_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("asset.asset_id", name="theme_header_asset_id_fkey")
+    )
+    logo_asset_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("asset.asset_id", name="theme_logo_asset_id_fkey")
+    )
+    promo_asset_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("asset.asset_id", name="theme_promo_asset_id_fkey")
+    )

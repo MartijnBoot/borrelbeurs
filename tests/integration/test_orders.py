@@ -57,7 +57,7 @@ async def _live(engine: AsyncEngine) -> tuple[int, MarketSpec, tuple[int, ...], 
     """A live run holding the live config's six drinks, at version 0."""
     params = Params.from_dict(LIVE_CONFIG["params"])
     async with engine.begin() as conn:
-        run_id = await create_draft_run(conn, params=params, run_seed=SEED)
+        run_id = await create_draft_run(conn, name="Borrel", params=params, run_seed=SEED)
         for slot, name in enumerate(LIVE_CONFIG["names"]):
             await add_drink(
                 conn,

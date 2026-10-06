@@ -35,7 +35,7 @@ def _transaction(
 
 
 async def _run(conn: AsyncConnection) -> int:
-    return await create_draft_run(conn, params=Params(step_quant=0.1), run_seed=7)
+    return await create_draft_run(conn, name="Borrel", params=Params(step_quant=0.1), run_seed=7)
 
 
 def test_an_inserted_event_is_active_with_its_fields(settings: Settings, database_url: str) -> None:

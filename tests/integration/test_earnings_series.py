@@ -32,7 +32,9 @@ def _engine(settings: Settings, url: str) -> AsyncEngine:
 async def _run(engine: AsyncEngine, seed: int) -> tuple[int, int]:
     """A draft run with one drink: `(run_id, drink_id)`. The series does not care if it is live."""
     async with engine.begin() as conn:
-        run_id = await create_draft_run(conn, params=Params(step_quant=0.1), run_seed=seed)
+        run_id = await create_draft_run(
+            conn, name="Borrel", params=Params(step_quant=0.1), run_seed=seed
+        )
         drink_id = await add_drink(
             conn,
             run_id,

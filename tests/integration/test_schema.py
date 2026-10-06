@@ -30,9 +30,24 @@ PHASE_2_TABLES = frozenset(
 )
 PHASE_3_TABLES = frozenset({"auth_key", "market_event"})
 PHASE_4_TABLES = frozenset({"theme"})
+PHASE_6_TABLES = frozenset({"asset"})
 
-# PD4: SD5's three columns plus the singleton key.
-THEME_COLUMNS = frozenset({"id", "preset", "revision", "updated_at"})
+# PD4: SD5's three columns plus the singleton key; Phase 6 adds the custom
+# theme (SD28) and one pointer per image slot (SD29).
+THEME_COLUMNS = frozenset(
+    {
+        "id",
+        "preset",
+        "revision",
+        "updated_at",
+        "custom_tokens",
+        "custom_font",
+        "bg_asset_id",
+        "header_asset_id",
+        "logo_asset_id",
+        "promo_asset_id",
+    }
+)
 
 # AC6c (schema half): an access key's secret is stored only as its argon2id hash.
 AUTH_KEY_COLUMNS = frozenset(
@@ -87,10 +102,10 @@ def money_violations(columns: Iterable[Column]) -> list[str]:
 
 
 def test_the_application_tables_are_the_ones_inspected(database_url: str) -> None:
-    """Anti-vacuity: the inspection below reaches every table of Phase 2 SD4, Phase 3, Phase 4."""
+    """Anti-vacuity: the inspection below reaches every table, Phase 2 SD4 through Phase 6."""
     tables = {table for table, _, _ in asyncio.run(_columns(database_url))}
 
-    assert tables == PHASE_2_TABLES | PHASE_3_TABLES | PHASE_4_TABLES
+    assert tables == PHASE_2_TABLES | PHASE_3_TABLES | PHASE_4_TABLES | PHASE_6_TABLES
 
 
 def test_every_money_column_is_integer_cents(database_url: str) -> None:
@@ -140,7 +155,7 @@ def _in_transaction(url: str, body: Callable[[AsyncConnection], Awaitable[None]]
 async def _run_and_drink(connection: AsyncConnection) -> tuple[int, int]:
     run_id: int = (
         await connection.execute(
-            text("INSERT INTO run (run_seed, params) VALUES (1, '{}') RETURNING run_id")
+            text("INSERT INTO run (name, run_seed, params) VALUES ('B', 1, '{}') RETURNING run_id")
         )
     ).scalar_one()
     drink_id: int = (
@@ -223,7 +238,9 @@ def test_an_unknown_tick_source_is_rejected(database_url: str) -> None:
 def test_the_known_tick_sources_are_accepted(database_url: str) -> None:
     async def write(connection: AsyncConnection) -> None:
         run_id, _ = await _run_and_drink(connection)
-        for version, source in enumerate(("tick", "order", "jump", "idle", "reset", "gap")):
+        for version, source in enumerate(
+            ("tick", "order", "jump", "idle", "reset", "gap", "config")
+        ):
             await connection.execute(
                 text(
                     "INSERT INTO price_tick (run_id, version, source, prices, wall_ts_ms) "
@@ -482,7 +499,7 @@ def test_zero_grace_versions_is_allowed(database_url: str) -> None:
 
 
 def test_the_theme_table_has_exactly_pd4s_columns(database_url: str) -> None:
-    """SD5 + PD4: any further column is a data-model change, a hard stop."""
+    """SD5 + PD4 (+ Phase 6 SD28/SD29): any further column is a data-model change."""
     columns = {c for t, c, _ in asyncio.run(_columns(database_url)) if t == "theme"}
 
     assert columns == THEME_COLUMNS
@@ -530,3 +547,101 @@ def test_the_five_presets_are_accepted(database_url: str) -> None:
             )
 
     _in_transaction(database_url, write)
+
+
+@pytest.mark.parametrize("name", ["", "   ", "x" * 101])
+def test_a_run_name_is_one_to_a_hundred_characters_after_trim(database_url: str, name: str) -> None:
+    """Phase 6 SD2: the name is required."""
+
+    async def write(connection: AsyncConnection) -> None:
+        await connection.execute(
+            text("INSERT INTO run (name, run_seed, params) VALUES (:n, 1, '{}')"), {"n": name}
+        )
+
+    with pytest.raises(IntegrityError, match="run_name_check"):
+        _in_transaction(database_url, write)
+
+
+def test_a_run_needs_a_name(database_url: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        await connection.execute(text("INSERT INTO run (run_seed, params) VALUES (1, '{}')"))
+
+    with pytest.raises(IntegrityError, match="name"):
+        _in_transaction(database_url, write)
+
+
+def test_a_custom_theme_needs_its_tokens_and_font(database_url: str) -> None:
+    """Phase 6 SD28."""
+
+    async def write(connection: AsyncConnection) -> None:
+        await connection.execute(text("INSERT INTO theme (preset, revision) VALUES ('custom', 1)"))
+
+    with pytest.raises(IntegrityError, match="theme_custom_check"):
+        _in_transaction(database_url, write)
+
+
+def test_a_custom_theme_with_tokens_and_font_is_accepted(database_url: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        await connection.execute(
+            text(
+                "INSERT INTO theme (preset, revision, custom_tokens, custom_font) "
+                """VALUES ('custom', 1, '{"bg": "#000"}', 'garamond')"""
+            )
+        )
+
+    _in_transaction(database_url, write)
+
+
+def test_an_unknown_custom_font_is_rejected(database_url: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        await connection.execute(
+            text("INSERT INTO theme (preset, revision, custom_font) VALUES ('blauw', 1, 'comic')")
+        )
+
+    with pytest.raises(IntegrityError, match="theme_custom_font_check"):
+        _in_transaction(database_url, write)
+
+
+@pytest.mark.parametrize(
+    ("content_type", "data", "size", "constraint"),
+    [
+        ("image/png", b"\x89PNG", 5, "asset_bytes_check"),
+        ("image/png", b"", 0, "asset_bytes_check"),
+        ("image/svg+xml", b"<svg", 4, "asset_content_type_check"),
+    ],
+    ids=["bytes-mismatch", "empty", "svg"],
+)
+def test_an_asset_is_checked_against_its_data(
+    database_url: str, content_type: str, data: bytes, size: int, constraint: str
+) -> None:
+    """Phase 6 SD29: four image types, 1..5 MB, `bytes` is the data's own length."""
+
+    async def write(connection: AsyncConnection) -> None:
+        await connection.execute(
+            text("INSERT INTO asset (content_type, sha256, data, bytes) VALUES (:t, 'x', :d, :b)"),
+            {"t": content_type, "d": data, "b": size},
+        )
+
+    with pytest.raises(IntegrityError, match=constraint):
+        _in_transaction(database_url, write)
+
+
+def test_a_theme_slot_points_at_an_existing_asset(database_url: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        asset_id: int = (
+            await connection.execute(
+                text(
+                    "INSERT INTO asset (content_type, sha256, data, bytes) "
+                    "VALUES ('image/png', 'x', :d, 4) RETURNING asset_id"
+                ),
+                {"d": b"\x89PNG"},
+            )
+        ).scalar_one()
+        await connection.execute(
+            text("INSERT INTO theme (preset, revision, logo_asset_id) VALUES ('blauw', 1, :a)"),
+            {"a": asset_id},
+        )
+        await connection.execute(text("UPDATE theme SET promo_asset_id = :a"), {"a": asset_id + 1})
+
+    with pytest.raises(IntegrityError, match="theme_promo_asset_id_fkey"):
+        _in_transaction(database_url, write)

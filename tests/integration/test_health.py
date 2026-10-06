@@ -172,7 +172,9 @@ async def _go_live(settings: Settings, url: str) -> None:
     engine = create_engine(settings.model_copy(update={"database_url": url}))
     try:
         async with engine.begin() as conn:
-            run_id = await create_draft_run(conn, params=Params(step_quant=0.1), run_seed=7)
+            run_id = await create_draft_run(
+                conn, name="Borrel", params=Params(step_quant=0.1), run_seed=7
+            )
             await add_drink(
                 conn,
                 run_id,

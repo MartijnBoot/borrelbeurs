@@ -77,7 +77,8 @@ def test_the_models_match_the_migrated_schema(database_url: str) -> None:
 async def _insert_run(connection: AsyncConnection, status: str = "draft") -> int:
     result = await connection.execute(
         text(
-            "INSERT INTO run (status, run_seed, params) VALUES (:status, 1, '{}') RETURNING run_id"
+            "INSERT INTO run (name, status, run_seed, params) VALUES ('B', :status, 1, '{}') "
+            "RETURNING run_id"
         ),
         {"status": status},
     )
@@ -193,3 +194,27 @@ def test_two_drinks_may_not_share_a_slot(database_url: str) -> None:
 
     with pytest.raises(IntegrityError, match="drink_run_id_slot_key"):
         _in_transaction(database_url, clash)
+
+
+def test_0009_names_existing_runs_after_their_id(empty_database: str, alembic: RunAlembic) -> None:
+    """Phase 6 PD3: a run from before 0009 is backfilled as `Borrel <run_id>`."""
+    assert alembic(empty_database, "upgrade", "0008").returncode == 0
+
+    async def old_run(connection: AsyncConnection) -> None:
+        await connection.execute(
+            text("INSERT INTO run (status, run_seed, params) VALUES ('draft', 1, '{}')")
+        )
+
+    _in_transaction(empty_database, old_run)
+    step = alembic(empty_database, "upgrade", "head")
+    assert step.returncode == 0, step.stderr
+
+    names: list[tuple[int, str]] = []
+
+    async def read(connection: AsyncConnection) -> None:
+        result = await connection.execute(text("SELECT run_id, name FROM run"))
+        names.extend((int(row[0]), str(row[1])) for row in result)
+
+    _in_transaction(empty_database, read)
+    [(run_id, name)] = names
+    assert name == f"Borrel {run_id}"

@@ -30,8 +30,8 @@ def test_news_is_stored_lowercase_and_listed_in_time_order(
         engine = _engine(settings, database_url)
         try:
             async with engine.begin() as conn:
-                run_id = await create_draft_run(conn, params=Params(), run_seed=1)
-                other = await create_draft_run(conn, params=Params(), run_seed=2)
+                run_id = await create_draft_run(conn, name="Borrel", params=Params(), run_seed=1)
+                other = await create_draft_run(conn, name="Borrel", params=Params(), run_seed=2)
                 late = await create_news(conn, run_id, ts_ms=300, level="danger", text="Op!")
                 first = await create_news(conn, run_id, ts_ms=100, level="info", text="Open")
                 tie = await create_news(conn, run_id, ts_ms=300, level="success", text="Tie")
@@ -74,7 +74,7 @@ def test_a_level_outside_the_four_raises_before_any_sql(
 
         try:
             async with engine.begin() as conn:
-                run_id = await create_draft_run(conn, params=Params(), run_seed=1)
+                run_id = await create_draft_run(conn, name="Borrel", params=Params(), run_seed=1)
                 event.listen(engine.sync_engine, "before_cursor_execute", count)
                 with pytest.raises(ValueError, match="level"):
                     await create_news(conn, run_id, ts_ms=1, level=level, text="x")  # type: ignore[arg-type]
@@ -91,7 +91,7 @@ def test_an_empty_run_has_no_news(settings: Settings, database_url: str) -> None
         engine = _engine(settings, database_url)
         try:
             async with engine.begin() as conn:
-                run_id = await create_draft_run(conn, params=Params(), run_seed=1)
+                run_id = await create_draft_run(conn, name="Borrel", params=Params(), run_seed=1)
                 assert await list_news(conn, run_id) == ()
         finally:
             await engine.dispose()
@@ -107,7 +107,7 @@ def test_news_lists_newest_first_with_a_limit(settings: Settings, database_url: 
         engine = _engine(settings, database_url)
         try:
             async with engine.begin() as conn:
-                run_id = await create_draft_run(conn, params=Params(), run_seed=1)
+                run_id = await create_draft_run(conn, name="Borrel", params=Params(), run_seed=1)
                 ids = [
                     await create_news(conn, run_id, ts_ms=ts, level="info", text=str(ts))
                     for ts in (100, 300, 200, 300)
@@ -133,8 +133,8 @@ def test_soft_delete_hides_an_item_once_and_only_in_its_run(
         engine = _engine(settings, database_url)
         try:
             async with engine.begin() as conn:
-                run_id = await create_draft_run(conn, params=Params(), run_seed=1)
-                other = await create_draft_run(conn, params=Params(), run_seed=2)
+                run_id = await create_draft_run(conn, name="Borrel", params=Params(), run_seed=1)
+                other = await create_draft_run(conn, name="Borrel", params=Params(), run_seed=2)
                 kept = await create_news(conn, run_id, ts_ms=1, level="info", text="blijft")
                 gone = await create_news(conn, run_id, ts_ms=2, level="danger", text="weg")
                 foreign = await create_news(conn, other, ts_ms=3, level="info", text="elders")

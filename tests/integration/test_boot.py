@@ -46,7 +46,9 @@ async def _go_live(settings: Settings, url: str) -> int:
         async with engine.begin() as conn:
             from exchange import Params
 
-            run_id = await create_draft_run(conn, params=Params(step_quant=0.1), run_seed=7)
+            run_id = await create_draft_run(
+                conn, name="Borrel", params=Params(step_quant=0.1), run_seed=7
+            )
             await add_drink(
                 conn,
                 run_id,
@@ -216,7 +218,7 @@ def test_boot_migrates_a_database_one_revision_behind_to_head(
     empty_database: str, settings: Settings, alembic: RunAlembic, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Plan R9: the real `to_thread` migration path, against a real schema one behind."""
-    assert alembic(empty_database, "upgrade", "0007").returncode == 0
+    assert alembic(empty_database, "upgrade", "0008").returncode == 0
     monkeypatch.setenv("DATABASE_URL", empty_database)
     get_settings.cache_clear()
 
@@ -238,7 +240,7 @@ def test_boot_migrates_a_database_one_revision_behind_to_head(
             await engine.dispose()
 
     try:
-        assert asyncio.run(scenario()) == "0008"
+        assert asyncio.run(scenario()) == "0009"
     finally:
         get_settings.cache_clear()
 

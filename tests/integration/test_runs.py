@@ -65,7 +65,9 @@ async def _bier(connection: AsyncConnection, run_id: int, name: str = "Bier", sl
 
 
 async def _draft(connection: AsyncConnection) -> int:
-    return await create_draft_run(connection, params=Params(step_quant=0.1), run_seed=7)
+    return await create_draft_run(
+        connection, name="Borrel", params=Params(step_quant=0.1), run_seed=7
+    )
 
 
 def test_a_draft_run_stores_its_params_and_seed(settings: Settings, database_url: str) -> None:

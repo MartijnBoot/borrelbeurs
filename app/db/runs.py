@@ -60,10 +60,12 @@ def name_key(name: str) -> str:
     return name.strip().casefold()
 
 
-async def create_draft_run(conn: AsyncConnection, *, params: Params, run_seed: int) -> int:
+async def create_draft_run(
+    conn: AsyncConnection, *, name: str, params: Params, run_seed: int
+) -> int:
     result = await conn.execute(
         insert(Run)
-        .values(status="draft", params=params_to_json(params), run_seed=run_seed)
+        .values(status="draft", name=name, params=params_to_json(params), run_seed=run_seed)
         .returning(Run.run_id)
     )
     return int(result.scalar_one())

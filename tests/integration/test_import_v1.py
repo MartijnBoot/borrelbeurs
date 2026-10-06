@@ -134,7 +134,10 @@ def test_the_real_v1_files_import_as_one_draft_run(
 
     run_id = _imported_run(capsys, "--config", str(LIVE_CONFIG_PATH), "--news", str(LIVE_NEWS_PATH))
 
-    assert _query(settings, scratch, "SELECT run_id, status FROM run") == [(run_id, "draft")]
+    # Phase 6 SD2: the run is named after the config file's stem.
+    assert _query(settings, scratch, "SELECT run_id, status, name FROM run") == [
+        (run_id, "draft", LIVE_CONFIG_PATH.stem)
+    ]
     drinks, news, stored_params = _drinks_and_news(settings, scratch, run_id)
     assert [d.name for d in drinks] == live["names"]
     assert [d.slot for d in drinks] == list(range(len(live["names"])))

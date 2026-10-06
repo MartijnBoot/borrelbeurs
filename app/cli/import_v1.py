@@ -41,12 +41,14 @@ def revision_config(plan: ImportPlan) -> dict[str, Any]:
     }
 
 
-async def write_plan(plan: ImportPlan) -> int:
-    """Store `plan` as a new draft run in one transaction and return its `run_id`."""
+async def write_plan(plan: ImportPlan, *, name: str) -> int:
+    """Store `plan` as a new draft run named `name`, in one transaction; return its `run_id`."""
     engine = create_engine(get_settings())
     try:
         async with engine.begin() as conn:
-            run_id = await create_draft_run(conn, params=plan.params, run_seed=secrets.randbits(63))
+            run_id = await create_draft_run(
+                conn, name=name, params=plan.params, run_seed=secrets.randbits(63)
+            )
             for drink in plan.drinks:
                 await add_drink(conn, run_id, **dataclasses.asdict(drink))
             for item in plan.news:
@@ -76,7 +78,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     try:
-        run_id = asyncio.run(write_plan(plan))
+        # Phase 6 SD2: a run is named; an import takes its config file's stem.
+        run_id = asyncio.run(write_plan(plan, name=args.config.stem[:100]))
     except DuplicateDrinkName as error:
         print(f"import_v1: invalid input: {error}", file=sys.stderr)
         return 2

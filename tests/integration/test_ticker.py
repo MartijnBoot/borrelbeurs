@@ -35,7 +35,9 @@ def _engine(settings: Settings, url: str) -> AsyncEngine:
 
 async def _live(engine: AsyncEngine) -> RehydratedRun:
     async with engine.begin() as conn:
-        run_id = await create_draft_run(conn, params=Params(step_quant=0.1), run_seed=7)
+        run_id = await create_draft_run(
+            conn, name="Borrel", params=Params(step_quant=0.1), run_seed=7
+        )
         for slot, name in enumerate(("Bier", "Wijn")):
             await add_drink(
                 conn,
