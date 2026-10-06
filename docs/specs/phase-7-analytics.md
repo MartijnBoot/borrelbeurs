@@ -37,7 +37,9 @@ This phase delivers the reason a database was introduced at all.
 - **AC5.** When revenue at the fixed bar price is reported, the system shall name it
   `bar_price_total` / `bar_price_per_drink`, not `p0_*`. *(D-20)*
 - **AC6.** When the earnings series is requested, the system shall bucket it in SQL so its
-  size is bounded regardless of order count. *(D-31)*
+  size is bounded regardless of order count. *(D-31)* — Phase 5 brought this forward: `GET
+  /api/earnings/series` exists for the live run, in 60 s buckets (Phase 5 SD16). This phase
+  extends it with a run parameter and other bucket sizes.
 - **AC7.** When an export is requested, the system shall return immediately and produce the
   file asynchronously, and shall run at most one export at a time.
 - **AC8.** While an export is running, the system shall continue ticking and serving orders
