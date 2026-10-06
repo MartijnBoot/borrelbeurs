@@ -9,6 +9,8 @@
 export const HOLD_MS = 2000
 /** ...and never more than this long after it began (SD1). */
 export const HOLD_MAX_MS = 10000
+/** After one conflict is answered, the next one's "Bevestigen" ignores taps this long, so a double tap cannot confirm it unread (AC14). */
+export const CONFIRM_GUARD_MS = 400
 /** Above this displayed-quote age the pad shows the age and "Ververs" (SD4). */
 export const AGE_SHOW_MS = 8000
 /** Above this latest-quote age the pad is disabled (SD4). */

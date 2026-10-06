@@ -15,6 +15,7 @@ import {
 } from '../exchange'
 import type { OrderBody, OrderOutcome } from './api/orders'
 import { createBarController, type BarController } from './model/barController'
+import { CONFIRM_GUARD_MS } from './model/constants'
 import { LINGER_MS, RETRY_DELAYS_MS } from './model/orderIntents'
 import { OrderConflict } from './OrderConflict'
 import { PendingOrders } from './PendingOrders'
@@ -204,6 +205,23 @@ describe('OrderConflict', () => {
     expect(calls).toHaveLength(1)
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(screen.getByText(/Geannuleerd/)).toBeTruthy()
+  })
+
+  it('a second tap right after a Bevestigen cannot confirm the next conflict unread (AC14)', async () => {
+    tap(1)
+    tap(2)
+    calls[0].resolve(priceChanged(1, 270))
+    calls[1].resolve(priceChanged(2, 310))
+    await settle()
+    fireEvent.click(screen.getByRole('button', { name: 'Bevestigen' })) // Bier: posts
+    expect(calls).toHaveLength(3)
+    expect(screen.getByRole('dialog').textContent).toContain('Cola')
+    fireEvent.click(screen.getByRole('button', { name: 'Bevestigen' })) // the double tap
+    expect(calls).toHaveLength(3)
+    await advance(CONFIRM_GUARD_MS)
+    fireEvent.click(screen.getByRole('button', { name: 'Bevestigen' }))
+    expect(calls).toHaveLength(4)
+    expect(calls[3].body.lines[0].unit_price_cents).toBe(310)
   })
 
   it('two 409s show one dialog, then the next (AC14)', async () => {

@@ -97,6 +97,32 @@ describe('the hold buffer', () => {
     expect(buffer.displayed?.version).toBe(2)
   })
 
+  it('overlapping presses end the hold HOLD_MS after the LAST release (AC5)', () => {
+    buffer.offer(quote(1))
+    buffer.pressStart('a')
+    buffer.pressStart('b')
+    buffer.offer(quote(2))
+    buffer.pressEnd('a')
+    clock.advance(HOLD_MS + 500) // b is still down: nothing may end the hold
+    expect(buffer.displayed?.version).toBe(1)
+    buffer.pressEnd('b')
+    clock.advance(HOLD_MS - 1)
+    expect(buffer.displayed?.version).toBe(1)
+    clock.advance(1)
+    expect(buffer.displayed?.version).toBe(2)
+  })
+
+  it('a repeated release of one press (up, then leave) does not end another (AC5)', () => {
+    buffer.offer(quote(1))
+    buffer.pressStart('a')
+    buffer.pressStart('b')
+    buffer.offer(quote(2))
+    buffer.pressEnd('a')
+    buffer.pressEnd('a')
+    clock.advance(HOLD_MS + 500)
+    expect(buffer.displayed?.version).toBe(1)
+  })
+
   it('continuous presses end the hold HOLD_MAX_MS after it began (AC5)', () => {
     buffer.offer(quote(1))
     buffer.pressStart()

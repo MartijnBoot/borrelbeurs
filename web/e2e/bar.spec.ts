@@ -130,6 +130,8 @@ test.describe('the bar page (Phase 5)', () => {
       expect(qtyOf(await earnings(page.request), drinkId)).toBe(qtyOf(before, drinkId) + 0)
 
       const next = page.waitForResponse((r) => isOrder(r.request()))
+      // A dialog that follows an answered one ignores taps for CONFIRM_GUARD_MS.
+      await page.waitForTimeout(500)
       await page.getByRole('button', { name: 'Bevestigen' }).click()
       const response = await next
       const sent = response.request().postDataJSON() as OrderBody

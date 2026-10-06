@@ -27,6 +27,8 @@ export interface OrderPadProps {
 }
 
 const PRESS_KEYS = new Set(['Enter', ' '])
+/** The keyboard is one press; fingers are told apart by pointer id (AC5). */
+const KEY_PRESS = 'key'
 
 export function OrderPad({ view, actions }: OrderPadProps) {
   const drinks = useExchange(selectDrinks)
@@ -36,10 +38,10 @@ export function OrderPad({ view, actions }: OrderPadProps) {
   const disabled = stale || headConflict !== null
 
   const onKeyDown = (event: KeyboardEvent) => {
-    if (PRESS_KEYS.has(event.key)) actions.press()
+    if (PRESS_KEYS.has(event.key)) actions.press(KEY_PRESS)
   }
   const onKeyUp = (event: KeyboardEvent) => {
-    if (PRESS_KEYS.has(event.key)) actions.release()
+    if (PRESS_KEYS.has(event.key)) actions.release(KEY_PRESS)
   }
 
   return (
@@ -52,10 +54,10 @@ export function OrderPad({ view, actions }: OrderPadProps) {
               key={drink_id}
               className={styles.drink}
               disabled={disabled || price === undefined}
-              onPointerDown={actions.press}
-              onPointerUp={actions.release}
-              onPointerCancel={actions.release}
-              onPointerLeave={actions.release}
+              onPointerDown={(e) => actions.press(e.pointerId)}
+              onPointerUp={(e) => actions.release(e.pointerId)}
+              onPointerCancel={(e) => actions.release(e.pointerId)}
+              onPointerLeave={(e) => actions.release(e.pointerId)}
               onKeyDown={onKeyDown}
               onKeyUp={onKeyUp}
               onClick={() => actions.tap(drink_id)}

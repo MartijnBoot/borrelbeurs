@@ -2,8 +2,9 @@
  * The hold buffer (Phase 5 SD1, SD3): which `Quote` the pad displays.
  *
  * With no hold running, every offered quote is displayed at once. A press
- * starts a hold; while it runs, offers update only `latest`. The hold ends
- * `HOLD_MS` after the last release, or `HOLD_MAX_MS` after it began, whichever
+ * starts a hold; while it runs, offers update only `latest`. Presses are
+ * tracked by id (a pointer id, or one id for the keyboard), so the hold ends
+ * `HOLD_MS` after the last release of *all* of them, or `HOLD_MAX_MS` after it began, whichever
  * comes first -- then `latest` is displayed. `promote()` displays `latest` at
  * once (SD3's force-promotions) and keeps the hold's timers running.
  *
@@ -20,12 +21,15 @@ export interface HoldBufferDeps<Id = unknown> {
   onChange(): void
 }
 
+/** One finger or key; releasing an id that is not down is a no-op. */
+export type PressId = string | number
+
 export interface HoldBuffer {
   readonly displayed: Quote | null
   readonly latest: Quote | null
   offer(latest: Quote | null): void
-  pressStart(): void
-  pressEnd(): void
+  pressStart(id?: PressId): void
+  pressEnd(id?: PressId): void
   promote(): void
   dispose(): void
 }
@@ -34,7 +38,7 @@ export function createHoldBuffer<Id>(deps: HoldBufferDeps<Id>): HoldBuffer {
   let displayed: Quote | null = null
   let latest: Quote | null = null
   let holding = false
-  let pressed = false
+  const pressed = new Set<PressId>()
   let releaseTimer: Id | null = null
   let maxTimer: Id | null = null
 
@@ -48,7 +52,7 @@ export function createHoldBuffer<Id>(deps: HoldBufferDeps<Id>): HoldBuffer {
     if (maxTimer !== null) deps.clearTimeout(maxTimer)
     maxTimer = null
     holding = false
-    pressed = false
+    pressed.clear()
     displayed = latest
     deps.onChange()
   }
@@ -65,17 +69,16 @@ export function createHoldBuffer<Id>(deps: HoldBufferDeps<Id>): HoldBuffer {
       if (!holding) displayed = quote
       deps.onChange()
     },
-    pressStart() {
-      pressed = true
+    pressStart(id = 0) {
+      pressed.add(id)
       clearRelease()
       if (!holding) {
         holding = true
         maxTimer = deps.setTimeout(endHold, HOLD_MAX_MS)
       }
     },
-    pressEnd() {
-      if (!holding || !pressed) return
-      pressed = false
+    pressEnd(id = 0) {
+      if (!holding || !pressed.delete(id) || pressed.size > 0) return
       clearRelease()
       releaseTimer = deps.setTimeout(endHold, HOLD_MS)
     },

@@ -94,7 +94,10 @@ function bodyFor(quote: Quote, drinkId: DrinkId): OrderBody | null {
 
 function retryable(error: unknown): boolean {
   // Not an HTTP answer: a network failure or a timeout's abort.
-  return !(error instanceof HttpError) || error.status === 503
+  if (!(error instanceof HttpError)) return true
+  // A 5xx, or a 2xx whose body could not be read: the order may have been
+  // booked, so ask again with the same key -- the server replays the receipt.
+  return error.status >= 500 || (error.status < 300 && error.code === 'invalid_response')
 }
 
 export function createOrderIntents<Id>(deps: OrderIntentsDeps<Id>): OrderIntents {

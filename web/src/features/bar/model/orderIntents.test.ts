@@ -146,6 +146,21 @@ describe('retries (SD8)', () => {
     expect(intents.entries[0].state).toBe('unknown') // stays until Opnieuw or Sluiten
   })
 
+  it('a 500 or an unreadable 2xx may have been booked: retried with the same key, never failed (SD8)', async () => {
+    intents.create(Q, 1)
+    calls[0].reject(new HttpError(500, 'internal_error', 'boom'))
+    await settle()
+    expect(intents.entries[0].state).toBe('sending')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(calls).toHaveLength(2)
+    calls[1].reject(new HttpError(201, 'invalid_response', 'the response body is not valid'))
+    await settle()
+    expect(intents.entries[0].state).toBe('sending')
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(calls).toHaveLength(3)
+    expect(new Set(calls.map((c) => c.key))).toEqual(new Set(['key-0001']))
+  })
+
   it('a 503 then a 200 replay is one accepted entry (AC26)', async () => {
     intents.create(Q, 1)
     calls[0].reject(unavailable())

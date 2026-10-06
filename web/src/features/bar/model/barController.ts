@@ -16,7 +16,7 @@
  */
 import type { DrinkId, ExchangeState, Quote } from '../../exchange'
 import type { OrderBody, OrderOutcome } from '../api/orders'
-import { createHoldBuffer, isStale } from './holdBuffer'
+import { createHoldBuffer, isStale, type PressId } from './holdBuffer'
 import { createOrderIntents, type Conflict, type OrderEntry } from './orderIntents'
 
 export interface BarView {
@@ -42,8 +42,8 @@ export interface BarControllerDeps<Id = unknown> {
 export interface BarController {
   readonly view: BarView
   subscribe(listener: () => void): () => void
-  press(): void
-  release(): void
+  press(id?: PressId): void
+  release(id?: PressId): void
   /** The new entry's id, or `null` when the tap is refused. */
   tap(drinkId: DrinkId): number | null
   refresh(): void
@@ -105,8 +105,8 @@ export function createBarController<Id>(deps: BarControllerDeps<Id>): BarControl
       listeners.add(listener)
       return () => void listeners.delete(listener)
     },
-    press: () => hold.pressStart(),
-    release: () => hold.pressEnd(),
+    press: (id) => hold.pressStart(id),
+    release: (id) => hold.pressEnd(id),
     tap(drinkId) {
       const displayed = hold.displayed
       if (displayed === null || isStale(hold.latest, deps.now())) return null

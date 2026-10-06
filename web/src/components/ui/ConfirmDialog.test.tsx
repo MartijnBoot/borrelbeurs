@@ -61,6 +61,40 @@ describe('ConfirmDialog', () => {
     expect(onConfirm).not.toHaveBeenCalled()
   })
 
+  it('Escape still cancels after focus has left the dialog (a backdrop click)', () => {
+    const { onCancel } = renderDialog()
+    ;(document.activeElement as HTMLElement).blur()
+    expect(document.activeElement).toBe(document.body)
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    expect(onCancel).toHaveBeenCalledOnce()
+  })
+
+  it('Tab after focus has left the dialog brings it back in; Shift+Tab to the last button', () => {
+    renderDialog()
+    ;(document.activeElement as HTMLElement).blur()
+    fireEvent.keyDown(document.body, { key: 'Tab' })
+    expect(document.activeElement).toBe(confirmButton())
+    ;(document.activeElement as HTMLElement).blur()
+    fireEvent.keyDown(document.body, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(cancelButton())
+  })
+
+  it('stops listening to the document when it closes', () => {
+    const { onCancel, rerender } = renderDialog()
+    rerender(
+      <ConfirmDialog
+        open={false}
+        message="x"
+        confirmLabel="Bevestigen"
+        cancelLabel="Annuleren"
+        onConfirm={vi.fn()}
+        onCancel={onCancel}
+      />,
+    )
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    expect(onCancel).not.toHaveBeenCalled()
+  })
+
   it('each button calls its own handler', () => {
     const { onCancel, onConfirm } = renderDialog()
     fireEvent.click(confirmButton())

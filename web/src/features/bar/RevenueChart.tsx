@@ -7,10 +7,11 @@
  *   and `setData(merge(history, live))`. A snapshot also clears the live
  *   points: the refetched history covers them.
  * - **Order** (`lastOrderTsMs` moved, no new snapshot): a live point at that
- *   second, valued at the store's revenue total, goes to `update`. When the
- *   point is older than the chart's last -- an order inside the open history
- *   bucket, whose end lies ahead -- the merge drops that bucket and the
- *   series is set again: the library cannot update backwards (AC21).
+ *   second, valued at the store's revenue total, goes to `update` -- only
+ *   ever `update` (AC22). When the point is older than the chart's last -- an
+ *   order inside the open history bucket, whose end lies ahead -- it is
+ *   placed at that last time instead: `update` replaces the point there, the
+ *   library cannot update backwards (AC21), and the value is the newer total.
  * - **Theme:** `applyOptions` with the shared colours and `--accent` for the
  *   line (PD13); never a new chart (AC23).
  * - **Unmount:** `remove` once; a fetch that resolves later is ignored (AC22).
@@ -18,7 +19,13 @@
  * At ≤640 px nothing is constructed and nothing fetched (SD17, AC24).
  * Revenue is the server's total, never computed here (AC17).
  */
-import { createChart, LineSeries, type IChartApi, type ISeriesApi } from 'lightweight-charts'
+import {
+  createChart,
+  LineSeries,
+  type IChartApi,
+  type ISeriesApi,
+  type UTCTimestamp,
+} from 'lightweight-charts'
 import { useEffect, useRef } from 'react'
 import { BASE_OPTIONS, chartColors } from '../../lib/chartTheme'
 import { exchangeStore, selectTheme, selectTotals, useExchange } from '../exchange'
@@ -91,12 +98,11 @@ function RevenueChartHost() {
       live = appendLive(live, point)
       if (live === before) return
       const [shown] = toChartData([point])
-      if (shownLast !== null && shown.time < shownLast) {
-        show()
-      } else {
-        line.update(shown)
-        shownLast = shown.time
-      }
+      const time = (
+        shownLast === null ? shown.time : Math.max(shown.time, shownLast)
+      ) as UTCTimestamp
+      line.update({ ...shown, time })
+      shownLast = time
     })
 
     return () => {

@@ -13,10 +13,11 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { exchangeStore, type DrinkId } from '../exchange'
 import { postOrder } from './api/orders'
 import { createBarController, type BarController, type BarView } from './model/barController'
+import type { PressId } from './model/holdBuffer'
 
 export interface BarActions {
-  press(): void
-  release(): void
+  press(id?: PressId): void
+  release(id?: PressId): void
   tap(drinkId: DrinkId): void
   refresh(): void
   confirm(): void
@@ -38,8 +39,8 @@ function createSlot() {
   let detach = () => {}
   const notify = () => listeners.forEach((listener) => listener())
   const actions: BarActions = {
-    press: () => controller?.press(),
-    release: () => controller?.release(),
+    press: (id) => controller?.press(id),
+    release: (id) => controller?.release(id),
     tap: (drinkId) => void controller?.tap(drinkId),
     refresh: () => controller?.refresh(),
     confirm: () => controller?.confirm(),

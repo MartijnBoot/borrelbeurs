@@ -146,14 +146,17 @@ describe('RevenueChart', () => {
     expect(series().update).toHaveBeenLastCalledWith({ time: 130, value: 1_290 })
   })
 
-  it('an order inside the last history bucket re-merges instead of updating backwards', async () => {
+  it('an order inside the last history bucket updates that last point, never backwards (AC21, AC22)', async () => {
     render(<RevenueChart />)
     await flush()
     order(100_000, 600) // before the bucket end at 120 s
-    expect(series().setData).toHaveBeenLastCalledWith([
-      { time: 60, value: 250 },
-      { time: 100, value: 600 },
-    ])
+    expect(series().setData).toHaveBeenCalledTimes(1)
+    expect(series().update).toHaveBeenLastCalledWith({ time: 120, value: 600 })
+    order(110_000, 700)
+    expect(series().setData).toHaveBeenCalledTimes(1)
+    expect(series().update).toHaveBeenLastCalledWith({ time: 120, value: 700 })
+    order(125_000, 800) // past the bucket end: a new point
+    expect(series().update).toHaveBeenLastCalledWith({ time: 125, value: 800 })
   })
 
   it('a snapshot refetches and sets the data again', async () => {
