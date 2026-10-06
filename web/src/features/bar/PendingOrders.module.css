@@ -1,0 +1,34 @@
+/* Phase 5 SD10: the pending list under the pad; theme tokens only. */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--grid);
+  color: var(--muted);
+}
+
+.accepted {
+  color: var(--ok);
+}
+
+.unknown {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.failed,
+.dismissed {
+  color: var(--danger);
+}
