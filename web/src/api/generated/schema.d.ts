@@ -292,6 +292,8 @@ export interface components {
             drink_id: number;
             /** Name */
             name: string;
+            /** Active */
+            active: boolean;
         };
         /** DrinkPrice */
         DrinkPrice: {

@@ -60,7 +60,7 @@ beforeEach(() => {
     {
       ...exchangeStore.getInitialState(),
       skewOffsetMs: OFFSET,
-      drinks: [{ drink_id: 1, name: 'Bier' }],
+      drinks: [{ drink_id: 1, name: 'Bier', active: true }],
       prices: { 1: price(280) },
       prevPriceCents: { 1: 250 },
     },
@@ -163,7 +163,7 @@ describe('marquees', () => {
   })
 
   it('shows each drink with price and delta, twice for a seamless loop', () => {
-    set({ drinks: [{ drink_id: 1, name: XSS }] })
+    set({ drinks: [{ drink_id: 1, name: XSS, active: true }] })
     const { container } = render(<KoersPage />)
     // the tile's name and the marquee's two copies, all text
     expect(screen.getAllByText(XSS)).toHaveLength(3)

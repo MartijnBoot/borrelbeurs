@@ -20,6 +20,11 @@ next one starts, so no two broadcasts race for a `seq`.
 session cannot provoke without racing its own writer. It is recorded from
 `hub.resync_frame()` -- the frame the overflow path enqueues, built by the same
 code -- at the end of the session.
+
+**`config`** has no route to provoke it until Phase 6's config writes exist. It
+is recorded by handing a `ConfigChanged` -- the run as booted, with `Fris`
+marked removed -- to a `Publisher` on the app's own hub, on the app's loop:
+the frame the holder's sink would broadcast, built by the same code.
 """
 
 from __future__ import annotations
@@ -43,6 +48,8 @@ from app.db.keys import create_key, set_secret_hash
 from app.db.runs import add_drink, create_draft_run, go_live
 from app.db.session import create_engine
 from app.main import create_app
+from app.realtime.publish import Publisher, active_drink_ids, seeded_book
+from app.runtime.holder import ConfigChanged
 from exchange import Params
 from tests.integration.conftest import _create, _drop, run_alembic
 from tests.support.clock import FakeClock
@@ -196,8 +203,32 @@ def _drive(client: TestClient, clock: FakeClock, key: str) -> dict[str, Frame]:
             s.until("tick")
         frames["market_event_end"] = s.until("market_event", op="end")
 
+        client.portal.call(_publish_config, client)  # type: ignore[union-attr]
+        frames["config"] = s.until("config")
+
         frames["resync"] = json.loads(client.app.state.hub.resync_frame())  # type: ignore[attr-defined]
     return frames
+
+
+async def _publish_config(client: TestClient) -> None:
+    """One `config` broadcast, as a live config write that removed `Fris` would send."""
+    state = client.app.state  # type: ignore[attr-defined]
+    holder = state.holder
+    event = ConfigChanged(
+        run_id=holder.run_id,
+        version=holder.state.version,
+        revision=2,
+        name="Borrel",
+        tick_interval_ms=state.tick_interval_ms,
+        candle_interval_ms=holder.candle_interval_ms,
+        quote_grace_versions=holder.quote_grace_versions,
+        drinks=tuple(
+            (d, name, name != "Fris")
+            for d, name in zip(holder.drink_ids, holder.spec.names, strict=True)
+        ),
+        params=holder.spec.params,
+    )
+    Publisher(state.hub, seeded_book(holder), active=active_drink_ids(holder))([event])
 
 
 def record(settings: Settings) -> dict[str, Frame]:

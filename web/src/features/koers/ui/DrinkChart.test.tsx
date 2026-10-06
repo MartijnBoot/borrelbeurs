@@ -207,7 +207,7 @@ describe('lifecycle (AC28, AC29)', () => {
     const { rerender } = render(<List ids={[1, 2]} />)
     expect(charts).toHaveLength(2)
     rerender(<List ids={[2, 1]} />)
-    setStore({ drinks: [{ drink_id: 1, name: 'Nieuw' }] })
+    setStore({ drinks: [{ drink_id: 1, name: 'Nieuw', active: true }] })
     expect(charts).toHaveLength(2)
     for (const chart of charts) expect(chart.remove).not.toHaveBeenCalled()
   })

@@ -22,6 +22,11 @@ named fields: they are not size-bound.
 carries the current one. `version` is the committed engine version, `None` on
 messages that carry no prices.
 
+**`config` (Phase 6 SD18)** is broadcast after every committed live config
+write: the run with its name, every drink with `active`, and the params as the
+snapshot carries them. A removed drink stays listed with `active: false`;
+`prices`, `bars` and a tick's drinks cover active drinks only.
+
 **`theme` (Phase 4 SD9, PD3)** carries the active preset's tokens and font, so
 the client holds no preset table (SD6). It carries no prices: `version` is
 `None`, and the hub keeps its resync metadata from the last priced broadcast.
@@ -94,9 +99,15 @@ class RunInfo(_Closed):
     quote_grace_versions: NonNegative
 
 
+class ConfigRunInfo(RunInfo):
+    name: str
+
+
 class DrinkInfo(_Closed):
     drink_id: StrictInt
     name: str
+    # False once removed from a live run (Phase 6 SD13): listed, never priced.
+    active: bool
 
 
 class NewsItemData(_Closed):
@@ -133,6 +144,15 @@ class Snapshot(_Closed):
     news: Annotated[list[NewsItemData], Field(max_length=50)]
     earnings: dict[int, EarningsData]
     market_events: list[MarketEventInfo]
+
+
+class ConfigData(_Closed):
+    """A committed live config change (Phase 6 SD18); `revision` is its config revision."""
+
+    revision: NonNegative
+    run: ConfigRunInfo
+    drinks: list[DrinkInfo]
+    params: dict[str, JsonValue]
 
 
 class OrderLineData(_Closed):
@@ -217,7 +237,17 @@ class ErrorData(_Closed):
 
 
 ServerMessageType = Literal[
-    "hello", "snapshot", "tick", "order", "market_event", "news", "pong", "resync", "error", "theme"
+    "hello",
+    "snapshot",
+    "tick",
+    "order",
+    "market_event",
+    "news",
+    "pong",
+    "resync",
+    "error",
+    "theme",
+    "config",
 ]
 
 SERVER_MESSAGE_MODELS: Final[dict[str, type[_Closed]]] = {
@@ -231,6 +261,7 @@ SERVER_MESSAGE_MODELS: Final[dict[str, type[_Closed]]] = {
     "resync": Resync,
     "error": ErrorData,
     "theme": ThemeData,
+    "config": ConfigData,
 }
 
 ServerData = (
@@ -244,6 +275,7 @@ ServerData = (
     | Resync
     | ErrorData
     | ThemeData
+    | ConfigData
 )
 
 

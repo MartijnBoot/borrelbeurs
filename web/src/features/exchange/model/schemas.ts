@@ -50,7 +50,10 @@ export const RunInfo = z.strictObject({
   quote_grace_versions: NonNegative,
 })
 
-const DrinkInfo = z.strictObject({ drink_id: Int, name: z.string() })
+/** `active` is false once removed from a live run (Phase 6 SD13): listed, never priced. */
+const DrinkInfo = z.strictObject({ drink_id: Int, name: z.string(), active: z.boolean() })
+
+const ConfigRunInfo = RunInfo.extend({ name: z.string() })
 
 export const NewsItem = z.strictObject({
   news_id: Int,
@@ -69,11 +72,13 @@ export const MarketEventInfo = z.strictObject({
   t_end_ms: Int,
 })
 
+const Params = z.record(z.string(), z.json())
+
 export const SnapshotData = z.strictObject({
   version: Int,
   run: RunInfo,
   drinks: z.array(DrinkInfo),
-  params: z.record(z.string(), z.json()),
+  params: Params,
   prices: z.record(IdKey, DrinkPrice),
   bars: z.record(IdKey, z.array(Bar)),
   news: z.array(NewsItem).max(50),
@@ -103,6 +108,14 @@ export const MarketEventData = z.strictObject({
   drink_ids: z.array(Int),
   t_start_ms: Int,
   t_end_ms: Int,
+})
+
+/** A committed live config change (Phase 6 SD18). */
+export const ConfigData = z.strictObject({
+  revision: NonNegative,
+  run: ConfigRunInfo,
+  drinks: z.array(DrinkInfo),
+  params: Params,
 })
 
 export const NewsData = z.strictObject({ op: z.enum(['add', 'delete']), item: NewsItem })
@@ -154,6 +167,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
   envelope('resync', ResyncData),
   envelope('error', ErrorData),
   envelope('theme', ThemeData),
+  envelope('config', ConfigData),
 ])
 
 export type ServerMessage = z.infer<typeof ServerMessage>
@@ -177,7 +191,9 @@ export type DrinkPrice = z.infer<typeof DrinkPrice>
 export type DrinkEarnings = z.infer<typeof DrinkEarnings>
 export type Bar = z.infer<typeof Bar>
 export type RunInfo = z.infer<typeof RunInfo>
+export type DrinkInfo = z.infer<typeof DrinkInfo>
 export type NewsItem = z.infer<typeof NewsItem>
 export type MarketEventInfo = z.infer<typeof MarketEventInfo>
 export type SnapshotData = z.infer<typeof SnapshotData>
+export type ConfigData = z.infer<typeof ConfigData>
 export type ThemeData = z.infer<typeof ThemeData>

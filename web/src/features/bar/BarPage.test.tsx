@@ -16,7 +16,7 @@ const RUN = {
 const SNAPSHOT: SnapshotData = {
   version: 5,
   run: RUN,
-  drinks: [{ drink_id: 1, name: 'Bier' }],
+  drinks: [{ drink_id: 1, name: 'Bier', active: true }],
   params: {},
   prices: { 1: { price_cents: 250, chart_price_cents: 250 } },
   bars: {},

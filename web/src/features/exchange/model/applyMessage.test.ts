@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import fixture from './__fixtures__/ws-messages.json'
 import { applyMessage, applyPolledState, initialState, type ExchangeState } from './applyMessage'
 import { ServerMessage } from './schemas'
-import { pulseDirection, selectEarnings, selectTotals } from './selectors'
+import { pulseDirection, selectActiveDrinks, selectEarnings, selectTotals } from './selectors'
 
 type Of<K extends ServerMessage['type']> = Extract<ServerMessage, { type: K }>
 
@@ -436,5 +436,61 @@ describe('earnings (Phase 5 SD15, AC17, AC18)', () => {
     expect(two.lastOrderTsMs).toBe(6_000)
     expect(apply(two, at(tick, S + 3)).lastOrderTsMs).toBe(6_000)
     expect(apply(two, at(snapshot, S + 2)).lastOrderTsMs).toBeNull()
+  })
+})
+
+describe('config (Phase 6 SD18, AC23, AC28)', () => {
+  const config = frame('config') as Of<'config'>
+  const ids = (state: ExchangeState) => selectActiveDrinks(state).map((d) => d.drink_id)
+  /** The recorded config with every drink active: the snapshot's own active set. */
+  const allActive = at(config, S + 1, {
+    drinks: config.data.drinks.map((d) => ({ ...d, active: true })),
+  })
+
+  it('parses the recorded frame, a removed drink listed as inactive', () => {
+    expect(config.data.drinks.map((d) => d.active)).toEqual([true, true, false])
+    expect(config.data.run.name).toBe('Borrel')
+  })
+
+  it('takes drinks, params and run in sequence, without a resync when nothing moved', () => {
+    const renamed = at(allActive, S + 1, {
+      drinks: allActive.data.drinks.map((d, i) => (i === 0 ? { ...d, name: 'Pils' } : d)),
+      params: { ...allActive.data.params, step_quant: 0.5 },
+    })
+    const state = apply(live, renamed)
+    expect(state.seq).toBe(S + 1)
+    expect(state.awaitingResync).toBe(false)
+    expect(state.drinks[0]?.name).toBe('Pils')
+    expect(state.params.step_quant).toBe(0.5)
+    expect(state.run).toEqual(renamed.data.run)
+    expect(state.prices).toBe(live.prices)
+  })
+
+  it('asks for a resync when the active drink set changed', () => {
+    const state = apply(live, at(config, S + 1))
+    expect(state.drinks.at(-1)?.active).toBe(false)
+    expect(state.awaitingResync).toBe(true)
+  })
+
+  it('asks for a resync when the candle interval changed', () => {
+    const run = { ...allActive.data.run, candle_interval_ms: 30_000 }
+    const state = apply(live, at(allActive, S + 1, { run }))
+    expect(state.awaitingResync).toBe(true)
+  })
+
+  it('drops an out-of-sequence config', () => {
+    const stale = apply(live, at(config, S))
+    expect(stale.drinks).toBe(live.drinks)
+    const ahead = apply(live, at(config, S + 2))
+    expect(ahead.drinks).toBe(live.drinks)
+    expect(ahead.awaitingResync).toBe(true)
+  })
+
+  it('selectActiveDrinks lists the active drinks in order', () => {
+    expect(ids(live)).toEqual(live.drinks.map((d) => d.drink_id))
+    const removed = config.data.drinks.at(-1)?.drink_id
+    expect(ids(apply(live, at(config, S + 1)))).not.toContain(removed)
+    expect(ids(apply(live, at(config, S + 1)))).toHaveLength(2)
+    expect(selectActiveDrinks(live)).toBe(selectActiveDrinks(live))
   })
 })

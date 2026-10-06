@@ -17,6 +17,8 @@ from app.realtime.messages import (
     ClientMessage,
     ClientPing,
     ClientResyncRequest,
+    ConfigData,
+    ConfigRunInfo,
     DrinkInfo,
     DrinkPrice,
     EarningsData,
@@ -233,7 +235,7 @@ def test_every_server_type_round_trips() -> None:
             run=RunInfo(
                 run_id=1, tick_interval_ms=1000, candle_interval_ms=60_000, quote_grace_versions=2
             ),
-            drinks=[DrinkInfo(drink_id=101, name="Bier")],
+            drinks=[DrinkInfo(drink_id=101, name="Bier", active=True)],
             params=params_to_json(Params()),
             prices=prices,
             bars={101: [Bar(t_ms=TS, o=240, h=290, l=210, c=253)]},
@@ -261,6 +263,21 @@ def test_every_server_type_round_trips() -> None:
         "resync": Resync(),
         "error": ErrorData(code="unknown_message"),
         "theme": theme_data(resolve("oudgeld", 3)),
+        "config": ConfigData(
+            revision=2,
+            run=ConfigRunInfo(
+                run_id=1,
+                name="Borrel",
+                tick_interval_ms=1000,
+                candle_interval_ms=60_000,
+                quote_grace_versions=2,
+            ),
+            drinks=[
+                DrinkInfo(drink_id=101, name="Bier", active=True),
+                DrinkInfo(drink_id=102, name="Wijn", active=False),
+            ],
+            params=params_to_json(Params()),
+        ),
     }
     assert set(samples) == set(SERVER_MESSAGE_MODELS)
     for kind, data in samples.items():

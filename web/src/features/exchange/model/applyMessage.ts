@@ -34,10 +34,17 @@
  * an in-sequence `order` adds its `earnings_delta` per drink and records its
  * envelope `ts_ms` as `lastOrderTsMs` (SD16), which a snapshot clears. These
  * are the server's numbers, summed -- revenue is never computed here.
+ *
+ * **Config (Phase 6 SD18).** An in-sequence `config` replaces `drinks`,
+ * `params` and `run`. Prices and bars stay: when the active `drink_id` set or
+ * `candle_interval_ms` changed they no longer fit, so it sets `awaitingResync`
+ * and the client asks for the snapshot that replaces them.
  */
 import type {
   Bar,
+  ConfigData,
   DrinkEarnings,
+  DrinkInfo,
   DrinkPrice,
   MarketEventInfo,
   NewsItem,
@@ -65,7 +72,10 @@ export interface ExchangeState {
   /** Server time minus client time, ms (SD18); written by the client. */
   skewOffsetMs: number
   run: RunInfo | null
-  drinks: { drink_id: DrinkId; name: string }[]
+  /** Every drink of the run, a removed one with `active: false` (Phase 6 SD18). */
+  drinks: DrinkInfo[]
+  /** The engine's params as the server sends them (`params_to_json`). */
+  params: Record<string, unknown>
   prices: Record<DrinkId, DrinkPrice>
   /** The `price_cents` displayed before the last price change, for pulses (SD23). */
   prevPriceCents: Record<DrinkId, number>
@@ -95,6 +105,7 @@ export const initialState: ExchangeState = {
   skewOffsetMs: 0,
   run: null,
   drinks: [],
+  params: {},
   prices: {},
   prevPriceCents: {},
   bars: {},
@@ -159,6 +170,8 @@ function applyBroadcast(
       return applyMarketEvent(state, message)
     case 'news':
       return applyNews(state, message)
+    case 'config':
+      return applyConfig(state, message.data)
     case 'pong':
     case 'error':
       return state
@@ -224,6 +237,7 @@ function applySnapshot(
     empty: false,
     run: data.run,
     drinks: data.drinks,
+    params: data.params,
     prices,
     prevPriceCents,
     bars: keyed(data.bars),
@@ -297,6 +311,24 @@ function applyNews(state: ExchangeState, message: Of<'news'>): ExchangeState {
   const { op, item } = message.data
   const rest = state.news.filter((n) => n.news_id !== item.news_id)
   return { ...state, news: op === 'add' ? [item, ...rest].slice(0, NEWS_LIMIT) : rest }
+}
+
+function applyConfig(state: ExchangeState, data: ConfigData): ExchangeState {
+  const activeIds = (drinks: DrinkInfo[]) =>
+    drinks
+      .filter((d) => d.active)
+      .map((d) => d.drink_id)
+      .join(',')
+  const moved =
+    activeIds(state.drinks) !== activeIds(data.drinks) ||
+    state.run?.candle_interval_ms !== data.run.candle_interval_ms
+  return {
+    ...state,
+    run: data.run,
+    drinks: data.drinks,
+    params: data.params,
+    awaitingResync: state.awaitingResync || moved,
+  }
 }
 
 function applyTheme(state: ExchangeState, theme: ThemeData): ExchangeState {

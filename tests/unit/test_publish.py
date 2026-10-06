@@ -10,14 +10,16 @@ from typing import Any, cast
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.db.codec import tick_prices
+from app.db.mapping import params_to_json
 from app.db.news import NewsItem
 from app.realtime.hub import Hub
 from app.realtime.messages import Envelope, Snapshot
-from app.realtime.publish import Publisher, seeded_book, snapshot
+from app.realtime.publish import Publisher, active_drink_ids, seeded_book, snapshot
 from app.runtime.earnings import DrinkEarnings, EarningsAggregate
 from app.runtime.history import HistoryRing, TickEntry
 from app.runtime.holder import (
     CommittedLine,
+    ConfigChanged,
     DomainEvent,
     MarketEventEnded,
     MarketEventStarted,
@@ -56,10 +58,20 @@ class RecordingSocket:
         pass
 
 
-def _spec() -> MarketSpec:
+def _spec(removed: frozenset[str] = frozenset()) -> MarketSpec:
     return MarketSpec.from_drinks(
         [
-            DrinkSpec(name=n, p_min=1.5, p_max=5.0, p0=2.6, a=1.0, d=0.1, s0=1.0, c=0.1)
+            DrinkSpec(
+                name=n,
+                p_min=1.5,
+                p_max=5.0,
+                p0=2.6,
+                a=1.0,
+                d=0.1,
+                s0=1.0,
+                c=0.1,
+                active=n not in removed,
+            )
             for n in ("Bier", "Wijn", "Fris")
         ],
         Params(step_quant=0.1),
@@ -79,8 +91,12 @@ def _entries() -> list[TickEntry]:
     return entries
 
 
-def _holder(news: int = 3) -> MarketHolder:
-    spec = _spec()
+def _holder(
+    news: int = 3,
+    removed: frozenset[str] = frozenset(),
+    sales: tuple[tuple[int, int, int], ...] = (),
+) -> MarketHolder:
+    spec = _spec(removed)
     ring = HistoryRing(15 * 60_000)
     ring.load(_entries())
     run = RehydratedRun(
@@ -92,7 +108,7 @@ def _holder(news: int = 3) -> MarketHolder:
         bar_price_cents=MappingProxyType({d: 260 for d in DRINKS}),
         wall_ts_ms=T0,
         ring=ring,
-        earnings=EarningsAggregate.from_rows([(11, 3, 780)]),
+        earnings=EarningsAggregate.from_rows([(11, 3, 780), *sales]),
         news=tuple(
             NewsItem(news_id=i, ts_ms=T0 + i, level="info", text=f"n{i}")
             for i in range(1, news + 1)
@@ -112,7 +128,8 @@ def _publish(events: list[DomainEvent], holder: MarketHolder | None = None) -> l
         hub = Hub(clock=clock, replay_window_ms=60_000)
         socket = RecordingSocket()
         hub.connect(socket)
-        publisher = Publisher(hub, seeded_book(holder or _holder()))
+        held = holder or _holder()
+        publisher = Publisher(hub, seeded_book(held), active=active_drink_ids(held))
         publisher(events)
         for _ in range(100):
             await asyncio.sleep(0)
@@ -267,3 +284,99 @@ def test_no_snapshot_without_a_live_run() -> None:
 def test_the_snapshot_reads_nothing_but_memory() -> None:
     """The holder's engine is `None` here; any database read would fail."""
     assert snapshot(_holder(), tick_interval_ms=1_000) is not None
+
+
+WIJN_REMOVED = frozenset({"Wijn"})
+
+
+def test_the_snapshot_lists_every_drink_with_active_and_prices_bars_for_active_ones() -> None:
+    """Phase 6 SD18: a removed drink is listed, unpriced and unbarred; its sales stay."""
+    holder = _holder(removed=WIJN_REMOVED, sales=((12, 1, 260),))  # sold before the removal
+
+    data = snapshot(holder, tick_interval_ms=1_000)
+
+    assert data is not None
+    assert [(d.drink_id, d.name, d.active) for d in data.drinks] == [
+        (11, "Bier", True),
+        (12, "Wijn", False),
+        (13, "Fris", True),
+    ]
+    assert set(data.prices) == set(data.bars) == {11, 13}
+    assert set(data.earnings) == {11, 12}
+
+
+def test_tick_and_order_prices_cover_active_drinks_only() -> None:
+    holder = _holder(removed=WIJN_REMOVED)
+    order_entry = _later_tick("order", 6)
+    frames = _publish(
+        [
+            TickCommitted(run_id=4, entry=_later_tick("tick", 5)),
+            OrderCommitted(
+                run_id=4,
+                order_id=77,
+                lines=(CommittedLine(11, 2, 260, 520),),
+                total_cents=520,
+                earnings_delta={11: DrinkEarnings(qty=2, revenue_cents=520)},
+                entry=order_entry,
+            ),
+        ],
+        holder,
+    )
+
+    assert set(frames[0]["data"]["drinks"]) == {"11", "13"}
+    assert set(frames[1]["data"]["prices"]) == {"11", "13"}
+
+
+def _config(
+    version: int, active: tuple[bool, bool, bool], candle_ms: int = 60_000
+) -> ConfigChanged:
+    return ConfigChanged(
+        run_id=4,
+        version=version,
+        revision=3,
+        name="Borrel",
+        tick_interval_ms=1_000,
+        candle_interval_ms=candle_ms,
+        quote_grace_versions=2,
+        drinks=tuple(
+            (d, n, on) for d, n, on in zip(DRINKS, ("Bier", "Wijn", "Fris"), active, strict=True)
+        ),
+        params=Params(step_quant=0.1),
+    )
+
+
+def test_config_changed_is_one_config_message_at_the_new_version() -> None:
+    """Phase 6 SD18, PD5, AC12: the run, every drink with `active`, the params as the snapshot's."""
+    frames = _publish([_config(9, (True, False, True))])
+
+    assert len(frames) == 1
+    (frame,) = frames
+    assert (frame["type"], frame["version"], frame["run_id"]) == ("config", 9, 4)
+    assert frame["data"] == {
+        "revision": 3,
+        "run": {
+            "run_id": 4,
+            "name": "Borrel",
+            "tick_interval_ms": 1_000,
+            "candle_interval_ms": 60_000,
+            "quote_grace_versions": 2,
+        },
+        "drinks": [
+            {"drink_id": 11, "name": "Bier", "active": True},
+            {"drink_id": 12, "name": "Wijn", "active": False},
+            {"drink_id": 13, "name": "Fris", "active": True},
+        ],
+        "params": params_to_json(Params(step_quant=0.1)),
+    }
+    Envelope.model_validate(frame)
+
+
+def test_after_a_config_the_ticks_follow_its_active_set() -> None:
+    frames = _publish(
+        [
+            _config(9, (True, False, True)),
+            TickCommitted(run_id=4, entry=_later_tick("tick", 10)),
+        ]
+    )
+
+    assert set(frames[1]["data"]["drinks"]) == {"11", "13"}

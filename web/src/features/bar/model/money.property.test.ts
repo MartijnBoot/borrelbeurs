@@ -150,7 +150,7 @@ function runCase(seed: number): void {
     return {
       version,
       run: RUN,
-      drinks: DRINKS.map((d) => ({ drink_id: d, name: `D${d}` })),
+      drinks: DRINKS.map((d) => ({ drink_id: d, name: `D${d}`, active: true })),
       params: {},
       prices: record((c) => ({ price_cents: c, chart_price_cents: c })),
       bars: {},

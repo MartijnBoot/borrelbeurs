@@ -244,15 +244,18 @@
       "drinks": [
         {
           "drink_id": 1,
-          "name": "Bier"
+          "name": "Bier",
+          "active": true
         },
         {
           "drink_id": 2,
-          "name": "Wijn"
+          "name": "Wijn",
+          "active": true
         },
         {
           "drink_id": 3,
-          "name": "Fris"
+          "name": "Fris",
+          "active": true
         }
       ],
       "params": {
@@ -379,10 +382,71 @@
       "t_end_ms": 1759312804000
     }
   },
+  "config": {
+    "v": 1,
+    "type": "config",
+    "seq": 10,
+    "ts_ms": 1759312804000,
+    "run_id": 1,
+    "version": 8,
+    "data": {
+      "revision": 2,
+      "run": {
+        "run_id": 1,
+        "tick_interval_ms": 1000,
+        "candle_interval_ms": 60000,
+        "quote_grace_versions": 2,
+        "name": "Borrel"
+      },
+      "drinks": [
+        {
+          "drink_id": 1,
+          "name": "Bier",
+          "active": true
+        },
+        {
+          "drink_id": 2,
+          "name": "Wijn",
+          "active": true
+        },
+        {
+          "drink_id": 3,
+          "name": "Fris",
+          "active": false
+        }
+      ],
+      "params": {
+        "alpha_price": 0.0,
+        "lambda_orders": 0.8,
+        "eta": 0.6,
+        "K": 12.0,
+        "step_quant": 0.1,
+        "phi_persist": 0.03,
+        "decay_rho": 0.98,
+        "history_window_minutes": 15.0,
+        "refresh_minutes": 1.0,
+        "idle_decay_minutes": 1.0,
+        "idle_strength": 0.5,
+        "idle_targets": [],
+        "idle_rise_minutes": 1.0,
+        "idle_rise_strength": 0.5,
+        "idle_rise_targets": [],
+        "bm_enabled": true,
+        "bm_sigma": 0.15,
+        "bm_dt_minutes": 1.0,
+        "bm_sigma_y": 0.18,
+        "flow_vol_amp": 0.7,
+        "flow_beta": 0.25,
+        "y_clip": 6.0,
+        "auto_calibrate_s0": false,
+        "demand_enabled": true
+      }
+    }
+  },
   "resync": {
     "v": 1,
     "type": "resync",
-    "seq": 9,
+    "seq": 10,
     "ts_ms": 1759312804000,
     "run_id": 1,
     "version": 8,

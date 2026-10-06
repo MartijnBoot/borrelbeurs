@@ -35,7 +35,7 @@ function snapshotData(version: number, cents: number): SnapshotData {
   return {
     version,
     run: RUN,
-    drinks: [{ drink_id: 1, name: 'Bier' }],
+    drinks: [{ drink_id: 1, name: 'Bier', active: true }],
     params: {},
     prices: { 1: { price_cents: cents, chart_price_cents: cents } },
     bars: {},

@@ -47,7 +47,7 @@ from app.runtime.earnings import DrinkEarnings, EarningsAggregate
 from app.runtime.history import HistoryRing, TickEntry
 from app.runtime.market_events import ActiveEvent
 from app.runtime.rehydrate import RehydratedRun
-from exchange import EngineState, MarketSpec
+from exchange import EngineState, MarketSpec, Params
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +124,33 @@ class MarketEventEnded:
     event: ActiveEvent
 
 
-DomainEvent = TickCommitted | OrderCommitted | NewsChanged | MarketEventStarted | MarketEventEnded
+@dataclass(frozen=True)
+class ConfigChanged:
+    """A committed live config write (Phase 6 SD18): the run and every drink as now configured.
+
+    `drinks` are `(drink_id, name, active)` in slot order; `version` is the
+    transition's engine version, `revision` its config revision.
+    """
+
+    run_id: int
+    version: int
+    revision: int
+    name: str
+    tick_interval_ms: int
+    candle_interval_ms: int
+    quote_grace_versions: int
+    drinks: tuple[tuple[int, str, bool], ...]
+    params: Params
+
+
+DomainEvent = (
+    TickCommitted
+    | OrderCommitted
+    | NewsChanged
+    | MarketEventStarted
+    | MarketEventEnded
+    | ConfigChanged
+)
 Sink = Callable[[Sequence[DomainEvent]], None]
 
 

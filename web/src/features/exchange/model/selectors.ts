@@ -11,6 +11,21 @@ export function pulseDirection(state: ExchangeState, drinkId: DrinkId): PulseDir
 }
 
 export const selectDrinks = (state: ExchangeState) => state.drinks
+const activeOf = new WeakMap<ExchangeState['drinks'], ExchangeState['drinks']>()
+
+/**
+ * The drinks not removed from the live run (Phase 6 SD18), in slot order.
+ * Memoised on `drinks`, so a `useExchange` selector gets the same array back
+ * until a snapshot or `config` replaces it.
+ */
+export function selectActiveDrinks(state: ExchangeState): ExchangeState['drinks'] {
+  let active = activeOf.get(state.drinks)
+  if (active === undefined) {
+    active = state.drinks.filter((d) => d.active)
+    activeOf.set(state.drinks, active)
+  }
+  return active
+}
 export const selectPrice = (state: ExchangeState, drinkId: DrinkId) => state.prices[drinkId]
 export const selectBars = (state: ExchangeState, drinkId: DrinkId) => state.bars[drinkId]
 export const selectNews = (state: ExchangeState) => state.news

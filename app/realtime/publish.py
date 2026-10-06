@@ -12,8 +12,16 @@ it only builds frames and enqueues them -- `Hub.broadcast` never awaits (SD29).
   incremental candles agree with the snapshot's `bars_from_ring`.
 - `NewsChanged` -> `news`; `MarketEventStarted` / `MarketEventEnded` ->
   `market_event` with absolute times.
+- `ConfigChanged` -> `config` (Phase 6 SD18, PD5): the run, every drink with
+  `active`, the params. Prices it moved reach clients on the next tick.
 
 Every envelope carries the committed engine `version`.
+
+**Active drinks only (Phase 6 SD18).** A removed drink keeps its engine slot,
+so a committed tick still prices it; `tick`, `order` and the snapshot's
+`prices` and `bars` leave it out. The publisher holds the active set it was
+built with and replaces it from each `ConfigChanged`, in event order, so a
+tick is filtered by the configuration it was committed under.
 
 `snapshot(holder, tick_interval_ms=...)` is shared by `GET /api/state` and `/ws`.
 It is built purely from holder memory -- never the database, never the engine
@@ -22,7 +30,7 @@ It is built purely from holder memory -- never the database, never the engine
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from typing import Literal
 
 from app.db.mapping import cents_from_quantised, params_to_json
@@ -30,6 +38,8 @@ from app.db.news import NewsItem
 from app.realtime.hub import Hub
 from app.realtime.messages import (
     Bar,
+    ConfigData,
+    ConfigRunInfo,
     DrinkInfo,
     DrinkPrice,
     EarningsData,
@@ -50,6 +60,7 @@ from app.realtime.messages import (
 from app.runtime.candles import CandleBook, bars_from_ring, chart_cents
 from app.runtime.history import TickEntry
 from app.runtime.holder import (
+    ConfigChanged,
     DomainEvent,
     MarketEventEnded,
     MarketEventStarted,
@@ -63,14 +74,25 @@ from app.runtime.market_events import ActiveEvent
 SNAPSHOT_NEWS = 50
 
 
-def drink_prices(entry: TickEntry) -> dict[int, DrinkPrice]:
-    """A committed tick's two price tracks per drink (SD24): charged and chart."""
+def drink_prices(entry: TickEntry, active: Collection[int] | None = None) -> dict[int, DrinkPrice]:
+    """A committed tick's two price tracks per drink (SD24): charged and chart.
+
+    With `active`, only those drinks (Phase 6 SD18).
+    """
     return {
         drink_id: DrinkPrice(
             price_cents=cents_from_quantised(p["p_q"]), chart_price_cents=chart_cents(p["p_cont"])
         )
         for drink_id, p in entry.prices.items()
+        if active is None or drink_id in active
     }
+
+
+def active_drink_ids(holder: MarketHolder) -> frozenset[int]:
+    """The drinks of the live run that are not removed; empty with no live run."""
+    if holder.spec is None:
+        return frozenset()
+    return frozenset(d for d, on in zip(holder.drink_ids, holder.spec.active, strict=True) if on)
 
 
 def _news_item(item: NewsItem) -> NewsItemData:
@@ -100,9 +122,10 @@ def _chart(entry: TickEntry) -> dict[int, int]:
 
 
 class Publisher:
-    def __init__(self, hub: Hub, candle_book: CandleBook) -> None:
+    def __init__(self, hub: Hub, candle_book: CandleBook, *, active: Collection[int]) -> None:
         self._hub = hub
         self._book = candle_book
+        self._active = frozenset(active)
 
     def __call__(self, events: Sequence[DomainEvent]) -> None:
         for event in events:
@@ -126,7 +149,7 @@ class Publisher:
         if isinstance(event, TickCommitted):
             entry = event.entry
             candles = self._book.update(entry.wall_ts_ms, entry.source, _chart(entry))
-            prices = drink_prices(entry)
+            prices = drink_prices(entry, self._active)
             self._broadcast(
                 "tick",
                 event.run_id,
@@ -166,9 +189,12 @@ class Publisher:
                         d: EarningsData(qty=e.qty, revenue_cents=e.revenue_cents)
                         for d, e in event.earnings_delta.items()
                     },
-                    prices=drink_prices(entry),
+                    prices=drink_prices(entry, self._active),
                 ),
             )
+        elif isinstance(event, ConfigChanged):
+            self._active = frozenset(d for d, _, on in event.drinks if on)
+            self._broadcast("config", event.run_id, event.version, config_data(event))
         elif isinstance(event, NewsChanged):
             self._broadcast(
                 "news",
@@ -190,6 +216,21 @@ class Publisher:
             )
 
 
+def config_data(event: ConfigChanged) -> ConfigData:
+    return ConfigData(
+        revision=event.revision,
+        run=ConfigRunInfo(
+            run_id=event.run_id,
+            name=event.name,
+            tick_interval_ms=event.tick_interval_ms,
+            candle_interval_ms=event.candle_interval_ms,
+            quote_grace_versions=event.quote_grace_versions,
+        ),
+        drinks=[DrinkInfo(drink_id=d, name=name, active=on) for d, name, on in event.drinks],
+        params=params_to_json(event.params),
+    )
+
+
 def snapshot(holder: MarketHolder, *, tick_interval_ms: int) -> Snapshot | None:
     """The client-visible market, from memory only; `None` with no live run."""
     if holder.is_empty or holder.ring == ():
@@ -197,6 +238,7 @@ def snapshot(holder: MarketHolder, *, tick_interval_ms: int) -> Snapshot | None:
     assert holder.run_id is not None and holder.spec is not None
     latest = holder.ring[-1]
     names: Mapping[int, str] = dict(zip(holder.drink_ids, holder.spec.names, strict=True))
+    active = active_drink_ids(holder)
     return Snapshot(
         version=latest.version,
         run=RunInfo(
@@ -205,12 +247,13 @@ def snapshot(holder: MarketHolder, *, tick_interval_ms: int) -> Snapshot | None:
             candle_interval_ms=holder.candle_interval_ms,
             quote_grace_versions=holder.quote_grace_versions,
         ),
-        drinks=[DrinkInfo(drink_id=d, name=names[d]) for d in holder.drink_ids],
+        drinks=[DrinkInfo(drink_id=d, name=names[d], active=d in active) for d in holder.drink_ids],
         params=params_to_json(holder.spec.params),
-        prices=drink_prices(latest),
+        prices=drink_prices(latest, active),
         bars={
             d: [Bar(t_ms=c.t_ms, o=c.o, h=c.h, l=c.l, c=c.c) for c in series]
             for d, series in bars_from_ring(holder.ring, holder.candle_interval_ms).items()
+            if d in active
         },
         news=[_news_item(n) for n in reversed(holder.news[-SNAPSHOT_NEWS:])],
         earnings={

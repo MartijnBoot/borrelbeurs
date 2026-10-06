@@ -50,11 +50,16 @@ const NAMES = [
 export interface Drink {
   drink_id: number
   name: string
+  active: boolean
 }
 
-/** `n` drinks, ids 1..n; `names` overrides the first few names. */
+/** `n` active drinks, ids 1..n; `names` overrides the first few names. */
 export function drinks(n: number, names: string[] = []): Drink[] {
-  return Array.from({ length: n }, (_, i) => ({ drink_id: i + 1, name: names[i] ?? NAMES[i] }))
+  return Array.from({ length: n }, (_, i) => ({
+    drink_id: i + 1,
+    name: names[i] ?? NAMES[i],
+    active: true,
+  }))
 }
 
 const CANDLE_MS = 60_000

@@ -45,7 +45,7 @@ from app.db.models import Run
 from app.db.session import create_engine
 from app.db.theme import get_theme
 from app.realtime.hub import Hub
-from app.realtime.publish import Publisher, seeded_book
+from app.realtime.publish import Publisher, active_drink_ids, seeded_book
 from app.runtime.clock import Clock
 from app.runtime.holder import DomainEvent, MarketHolder
 from app.runtime.rehydrate import RehydratedRun, rehydrate
@@ -158,7 +158,7 @@ async def start_runtime(
             replay_window_ms = DEFAULT_REPLAY_WINDOW_MS
 
         hub = Hub(clock=clock, replay_window_ms=replay_window_ms)
-        sink.target = Publisher(hub, seeded_book(holder))
+        sink.target = Publisher(hub, seeded_book(holder), active=active_drink_ids(holder))
         ticker = Ticker(holder, clock=clock, interval_ms=tick_interval_ms)
 
         app.state.holder = holder

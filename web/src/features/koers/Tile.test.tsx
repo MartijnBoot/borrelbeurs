@@ -22,8 +22,8 @@ function live(patch: Partial<ExchangeState> = {}): Partial<ExchangeState> {
   return {
     empty: false,
     drinks: [
-      { drink_id: 1, name: 'Bier' },
-      { drink_id: 2, name: 'Wijn' },
+      { drink_id: 1, name: 'Bier', active: true },
+      { drink_id: 2, name: 'Wijn', active: true },
     ],
     prices: { 1: price(260), 2: price(300) },
     prevPriceCents: { 1: 260, 2: 300 },
@@ -60,7 +60,7 @@ describe('Tile', () => {
   })
 
   it('renders an HTML name as text and creates no element (AC32)', () => {
-    set({ drinks: [{ drink_id: 1, name: XSS }] })
+    set({ drinks: [{ drink_id: 1, name: XSS, active: true }] })
     const { container } = render(<Tile drinkId={1} />)
     expect(screen.getByText(XSS)).toBeTruthy()
     expect(container.querySelector('img')).toBeNull()

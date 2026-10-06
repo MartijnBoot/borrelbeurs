@@ -25,8 +25,8 @@ function snapshot(earnings: SnapshotData['earnings']): SnapshotData {
     version: 5,
     run: RUN,
     drinks: [
-      { drink_id: 1, name: 'Bier' },
-      { drink_id: 2, name: 'Cola' },
+      { drink_id: 1, name: 'Bier', active: true },
+      { drink_id: 2, name: 'Cola', active: true },
     ],
     params: {},
     prices: {
