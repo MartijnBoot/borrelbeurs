@@ -1,0 +1,48 @@
+/* Phase 5 SD15, SD18: v1's financial overview; theme tokens only. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.2rem;
+  color: var(--text);
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--grid);
+}
+
+.label {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.value {
+  color: var(--accent);
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.drinks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text);
+}
