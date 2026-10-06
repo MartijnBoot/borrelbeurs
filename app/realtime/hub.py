@@ -9,6 +9,12 @@ exactly the frames it missed or `None`, meaning "send a snapshot" (AC21). A
 replay longer than `QUEUE_LIMIT` is `None` too: it is enqueued before the
 writer can drain anything, so it would overflow into a `resync` mid-replay.
 
+**Go-live (Phase 6 PD11).** `adopt_run` takes the new run's replay window,
+clears the replay log and moves `seq` on by one, so no `(boot_id, last_seq)`
+from before can be answered with a replay: every client gets the new run's
+snapshot, including one reconnecting with the very `seq` it last held.
+`unicast_all` then sends that snapshot to everyone connected.
+
 **Backpressure (SD29, D-34).** Each connection has a bounded queue of
 `QUEUE_LIMIT` frames and one writer task. `broadcast` and `unicast` are plain
 functions: they serialise once and enqueue, and never await, so neither the
@@ -152,6 +158,19 @@ class Hub:
         """Send one frame to one client, stamped with the current `seq`, which does not move."""
         frame = envelope.model_copy(update={"seq": self._seq}).model_dump_json()
         connection.enqueue(envelope.type, frame)
+
+    def unicast_all(self, envelope: Envelope) -> None:
+        """`unicast` to every connected client, serialised once."""
+        frame = envelope.model_copy(update={"seq": self._seq}).model_dump_json()
+        for connection in tuple(self._connections):
+            connection.enqueue(envelope.type, frame)
+
+    def adopt_run(self, run_id: int, *, replay_window_ms: int) -> None:
+        """A run went live in this process (PD11): no replay reaches across it."""
+        self._replay_window_ms = replay_window_ms
+        self._log.clear()
+        self._seq += 1
+        self._run_id, self._version = run_id, None
 
     def resync_frame(self) -> str:
         return Envelope(

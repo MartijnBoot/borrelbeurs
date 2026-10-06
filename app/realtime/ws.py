@@ -115,10 +115,15 @@ class _Session:
         self.hub: Hub = state.hub
         self.holder: MarketHolder = state.holder
         self.clock: Clock = state.clock
-        self.tick_interval_ms: int = state.tick_interval_ms
         self.app_state = state
         self.connection: Connection | None = None
         self._arrivals: deque[float] = deque()
+
+    @property
+    def tick_interval_ms(self) -> int:
+        """Read per use: a go-live in this process changes it (Phase 6 PD11)."""
+        interval: int = self.app_state.tick_interval_ms
+        return interval
 
     def envelope(self, kind: ServerMessageType, data: ServerData) -> Envelope:
         state = self.holder.state

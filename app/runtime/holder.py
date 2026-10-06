@@ -25,6 +25,12 @@ hub, so this module never imports the hub, and the sink is never called with
 the lock held (AC14). Inside the lock there is pure computation and one short
 transaction, nothing else.
 
+**Go-live (Phase 6 SD3)** is the one other way in: `mutate` refuses an empty
+holder, so `adopt` takes the lock, refuses unless the holder is empty, loads the
+run that was just committed live -- through the same `rehydrate` boot uses --
+and swaps it in. A load that fails after that commit calls `on_diverged`: the
+database has a live run this process does not hold.
+
 Time comes from the injected `Clock` (SD32), never from `time`.
 """
 
@@ -42,6 +48,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from app.core.errors import AppError
 from app.db.engine_state import StaleState
 from app.db.news import NewsItem
+from app.db.runs import LiveRunExists
 from app.runtime.clock import Clock
 from app.runtime.earnings import DrinkEarnings, EarningsAggregate
 from app.runtime.history import HistoryRing, TickEntry
@@ -219,18 +226,9 @@ class MarketHolder:
         self._step_timeout_s = step_timeout_s
         self._lock = asyncio.Lock()
 
-    @classmethod
-    def from_rehydrated(
-        cls,
-        run: RehydratedRun,
-        *,
-        engine: AsyncEngine,
-        clock: Clock,
-        sink: Sink,
-        on_diverged: Callable[[], None] | None = None,
-        step_timeout_s: float | None = None,
-    ) -> MarketHolder:
-        view = MarketView(
+    @staticmethod
+    def _view_of(run: RehydratedRun) -> MarketView:
+        return MarketView(
             run_id=run.run_id,
             run_seed=run.run_seed,
             spec=run.spec,
@@ -243,8 +241,20 @@ class MarketHolder:
             quote_grace_versions=run.quote_grace_versions,
             candle_interval_ms=run.candle_interval_ms,
         )
+
+    @classmethod
+    def from_rehydrated(
+        cls,
+        run: RehydratedRun,
+        *,
+        engine: AsyncEngine,
+        clock: Clock,
+        sink: Sink,
+        on_diverged: Callable[[], None] | None = None,
+        step_timeout_s: float | None = None,
+    ) -> MarketHolder:
         return cls(
-            view,
+            cls._view_of(run),
             ring=run.ring,
             earnings=run.earnings,
             engine=engine,
@@ -255,7 +265,15 @@ class MarketHolder:
         )
 
     @classmethod
-    def empty(cls, *, engine: AsyncEngine, clock: Clock, sink: Sink) -> MarketHolder:
+    def empty(
+        cls,
+        *,
+        engine: AsyncEngine,
+        clock: Clock,
+        sink: Sink,
+        on_diverged: Callable[[], None] | None = None,
+        step_timeout_s: float | None = None,
+    ) -> MarketHolder:
         """No live run (SD16): readable, and every `mutate` is 409 `no_live_run`."""
         view = MarketView(
             run_id=None,
@@ -277,6 +295,8 @@ class MarketHolder:
             engine=engine,
             clock=clock,
             sink=sink,
+            on_diverged=on_diverged,
+            step_timeout_s=step_timeout_s,
         )
 
     # --- read-only properties ---------------------------------------------------
@@ -340,6 +360,24 @@ class MarketHolder:
     @property
     def earnings(self) -> Mapping[int, DrinkEarnings]:
         return self._earnings.snapshot()
+
+    # --- go-live: the one way into an empty holder ---------------------------------
+
+    async def adopt(self, load: Callable[[], Awaitable[RehydratedRun]]) -> None:
+        """Under the lock, load the run just committed live and hold it (Phase 6 SD3)."""
+        async with self._lock:
+            if not self.is_empty:
+                raise LiveRunExists(f"run {self.run_id} is already live in this process")
+            try:
+                run = await load()
+            except Exception:
+                logger.error("adopt_failed", extra={"op": "go_live"})
+                if self._on_diverged is not None:
+                    self._on_diverged()
+                raise
+            self._view = self._view_of(run)
+            self._ring = run.ring
+            self._earnings = run.earnings
 
     # --- the one mutation path ----------------------------------------------------
 

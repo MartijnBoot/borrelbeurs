@@ -80,7 +80,7 @@ def upgrade_to_head() -> None:
     command.upgrade(config, "head")
 
 
-async def _tick_interval_ms(engine: AsyncEngine, run_id: int) -> int:
+async def run_tick_interval_ms(engine: AsyncEngine, run_id: int) -> int:
     async with engine.connect() as conn:
         value = (
             await conn.execute(select(Run.tick_interval_ms).where(Run.run_id == run_id))
@@ -150,19 +150,28 @@ async def start_runtime(
                 on_diverged=on_lock_lost,
                 step_timeout_s=step_timeout_s,
             )
-            tick_interval_ms = await _tick_interval_ms(engine, run.run_id)
+            tick_interval_ms = await run_tick_interval_ms(engine, run.run_id)
             replay_window_ms = round(run.spec.params.history_window_minutes * 60_000)
         else:
-            holder = MarketHolder.empty(engine=engine, clock=clock, sink=sink)
+            # A go-live in this process (Phase 6 SD3) fills it, so it needs both.
+            holder = MarketHolder.empty(
+                engine=engine,
+                clock=clock,
+                sink=sink,
+                on_diverged=on_lock_lost,
+                step_timeout_s=step_timeout_s,
+            )
             tick_interval_ms = DEFAULT_TICK_INTERVAL_MS
             replay_window_ms = DEFAULT_REPLAY_WINDOW_MS
 
         hub = Hub(clock=clock, replay_window_ms=replay_window_ms)
-        sink.target = Publisher(hub, seeded_book(holder), active=active_drink_ids(holder))
+        publisher = Publisher(hub, seeded_book(holder), active=active_drink_ids(holder))
+        sink.target = publisher
         ticker = Ticker(holder, clock=clock, interval_ms=tick_interval_ms)
 
         app.state.holder = holder
         app.state.hub = hub
+        app.state.publisher = publisher
         app.state.ticker = ticker
         app.state.tick_interval_ms = tick_interval_ms
         app.state.draining = False

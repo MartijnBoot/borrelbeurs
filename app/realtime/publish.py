@@ -127,6 +127,11 @@ class Publisher:
         self._book = candle_book
         self._active = frozenset(active)
 
+    def adopt(self, candle_book: CandleBook, *, active: Collection[int]) -> None:
+        """A run went live in this process (Phase 6 PD11): its candle book and drinks."""
+        self._book = candle_book
+        self._active = frozenset(active)
+
     def __call__(self, events: Sequence[DomainEvent]) -> None:
         for event in events:
             self._publish(event)

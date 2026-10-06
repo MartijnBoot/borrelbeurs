@@ -24,6 +24,10 @@ runs across an uncommitted gap (AC18a).
 
 **No live run (SD16):** the ticker idles on the grid, mutating nothing.
 
+**Go-live (Phase 6 SD3)** calls `adopt_interval` with the run's interval: the
+grid is re-anchored at that moment and a ticker asleep on the old grid is woken
+to sleep again on the new one. Its task is never stopped.
+
 Time is the injected `Clock` only (SD32). `last_iteration_monotonic` is when an
 iteration last completed (committed, failed or idle), for `/healthz` (SD15).
 """
@@ -67,8 +71,7 @@ class Ticker:
         interval_ms: int,
         budget_ms: int = DEFAULT_CATCH_UP_BUDGET_MS,
     ) -> None:
-        if interval_ms <= 0:
-            raise ValueError(f"tick interval must be positive, got {interval_ms} ms")
+        _check_interval(interval_ms)
         self._holder = holder
         self._clock = clock
         self._interval_ms = interval_ms
@@ -82,6 +85,7 @@ class Ticker:
         # The last committed tick's actual stamp, which events end against (SD29).
         self._last_stamp_ms = 0
         self._task: asyncio.Task[None] | None = None
+        self._reanchored = asyncio.Event()
         self.last_iteration_monotonic: float | None = None
 
     @property
@@ -108,11 +112,19 @@ class Ticker:
         with contextlib.suppress(asyncio.CancelledError):
             await task
 
+    def adopt_interval(self, interval_ms: int) -> None:
+        """Tick every `interval_ms` from now, on a grid anchored now (Phase 6 SD3)."""
+        _check_interval(interval_ms)
+        self._interval_ms = interval_ms
+        self._anchor()
+        self._reanchored.set()
+
     async def run(self) -> None:
         self._anchor()
         while not self._stopping:
             due = self._mono_anchor + (self._k + 1) * self._interval_ms / 1000
-            await self._clock.sleep_until(due)
+            if await self._sleep_until(due):
+                continue  # re-anchored while asleep: sleep again on the new grid
             if self._stopping:
                 return
             self._busy = True
@@ -121,6 +133,20 @@ class Ticker:
             finally:
                 self._busy = False
             self.last_iteration_monotonic = self._clock.monotonic()
+
+    async def _sleep_until(self, due: float) -> bool:
+        """Sleep until `due` on the clock; whether `adopt_interval` cut the sleep short."""
+        sleeping = asyncio.ensure_future(self._clock.sleep_until(due))
+        woken = asyncio.ensure_future(self._reanchored.wait())
+        try:
+            await asyncio.wait({sleeping, woken}, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            sleeping.cancel()
+            woken.cancel()
+        if self._reanchored.is_set():
+            self._reanchored.clear()
+            return True
+        return False
 
     def _anchor(self) -> None:
         self._wall_anchor = self._clock.wall_ms()
@@ -283,3 +309,8 @@ class Ticker:
             )
 
         await self._guarded("event_end", step)
+
+
+def _check_interval(interval_ms: int) -> None:
+    if interval_ms <= 0:
+        raise ValueError(f"tick interval must be positive, got {interval_ms} ms")

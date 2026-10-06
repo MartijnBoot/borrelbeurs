@@ -446,3 +446,42 @@ def test_stop_during_a_slot_lets_that_slot_commit(settings: Settings, database_u
 
 def test_the_budget_is_adr_0003s() -> None:
     assert DEFAULT_CATCH_UP_BUDGET_MS == 30_000
+
+
+def test_adopt_interval_re_anchors_a_sleeping_ticker_on_the_new_grid(
+    settings: Settings, database_url: str
+) -> None:
+    """Phase 6 SD3: an idle ticker adopts a run going live, ticking at its interval from now."""
+
+    async def scenario() -> list[tuple[int, str, int]]:
+        async with _running(settings, database_url, empty=True) as h:
+            await h.advance(INTERVAL // 2)
+            run = await _live(h.engine)
+            now = h.clock.wall_ms()
+
+            async def load() -> RehydratedRun:
+                return run
+
+            await h.holder.adopt(load)
+            h.ticker.adopt_interval(INTERVAL // 4)
+            await h.settle()
+            for _ in range(3):
+                await h.advance(INTERVAL // 4)
+            assert now == T0 + INTERVAL // 2
+            return [r for r in await h.ticks() if r[1] == "tick"]
+
+    ticks = asyncio.run(scenario())
+
+    start = T0 + INTERVAL // 2
+    assert [r[2] for r in ticks] == [start + k * (INTERVAL // 4) for k in (1, 2, 3)]
+
+
+def test_adopt_interval_refuses_a_non_positive_interval(
+    settings: Settings, database_url: str
+) -> None:
+    async def scenario() -> None:
+        async with _running(settings, database_url, empty=True) as h:
+            with pytest.raises(ValueError, match="positive"):
+                h.ticker.adopt_interval(0)
+
+    asyncio.run(scenario())

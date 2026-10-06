@@ -43,6 +43,7 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     # Phase 6 SD2, SD4 (PD2).
     ("POST", "/api/runs"): ADMIN,
     ("GET", "/api/runs/current"): ADMIN,
+    ("POST", "/api/runs/{run_id}/go-live"): ADMIN,
 }
 
 ACTORS: Final = ("anonymous", "revoked", "display", "bar", "admin")
@@ -80,7 +81,7 @@ def _act(client: TestClient, mint_key: MintKey, actor: str) -> None:
 
 
 def _status(client: TestClient, method: str, path: str) -> int:
-    url = path.replace("{news_id}", "999999")
+    url = path.replace("{news_id}", "999999").replace("{run_id}", "999999")
     if method == "WS":
         from starlette.websockets import WebSocketDisconnect
 

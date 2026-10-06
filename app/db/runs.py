@@ -16,6 +16,7 @@ removal are Phase 6.
 
 from __future__ import annotations
 
+import dataclasses
 import secrets
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -28,7 +29,7 @@ from app.core.errors import AppError
 from app.db.engine_state import insert_state, insert_tick
 from app.db.mapping import DrinkRow, params_to_json, spec_from_rows
 from app.db.models import Drink, Run, RunConfigRevision
-from exchange import EngineState, Params, initial_state
+from exchange import EngineState, Params, anchor_s0_to_current_y, initial_state
 
 _NAME_INDEX = "drink_name_live"
 _ONE_LIVE_INDEX = "run_one_live"
@@ -48,8 +49,15 @@ class RunNotDraft(AppError):
     code = "run_not_draft"
 
 
+class RunNotFound(AppError):
+    """No run has this id (Phase 6 PD4)."""
+
+    status_code = 404
+    code = "run_not_found"
+
+
 class RunNotReady(AppError):
-    """A draft run that cannot go live as configured: no drinks, or `auto_calibrate_s0` (PD14)."""
+    """A draft run that cannot go live as configured: it has no drinks."""
 
     status_code = 409
     code = "run_not_ready"
@@ -248,27 +256,51 @@ async def create_run(engine: AsyncEngine, *, name: str, author: str) -> int:
     return run_id
 
 
-async def go_live(engine: AsyncEngine, run_id: int, *, now_ms: int) -> EngineState:
-    """Move a draft run to live with its initial state and `reset` tick, in one transaction."""
+async def go_live(
+    engine: AsyncEngine, run_id: int, *, now_ms: int, author: str = "cli"
+) -> EngineState:
+    """Move a draft run to live with its initial state and `reset` tick, in one transaction.
+
+    With `auto_calibrate_s0`, the same transaction anchors `s0` on the initial
+    prices (`anchor_s0_to_current_y`), writes each `drink.s0`, and appends one
+    config revision by `author` (Phase 6 SD3). `author` is the API key's label,
+    or `"cli"` from `app.cli.runs`.
+    """
     async with engine.begin() as conn:
         row = (
             await conn.execute(
-                select(Run.status, Run.params).where(Run.run_id == run_id).with_for_update()
+                select(Run.status, Run.name, Run.params)
+                .where(Run.run_id == run_id)
+                .with_for_update()
             )
         ).one_or_none()
         if row is None:
-            raise LookupError(f"no run {run_id}")
+            raise RunNotFound(f"no run {run_id}")
         if row.status != "draft":
             raise RunNotDraft(f"run {run_id} is {row.status}, not draft")
         drinks = await active_drinks(conn, run_id)
         if not drinks:
             raise RunNotReady(f"run {run_id} has no drinks")
         params = Params.from_dict(row.params)
-        if params.auto_calibrate_s0:
-            # `initial_state` leaves calibration to the caller, and calibrating
-            # here would rewrite `drink.s0` -- an admin edit (Phase 6).
-            raise RunNotReady(f"run {run_id} has auto_calibrate_s0 set, which go-live rejects")
         spec, drink_ids = spec_from_rows(drinks, params)
+        state = initial_state(spec, now_ms=now_ms)
+        if params.auto_calibrate_s0:
+            spec = anchor_s0_to_current_y(spec, state.y)
+            for drink_id, s0 in zip(drink_ids, spec.s0.tolist(), strict=True):
+                await conn.execute(update(Drink).where(Drink.drink_id == drink_id).values(s0=s0))
+            await append_config_revision(
+                conn,
+                run_id,
+                config={
+                    "name": row.name,
+                    "params": params_to_json(params),
+                    "drinks": [
+                        {**dataclasses.asdict(d), "s0": s0}
+                        for d, s0 in zip(drinks, spec.s0.tolist(), strict=True)
+                    ],
+                },
+                author=author,
+            )
 
         try:
             async with conn.begin_nested():
@@ -282,7 +314,6 @@ async def go_live(engine: AsyncEngine, run_id: int, *, now_ms: int) -> EngineSta
                 raise
             raise LiveRunExists(f"another run is already live; run {run_id} stays draft") from error
 
-        state = initial_state(spec, now_ms=now_ms)
         await insert_state(conn, run_id=run_id, state=state, drink_ids=drink_ids, wall_ts_ms=now_ms)
         await insert_tick(
             conn,

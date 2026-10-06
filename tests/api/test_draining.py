@@ -32,6 +32,7 @@ DRAINING_WRITES: Final[list[tuple[str, str, dict[str, Any] | None]]] = [
     ("POST", "/api/market/events", {"kind": "crash", "duration_ms": 30_000}),
     ("PUT", "/api/theme", {"preset": "blauw"}),
     ("POST", "/api/runs", {"name": "Nieuw"}),
+    ("POST", "/api/runs/999999/go-live", None),
 ]
 
 READS: Final = ("/api/state", "/api/news", "/api/auth/me", "/theme.css")

@@ -20,6 +20,7 @@ from app.db.mapping import spec_from_rows
 from app.db.runs import (
     LiveRunExists,
     RunNotDraft,
+    RunNotFound,
     RunNotReady,
     active_drinks,
     add_drink,
@@ -387,19 +388,14 @@ def test_load_state_of_a_draft_run_is_none(settings: Settings, database_url: str
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("case", ["live", "no_drinks", "auto_calibrate", "ended"])
+@pytest.mark.parametrize("case", ["live", "no_drinks", "ended"])
 def test_go_live_rejections_write_nothing(settings: Settings, database_url: str, case: str) -> None:
-    """A live or ended run, zero drinks, or `auto_calibrate_s0` (PD14) all raise."""
+    """A live or ended run, or zero drinks, raise. `auto_calibrate_s0` goes live (Phase 6 SD3)."""
 
     async def scenario() -> None:
         engine = _engine(settings, database_url)
         try:
-            params = Params.from_dict({**LIVE_CONFIG["params"], "auto_calibrate_s0": True})
-            run_id = await _draft(
-                engine,
-                params if case == "auto_calibrate" else None,
-                drinks=case != "no_drinks",
-            )
+            run_id = await _draft(engine, None, drinks=case != "no_drinks")
             expected_ticks = 0
             if case == "live":
                 await go_live(engine, run_id, now_ms=T0)
@@ -414,7 +410,6 @@ def test_go_live_rejections_write_nothing(settings: Settings, database_url: str,
                 "live": (RunNotDraft, "live"),
                 "ended": (RunNotDraft, "ended"),
                 "no_drinks": (RunNotReady, "drink"),
-                "auto_calibrate": (RunNotReady, "auto_calibrate_s0"),
             }
             error, named = expected[case]
             with pytest.raises(error, match=named):
@@ -424,7 +419,7 @@ def test_go_live_rejections_write_nothing(settings: Settings, database_url: str,
                 engine, "SELECT count(*) FROM price_tick WHERE run_id = :r", run_id
             )
             assert ticks == expected_ticks
-            if case in ("no_drinks", "auto_calibrate"):
+            if case == "no_drinks":
                 assert (
                     await _count(
                         engine,
@@ -444,7 +439,7 @@ def test_go_live_on_an_unknown_run_raises(settings: Settings, database_url: str)
     async def scenario() -> None:
         engine = _engine(settings, database_url)
         try:
-            with pytest.raises(LookupError, match="424242"):
+            with pytest.raises(RunNotFound, match="424242"):
                 await go_live(engine, 424242, now_ms=T0)
         finally:
             await engine.dispose()

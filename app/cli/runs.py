@@ -20,7 +20,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import ConfigError, get_settings
 from app.db.advisory_lock import acquire, release
-from app.db.runs import LiveRunExists, RunNotDraft, RunNotReady, go_live
+from app.db.runs import LiveRunExists, RunNotDraft, RunNotFound, RunNotReady, go_live
 from app.db.session import create_engine
 from app.runtime.clock import RealClock
 
@@ -37,7 +37,7 @@ async def make_live(run_id: int) -> int:
         if conn is None:
             raise LockHeld
         try:
-            state = await go_live(engine, run_id, now_ms=RealClock().wall_ms())
+            state = await go_live(engine, run_id, now_ms=RealClock().wall_ms(), author="cli")
         finally:
             await release(conn)
         return state.version
@@ -60,7 +60,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     except LockHeld:
         print("runs: the app is running; stop it first", file=sys.stderr)
         return 2
-    except (RunNotDraft, RunNotReady, LiveRunExists, LookupError) as error:
+    except (RunNotDraft, RunNotReady, LiveRunExists, RunNotFound) as error:
         print(f"runs: run {args.run_id} cannot go live: {error}", file=sys.stderr)
         return 1
     except (ConfigError, SQLAlchemyError, OSError) as error:
