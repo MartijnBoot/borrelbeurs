@@ -631,7 +631,11 @@ Reuse, by name:
   - `rehydrate` on the committed database equals holder memory, slot for slot and bitwise
     (AC20);
   - D2 is re-added as a new `drink_id` (AC21);
-  - removing the last active drink is 409 with no row change.
+  - removing the last active drink is 409 with no row change;
+  - **a running jump survives nowhere:** schedule a jump (and a market event's jump) on D2,
+    remove D2 while it runs, then advance past the jump's end. The held state has no pending
+    jump on D2's slot, and D2's `y` is bitwise unchanged across every advance. This pins SD13/PD17
+    at the caller, because `apply_jumps` does not read `spec.active`.
 - **Depends on:** T13, T6
 - **Autonomy note:**
   - **May decide alone:** test scenario lengths.
@@ -1371,7 +1375,7 @@ database.
 | R3 | **The spec's line references to v2 code have drifted:** `app/api/theme.py:260-285` is a 79-line file; `app/db/codec.py:291-330` is 151 lines | The behaviours it cites are real and were checked: `decode_state` demands an exact key set (`codec.py:101-109`); the empty holder refuses (`holder.py:325-326`); go-live refuses `auto_calibrate_s0` (`runs.py`, `go_live`). Only the numbers are stale. T39 does not chase them |
 | R4 | **`/assets/{id}` collides with Vite's `/assets/*.js`** | PD10's int converter; T18's `test_static.py` asserts that the bundle still serves |
 | R5 | **Mask bitwise identity.** A boolean index or `np.where` could change float results | Indexing with an all-true mask preserves order and length, so `np.mean`/`np.sum` see the same array. T2 proves it with `.tobytes()` equality plus the golden replay. Engine-guardian reviews |
-| R6 | **Hold edge case:** a bound off the step grid can requantise outside `[p_min, p_max]` | T3's property test covers non-grid bounds. Disagreement is a hard stop (pricing maths), not a builder choice |
+| R6 | **Hold edge case:** a bound off the step grid can requantise outside `[p_min, p_max]` | T3's property test covers non-grid bounds. **Resolved 2026-10-06 (human, option (a)):** the held price steps one grid point back inside `[p_min, p_max]` (nearest quotable price); recorded in AC8 and the `hold_quoted_prices` docstring |
 | R7 | **Go-live commits before adopting.** A failed adopt leaves the database live and memory empty | `adopt` failing calls `on_diverged` (the lost-lock exit). The restart rehydrates the committed live run, as every other divergence does (`holder.py` docstring) |
 | R8 | **The server chain is the critical path** (15 links), forced by `schema.d.ts` and the matrix | Builders are serial anyway (ADR 0010). The web tasks are scheduled beside the chain, so no web task waits on more than the route it consumes |
 | R9 | **The Phase 3 WS flake** (`CancelledError` on ws exit, memory note) may hit T7, T9 and T16's socket tests | Stop and report rather than retry to green (T16's autonomy note). Use `tests/api/ws_fixture.py` patterns |

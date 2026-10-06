@@ -557,7 +557,10 @@ Settled at the spec interview (2026-10-06).
   bar session shall see no Idle section. *(D-44)*
 - **AC8.** When a drink's `p_min`/`p_max`, or `step_quant`, changes on the live run, every
   affected drink's quoted price shall equal its previous quoted price clamped into the new
-  bounds and re-quantised. Every other drink's `y` shall be bitwise unchanged. *(D-45)*
+  bounds and re-quantised. Where a bound sits off the step grid and the re-quantised price
+  would fall outside `[p_min, p_max]`, the price shall be the nearest grid point inside the
+  bounds (e.g. `p_max` 4.75 on a 0.1 grid holds at 4.7, not 4.8). Every other drink's `y`
+  shall be bitwise unchanged. *(D-45; R6, decided 2026-10-06)*
 - **AC9.** When a scalar param, `a/d/s0/c`, `p0` or a bar price changes on the live run, no
   drink's `y` shall change in that transition. *(D-45)*
 - **AC10.** When a bound change affects a drink with a running jump, the jump shall be
