@@ -23,9 +23,21 @@
  * candle: it replaces the last bar when the bucket matches and is appended
  * otherwise. An `order` carries prices but no candle, so it moves prices only;
  * the next tick carries the bucket the order changed. Nothing is synthesised.
+ *
+ * **Quote (Phase 5 SD2, PD1).** A `snapshot`, and an in-sequence `tick` or
+ * `order`, each replace `quote` with one built from that message alone
+ * (`quote.ts`), stamped with the `receivedAt` the caller passes in -- the
+ * monotonic clock at receipt, so this stays pure. A dropped frame moves
+ * nothing, and a new `boot_id` clears it until the next snapshot.
+ *
+ * **Earnings (Phase 5 SD15, AC17).** A snapshot replaces `earnings` wholesale;
+ * an in-sequence `order` adds its `earnings_delta` per drink and records its
+ * envelope `ts_ms` as `lastOrderTsMs` (SD16), which a snapshot clears. These
+ * are the server's numbers, summed -- revenue is never computed here.
  */
 import type {
   Bar,
+  DrinkEarnings,
   DrinkPrice,
   MarketEventInfo,
   NewsItem,
@@ -34,6 +46,7 @@ import type {
   SnapshotData,
   ThemeData,
 } from './schemas'
+import { type Quote, quoteFromOrder, quoteFromSnapshot, quoteFromTick } from './quote'
 
 type Of<K extends ServerMessage['type']> = Extract<ServerMessage, { type: K }>
 
@@ -62,6 +75,12 @@ export interface ExchangeState {
   marketEvents: MarketEventInfo[]
   /** Bumped by every snapshot, so a chart knows when to `setData` again. */
   snapshotGen: number
+  /** The latest quote: one message's version and prices (Phase 5 SD2). */
+  quote: Quote | null
+  /** Per-drink sales, from the server's snapshot and order deltas only (SD15). */
+  earnings: Record<DrinkId, DrinkEarnings>
+  /** The last in-sequence `order` envelope's `ts_ms`; `null` after a snapshot (SD16). */
+  lastOrderTsMs: number | null
 }
 
 export const NEWS_LIMIT = 50
@@ -82,13 +101,22 @@ export const initialState: ExchangeState = {
   news: [],
   marketEvents: [],
   snapshotGen: 0,
+  quote: null,
+  earnings: {},
+  lastOrderTsMs: null,
 }
 
 const UNICAST: ReadonlySet<ServerMessage['type']> = new Set(['hello', 'snapshot', 'pong', 'error'])
 
-export function applyMessage(state: ExchangeState, message: ServerMessage): ExchangeState {
+export function applyMessage(
+  state: ExchangeState,
+  message: ServerMessage,
+  receivedAt: number,
+): ExchangeState {
   if (message.type === 'hello') return applyHello(state, message)
-  if (message.type === 'snapshot') return applySnapshot(state, message.seq, message.data)
+  if (message.type === 'snapshot') {
+    return applySnapshot(state, message.seq, message.data, receivedAt)
+  }
   if (message.type === 'resync') return { ...state, awaitingResync: true }
   if (state.seq === null) return state
   if (message.type === 'theme') {
@@ -101,19 +129,32 @@ export function applyMessage(state: ExchangeState, message: ServerMessage): Exch
   }
   if (state.awaitingResync) return state
   if (message.seq === state.seq) {
-    return UNICAST.has(message.type) ? applyBroadcast(state, message) : state
+    return UNICAST.has(message.type) ? applyBroadcast(state, message, receivedAt) : state
   }
   if (message.seq > state.seq + 1) return { ...state, awaitingResync: true }
   if (message.seq < state.seq) return state
-  return { ...applyBroadcast(state, message), seq: message.seq }
+  return { ...applyBroadcast(state, message, receivedAt), seq: message.seq }
 }
 
-function applyBroadcast(state: ExchangeState, message: ServerMessage): ExchangeState {
+function applyBroadcast(
+  state: ExchangeState,
+  message: ServerMessage,
+  receivedAt: number,
+): ExchangeState {
   switch (message.type) {
-    case 'tick':
-      return applyTick(state, message)
-    case 'order':
-      return applyPrices(state, message.data.prices)
+    case 'tick': {
+      const next = applyTick(state, message)
+      return { ...next, quote: quoteFromTick(message, receivedAt) ?? state.quote }
+    }
+    case 'order': {
+      const next = applyPrices(state, message.data.prices)
+      return {
+        ...next,
+        quote: quoteFromOrder(message, receivedAt) ?? state.quote,
+        earnings: withDelta(state.earnings, message.data.earnings_delta),
+        lastOrderTsMs: message.ts_ms,
+      }
+    }
     case 'market_event':
       return applyMarketEvent(state, message)
     case 'news':
@@ -154,8 +195,12 @@ function applyHello(state: ExchangeState, message: Of<'hello'>): ExchangeState {
  * the held seq stays. The client then reconnects with no `boot_id`, so the
  * server sends a snapshot rather than replaying older frames over it.
  */
-export function applyPolledState(state: ExchangeState, data: SnapshotData): ExchangeState {
-  return applySnapshot(state, state.seq, data)
+export function applyPolledState(
+  state: ExchangeState,
+  data: SnapshotData,
+  receivedAt: number,
+): ExchangeState {
+  return applySnapshot(state, state.seq, data, receivedAt)
 }
 
 /** A poll's 409 `no_live_run` (SD17). */
@@ -167,6 +212,7 @@ function applySnapshot(
   state: ExchangeState,
   seq: number | null,
   data: SnapshotData,
+  receivedAt: number,
 ): ExchangeState {
   const prices = keyed(data.prices)
   const prevPriceCents: Record<DrinkId, number> = {}
@@ -184,7 +230,23 @@ function applySnapshot(
     news: data.news,
     marketEvents: data.market_events,
     snapshotGen: state.snapshotGen + 1,
+    quote: quoteFromSnapshot(data, receivedAt),
+    earnings: keyed(data.earnings),
+    lastOrderTsMs: null,
   }
+}
+
+function withDelta(
+  earnings: Record<DrinkId, DrinkEarnings>,
+  delta: Record<string, DrinkEarnings>,
+): Record<DrinkId, DrinkEarnings> {
+  const next = { ...earnings }
+  for (const [key, line] of Object.entries(delta)) {
+    const id = Number(key)
+    const held = next[id] ?? { qty: 0, revenue_cents: 0 }
+    next[id] = { qty: held.qty + line.qty, revenue_cents: held.revenue_cents + line.revenue_cents }
+  }
+  return next
 }
 
 function applyTick(state: ExchangeState, message: Of<'tick'>): ExchangeState {

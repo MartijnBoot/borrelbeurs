@@ -3,7 +3,8 @@
  * (frontend-architecture.md, "One WebSocket client owns reconnect").
  *
  * Everything with a side effect is injected -- the socket factory,
- * `random()`, `now()`, `fetchState()`, the store -- and timers are the
+ * `random()`, `now()`, `monotonicNow()`, `fetchState()`, the store -- and
+ * timers are the
  * globals, so the tests drive it on fake timers with a fake socket.
  *
  * - **Open:** send `hello {boot_id, last_seq}` (SD16), ping every 15 s (SD14),
@@ -47,7 +48,10 @@ export interface ExchangeClientDeps {
   fetchState(): Promise<{ status: number; body: unknown }>
   onSessionLost(): void
   random(): number
+  /** The wall clock, for skew (SD18). */
   now(): number
+  /** The monotonic clock (`performance.now`): each quote's `receivedAt` (Phase 5 PD1). */
+  monotonicNow(): number
   store: StoreApi<ExchangeState>
 }
 
@@ -118,6 +122,7 @@ export function createExchangeClient(deps: ExchangeClientDeps): ExchangeClient {
   function onFrame(raw: unknown): void {
     armDeadline()
     const received = deps.now()
+    const receivedAt = deps.monotonicNow()
     let json: unknown
     try {
       json = JSON.parse(String(raw))
@@ -136,7 +141,7 @@ export function createExchangeClient(deps: ExchangeClientDeps): ExchangeClient {
     }
     const offset = skew.offsetMs()
     update((state) => {
-      const next = applyMessage(state, message)
+      const next = applyMessage(state, message, receivedAt)
       return offset === null || offset === next.skewOffsetMs
         ? next
         : { ...next, skewOffsetMs: offset }
@@ -205,7 +210,8 @@ export function createExchangeClient(deps: ExchangeClientDeps): ExchangeClient {
     } else if (result.status === 200) {
       const data = SnapshotData.safeParse(result.body)
       if (data.success) {
-        update((state) => applyPolledState(state, data.data))
+        const receivedAt = deps.monotonicNow()
+        update((state) => applyPolledState(state, data.data, receivedAt))
         polledSinceOpen = true
       }
     }

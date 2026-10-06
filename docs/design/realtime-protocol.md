@@ -49,7 +49,7 @@ what makes absolute end-timestamps usable.
 | `hello` | Server time, `boot_id`, `run_id` (`null` with no live run), `tick_interval_ms`, protocol version, your role, and the current `theme` (as below) | On connect |
 | `snapshot` | Drinks, client-relevant params, prices, the history window, recent news, earnings **aggregates only**, active market events, `version` | On connect, or on resync |
 | `tick` | `version`, `ts_ms`, prices, display prices, and a **server-bucketed bar**. ~200 bytes | 1 Hz |
-| `order` | `order_id`, lines, `total_cents`, **earnings delta**, and every drink's new `price_cents` / `chart_price_cents` (carried with the envelope's `version`) | Per accepted order |
+| `order` | `order_id`, lines, `total_cents`, **earnings delta**, and every drink's new `price_cents` / `chart_price_cents` (carried with the envelope's `version`). The bar adds `earnings_delta` per drink to the store's `earnings`; a `snapshot` replaces `earnings` wholesale (Phase 5 SD15) | Per accepted order |
 | `market_event` | `kind`, `drink_ids`, `t_start_ms`, **`t_end_ms`** | On start and end |
 | `news` | `{op: add\|delete, item}` | On change |
 | `config` | Params and drinks. *Deferred: defined by the phase that produces it (Phase 6)* | On admin change |

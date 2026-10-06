@@ -59,7 +59,7 @@ export const NewsItem = z.strictObject({
   text: z.string(),
 })
 
-const Earnings = z.strictObject({ qty: NonNegative, revenue_cents: NonNegative })
+export const DrinkEarnings = z.strictObject({ qty: NonNegative, revenue_cents: NonNegative })
 
 export const MarketEventInfo = z.strictObject({
   event_id: Int,
@@ -77,7 +77,7 @@ export const SnapshotData = z.strictObject({
   prices: z.record(IdKey, DrinkPrice),
   bars: z.record(IdKey, z.array(Bar)),
   news: z.array(NewsItem).max(50),
-  earnings: z.record(IdKey, Earnings),
+  earnings: z.record(IdKey, DrinkEarnings),
   market_events: z.array(MarketEventInfo),
 })
 
@@ -92,7 +92,7 @@ export const OrderData = z.strictObject({
   order_id: Int,
   lines: z.array(OrderLine),
   total_cents: NonNegative,
-  earnings_delta: z.record(IdKey, Earnings),
+  earnings_delta: z.record(IdKey, DrinkEarnings),
   prices: z.record(IdKey, DrinkPrice),
 })
 
@@ -174,6 +174,7 @@ export const ClientMessage = z.discriminatedUnion('type', [
 export type ClientMessage = z.infer<typeof ClientMessage>
 
 export type DrinkPrice = z.infer<typeof DrinkPrice>
+export type DrinkEarnings = z.infer<typeof DrinkEarnings>
 export type Bar = z.infer<typeof Bar>
 export type RunInfo = z.infer<typeof RunInfo>
 export type NewsItem = z.infer<typeof NewsItem>

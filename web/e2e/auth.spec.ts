@@ -48,10 +48,10 @@ test.describe('navigation (AC22, AC23)', () => {
     await expect(page).toHaveURL((url) => url.pathname === '/settings')
   })
 
-  test('bar at /bar sees the placeholder', async ({ page, loginAs }) => {
+  test('bar at /bar sees the bar page (Phase 5)', async ({ page, loginAs }) => {
     await loginAs('bar')
     await expect(page).toHaveURL((url) => url.pathname === '/bar')
-    await expect(page.getByText('Nog niet beschikbaar')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '🍺 Bar — Bestellen' })).toBeVisible()
   })
 })
 

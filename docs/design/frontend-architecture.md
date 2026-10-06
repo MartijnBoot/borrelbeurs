@@ -141,15 +141,35 @@ mid-tap — but reframe it as a **display hold** rather than a state fork, and m
 invariant structural:
 
 ```ts
-type Quote = { readonly version: number; readonly prices: readonly number[]; readonly at: number };
+type Quote = {
+  readonly version: number;
+  readonly prices: Readonly<Record<DrinkId, number>>; // price_cents, keyed by drink_id
+  readonly receivedAt: number; // performance.now() at receipt: monotonic
+};
 ```
 
 You cannot obtain a price without the version that belongs to it, because they are the same
-object. That is what makes the bug impossible — not a code comment. The buffer holds a
-reference to a `Quote`, never to two separate fields.
+object. That is what makes the bug impossible — not a code comment. The reducer builds each
+`Quote` from **one** message (a `snapshot`, a `tick` or an `order`), frozen, through the only
+builders in `features/exchange/model/quote.ts`; a source scan fails any other construction.
+The buffer holds a reference to a `Quote`, never to two separate fields.
 
-Force-promote the held quote on order success, on 409, on reconnect, and on manual refresh.
-Show a subtle age indicator so the hold reads as deliberate rather than as a frozen screen.
+**The hold covers the interaction, not a cadence** (Phase 5 SD1). With no press on the pad,
+the displayed quote follows every new quote. A press (pointer down, or Enter/Space) starts a
+hold, which ends `HOLD_MS` (2 s) after the last release and never more than `HOLD_MAX_MS`
+(10 s) after it began; then the latest quote is displayed. Above `AGE_SHOW_MS` (8 s) the pad
+shows the displayed quote's age and a "Ververs" button; when the **latest** quote is older
+than `STALE_MS` (15 s) the pad is disabled. The four are client constants in one module
+(`features/bar/model/constants.ts`), not run settings.
+
+Force-promote the held quote on order success, on 409, on **every snapshot** (reconnect,
+resync, a new `boot_id`, the offline poll), and on manual refresh; a running hold keeps its
+timers.
+
+**One path from tap to request.** `features/bar/model/barController.ts` joins the store, the
+hold buffer and the order intents, and its `tap` reads the displayed `Quote` once and builds
+the request body from it. Components call only the controller; the money property test
+drives the same object.
 
 Optimistic update is **UI only**: a local `pendingOrders` list gives instant feedback. Revenue
 is never computed locally; the server is authoritative. See

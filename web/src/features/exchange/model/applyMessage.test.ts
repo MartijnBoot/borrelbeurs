@@ -2,9 +2,9 @@
 // `at` re-stamps a recorded frame with the seq a scenario needs.
 import { describe, expect, it } from 'vitest'
 import fixture from './__fixtures__/ws-messages.json'
-import { applyMessage, initialState, type ExchangeState } from './applyMessage'
+import { applyMessage, applyPolledState, initialState, type ExchangeState } from './applyMessage'
 import { ServerMessage } from './schemas'
-import { pulseDirection } from './selectors'
+import { pulseDirection, selectEarnings, selectTotals } from './selectors'
 
 type Of<K extends ServerMessage['type']> = Extract<ServerMessage, { type: K }>
 
@@ -26,8 +26,15 @@ const eventEnd = frame('market_event_end') as Of<'market_event'>
 const theme = frame('theme') as Of<'theme'>
 const S = snapshot.seq
 
+/** The monotonic receipt time the older cases stamp every frame with (PD1). */
+const AT = 1_000
+
+function apply(state: ExchangeState, message: ServerMessage, receivedAt = AT): ExchangeState {
+  return applyMessage(state, message, receivedAt)
+}
+
 function run(...messages: ServerMessage[]): ExchangeState {
-  return messages.reduce(applyMessage, initialState)
+  return messages.reduce((state, message) => apply(state, message), initialState)
 }
 
 /** A connected client holding the recorded snapshot at seq S. */
@@ -53,7 +60,7 @@ describe('hello', () => {
   })
 
   it('with a new boot_id discards all live state (AC19)', () => {
-    const state = applyMessage(live, at(hello, 2, { boot_id: 'OTHER' }))
+    const state = apply(live, at(hello, 2, { boot_id: 'OTHER' }))
     expect(state.bootId).toBe('OTHER')
     expect(state.drinks).toEqual([])
     expect(state.prices).toEqual({})
@@ -65,16 +72,16 @@ describe('hello', () => {
   })
 
   it('with the same boot_id keeps state and seq, so the replay applies', () => {
-    const state = applyMessage(live, at(hello, S + 3))
+    const state = apply(live, at(hello, S + 3))
     expect(state.seq).toBe(S)
     expect(state.drinks).toBe(live.drinks)
-    expect(applyMessage(state, at(tick, S + 1)).seq).toBe(S + 1)
+    expect(apply(state, at(tick, S + 1)).seq).toBe(S + 1)
   })
 
   it('ends a pending resync: the reconnect replays or snapshots from the held seq', () => {
-    const gapped = applyMessage(live, at(tick, S + 2))
+    const gapped = apply(live, at(tick, S + 2))
     expect(gapped.awaitingResync).toBe(true)
-    expect(applyMessage(gapped, at(hello, S + 2)).awaitingResync).toBe(false)
+    expect(apply(gapped, at(hello, S + 2)).awaitingResync).toBe(false)
   })
 })
 
@@ -93,60 +100,60 @@ describe('snapshot (AC17)', () => {
 
   it('drops what the previous snapshot held', () => {
     const emptier = at(snapshot, S + 4, { news: [], market_events: [], drinks: [] })
-    const state = applyMessage(applyMessage(live, at(tick, S + 1)), emptier)
+    const state = apply(apply(live, at(tick, S + 1)), emptier)
     expect(state.news).toEqual([])
     expect(state.marketEvents).toEqual([])
     expect(state.drinks).toEqual([])
   })
 
   it('bumps the snapshot generation each time', () => {
-    expect(applyMessage(live, at(snapshot, S + 1)).snapshotGen).toBe(live.snapshotGen + 1)
+    expect(apply(live, at(snapshot, S + 1)).snapshotGen).toBe(live.snapshotGen + 1)
   })
 })
 
 describe('seq (AC18)', () => {
   it('applies the next broadcast', () => {
-    const state = applyMessage(live, at(tick, S + 1))
+    const state = apply(live, at(tick, S + 1))
     expect(state.seq).toBe(S + 1)
     expect(state.prices[2].chart_price_cents).toBe(264)
   })
 
   it('on a gap awaits a resync and applies nothing until a snapshot', () => {
-    let state = applyMessage(live, at(tick, S + 2))
+    let state = apply(live, at(tick, S + 2))
     expect(state.awaitingResync).toBe(true)
     expect(state.prices).toBe(live.prices)
     expect(state.seq).toBe(S)
 
-    state = applyMessage(state, at(tick, S + 1))
-    state = applyMessage(state, at(news, S + 3))
-    state = applyMessage(state, at(theme, S + 4, { revision: 9, preset: 'rood' }))
+    state = apply(state, at(tick, S + 1))
+    state = apply(state, at(news, S + 3))
+    state = apply(state, at(theme, S + 4, { revision: 9, preset: 'rood' }))
     expect(state.prices).toBe(live.prices)
     expect(state.news).toBe(live.news)
     expect(state.seq).toBe(S)
     // Only a theme gets through, by revision: it never waits on a resync (AC5).
     expect(state.theme?.preset).toBe('rood')
 
-    state = applyMessage(state, at(snapshot, S + 5))
+    state = apply(state, at(snapshot, S + 5))
     expect(state.awaitingResync).toBe(false)
     expect(state.seq).toBe(S + 5)
-    expect(applyMessage(state, at(tick, S + 6)).seq).toBe(S + 6)
+    expect(apply(state, at(tick, S + 6)).seq).toBe(S + 6)
   })
 
   it('ignores a broadcast it already holds', () => {
-    const once = applyMessage(live, at(tick, S + 1))
-    expect(applyMessage(once, at(tickWith(S + 1, 1, 999), S + 1))).toBe(once)
+    const once = apply(live, at(tick, S + 1))
+    expect(apply(once, at(tickWith(S + 1, 1, 999), S + 1))).toBe(once)
   })
 
   it('accepts unicasts at the held seq', () => {
-    const state = applyMessage(live, at(theme, S, { revision: 1, preset: 'groen' }))
+    const state = apply(live, at(theme, S, { revision: 1, preset: 'groen' }))
     expect(state.theme?.preset).toBe('groen')
     expect(state.seq).toBe(S)
-    expect(applyMessage(live, at(frame('pong'), S))).toBe(live)
-    expect(applyMessage(live, at(frame('error'), S))).toBe(live)
+    expect(apply(live, at(frame('pong'), S))).toBe(live)
+    expect(apply(live, at(frame('error'), S))).toBe(live)
   })
 
   it('a resync frame awaits a resync', () => {
-    expect(applyMessage(live, at(frame('resync'), S)).awaitingResync).toBe(true)
+    expect(apply(live, at(frame('resync'), S)).awaitingResync).toBe(true)
   })
 
   it('ignores broadcasts before any baseline', () => {
@@ -156,20 +163,20 @@ describe('seq (AC18)', () => {
 
 describe('tick and order', () => {
   it('replaces the last bar when the bucket matches', () => {
-    const state = applyMessage(live, at(tick, S + 1))
+    const state = apply(live, at(tick, S + 1))
     expect(state.bars[1]).toEqual([{ t_ms: tick.data.candle_t_ms, o: 260, h: 260, l: 260, c: 260 }])
   })
 
   it('appends a bar for a new bucket', () => {
     const next = tick.data.candle_t_ms + 60_000
-    const state = applyMessage(live, at(tick, S + 1, { candle_t_ms: next }))
+    const state = apply(live, at(tick, S + 1, { candle_t_ms: next }))
     expect(state.bars[2]).toHaveLength(2)
     expect(state.bars[2][1]).toEqual({ t_ms: next, o: 260, h: 264, l: 260, c: 264 })
     expect(state.bars[2][0]).toEqual(snapshot.data.bars[2][0])
   })
 
   it('an order updates prices but never synthesises a bar (SD3)', () => {
-    const state = applyMessage(live, at(order, S + 1))
+    const state = apply(live, at(order, S + 1))
     expect(state.prices[3]).toEqual({ price_cents: 250, chart_price_cents: 253 })
     expect(state.bars).toBe(live.bars)
   })
@@ -177,28 +184,28 @@ describe('tick and order', () => {
 
 describe('pulse direction (SD23)', () => {
   it('is rising when the displayed price goes up', () => {
-    const state = applyMessage(live, tickWith(S + 1, 2, 300))
+    const state = apply(live, tickWith(S + 1, 2, 300))
     expect(pulseDirection(state, 2)).toBe('rising')
   })
 
   it('is falling when it goes down', () => {
-    const state = applyMessage(live, tickWith(S + 1, 2, 200))
+    const state = apply(live, tickWith(S + 1, 2, 200))
     expect(pulseDirection(state, 2)).toBe('falling')
   })
 
   it('is none when it is unchanged', () => {
-    const state = applyMessage(live, tickWith(S + 1, 2, 260))
+    const state = apply(live, tickWith(S + 1, 2, 260))
     expect(pulseDirection(state, 2)).toBeNull()
   })
 
   it('counts an order', () => {
-    const state = applyMessage(applyMessage(live, tickWith(S + 1, 1, 260)), at(order, S + 2))
+    const state = apply(apply(live, tickWith(S + 1, 1, 260)), at(order, S + 2))
     expect(pulseDirection(state, 1)).toBe('rising')
   })
 
   it('is none after a snapshot, whatever the price did', () => {
-    const risen = applyMessage(live, tickWith(S + 1, 2, 300))
-    const state = applyMessage(risen, at(snapshot, S + 2))
+    const risen = apply(live, tickWith(S + 1, 2, 300))
+    const state = apply(risen, at(snapshot, S + 2))
     expect(pulseDirection(state, 2)).toBeNull()
     expect(pulseDirection(state, 1)).toBeNull()
   })
@@ -208,7 +215,7 @@ describe('market events and news', () => {
   it('starts an event once', () => {
     const cleared = at(snapshot, S, { market_events: [] })
     const base = run(at(hello, S), cleared)
-    const state = applyMessage(applyMessage(base, at(eventStart, S + 1)), at(eventStart, S + 2))
+    const state = apply(apply(base, at(eventStart, S + 1)), at(eventStart, S + 2))
     expect(state.marketEvents).toHaveLength(1)
     expect(state.marketEvents[0]).toEqual({
       event_id: 1,
@@ -220,28 +227,25 @@ describe('market events and news', () => {
   })
 
   it('ends an event, and a late end is a no-op', () => {
-    const ended = applyMessage(live, at(eventEnd, S + 1))
+    const ended = apply(live, at(eventEnd, S + 1))
     expect(ended.marketEvents).toEqual([])
-    const again = applyMessage(ended, at(eventEnd, S + 2))
+    const again = apply(ended, at(eventEnd, S + 2))
     expect(again.marketEvents).toBe(ended.marketEvents)
     expect(again.seq).toBe(S + 2)
   })
 
   it('adds news newest first and deletes by id', () => {
     const item = { ...news.data.item, news_id: 7 }
-    const added = applyMessage(live, at(news, S + 1, { item }))
+    const added = apply(live, at(news, S + 1, { item }))
     expect(added.news.map((n) => n.news_id)).toEqual([7, 2, 1])
-    const deleted = applyMessage(added, at(news, S + 2, { op: 'delete', item }))
+    const deleted = apply(added, at(news, S + 2, { op: 'delete', item }))
     expect(deleted.news.map((n) => n.news_id)).toEqual([2, 1])
   })
 
   it('keeps at most the snapshot cap of 50 items', () => {
     let state = live
     for (let k = 0; k < 60; k++) {
-      state = applyMessage(
-        state,
-        at(news, S + 1 + k, { item: { ...news.data.item, news_id: 100 + k } }),
-      )
+      state = apply(state, at(news, S + 1 + k, { item: { ...news.data.item, news_id: 100 + k } }))
     }
     expect(state.news).toHaveLength(50)
     expect(state.news[0].news_id).toBe(159)
@@ -256,38 +260,38 @@ describe('theme (AC7)', () => {
     ['lower', 2, 'paars'],
     ['higher', 4, 'rood'],
   ] as const)('a %s revision leaves %s', (_case, revision, preset) => {
-    const state = applyMessage(held, at(theme, S + 1, { revision, preset: 'rood' }))
+    const state = apply(held, at(theme, S + 1, { revision, preset: 'rood' }))
     expect(state.theme?.preset).toBe(preset)
     expect(state.seq).toBe(S + 1)
   })
 
   it('hello applies its theme only when the revision is higher', () => {
-    const lower = applyMessage(held, at(hello, S, { theme: { ...hello.data.theme, revision: 1 } }))
+    const lower = apply(held, at(hello, S, { theme: { ...hello.data.theme, revision: 1 } }))
     expect(lower.theme?.preset).toBe('paars')
   })
 
   it('a theme past a gap applies by revision and starts no resync', () => {
-    const state = applyMessage(live, at(theme, S + 2, { revision: 7, preset: 'rood' }))
+    const state = apply(live, at(theme, S + 2, { revision: 7, preset: 'rood' }))
     expect(state.theme?.preset).toBe('rood')
     expect(state.awaitingResync).toBe(false)
     expect(state.seq).toBe(S)
     // The gap is still there: the next priced broadcast finds it and resyncs.
-    expect(applyMessage(state, at(tick, S + 3)).awaitingResync).toBe(true)
+    expect(apply(state, at(tick, S + 3)).awaitingResync).toBe(true)
   })
 
   it('with no live run, a reconnect the server cannot replay still re-themes', () => {
     // Same boot, held seq 4; the missed frames aged out, so no snapshot follows.
     const held = run(at(hello, 4, { run_id: null }))
-    let state = applyMessage(held, at(hello, 9, { run_id: null }))
-    state = applyMessage(state, at(theme, 9, { revision: 1, preset: 'groen' }))
-    state = applyMessage(state, at(theme, 10, { revision: 2, preset: 'paars' }))
+    let state = apply(held, at(hello, 9, { run_id: null }))
+    state = apply(state, at(theme, 9, { revision: 1, preset: 'groen' }))
+    state = apply(state, at(theme, 10, { revision: 2, preset: 'paars' }))
     expect(state.awaitingResync).toBe(false)
     expect(state.theme?.preset).toBe('paars')
   })
 
   it('with no live run, theme broadcasts still apply (AC5)', () => {
     const empty = run(at(hello, 4, { run_id: null }))
-    const state = applyMessage(empty, at(theme, 5, { revision: 1, preset: 'groen' }))
+    const state = apply(empty, at(theme, 5, { revision: 1, preset: 'groen' }))
     expect(state.theme?.preset).toBe('groen')
     expect(state.seq).toBe(5)
   })
@@ -296,9 +300,141 @@ describe('theme (AC7)', () => {
     // A hub overflow sends `resync`; the server answers the request with only
     // the theme catch-up, because there is no snapshot to send.
     const empty = run(at(hello, 4, { run_id: null }), at(frame('resync'), 4))
-    let state = applyMessage(empty, at(theme, 4, { revision: 1, preset: 'groen' }))
-    state = applyMessage(state, at(theme, 6, { revision: 2, preset: 'paars' }))
+    let state = apply(empty, at(theme, 4, { revision: 1, preset: 'groen' }))
+    state = apply(state, at(theme, 6, { revision: 2, preset: 'paars' }))
     expect(state.theme?.preset).toBe('paars')
     expect(state.seq).toBe(4)
+  })
+})
+
+describe('quote (Phase 5 T4: AC2, SD2, PD1, PD4)', () => {
+  const connected = apply(initialState, at(hello, S))
+
+  it('is null before any snapshot', () => {
+    expect(initialState.quote).toBeNull()
+    expect(connected.quote).toBeNull()
+  })
+
+  it("a snapshot's quote is its data.version and price_cents, stamped with receivedAt", () => {
+    const state = apply(connected, snapshot, 42)
+    expect(state.quote?.version).toBe(snapshot.data.version)
+    expect(state.quote?.prices).toEqual({ 1: 270, 2: 260, 3: 250 })
+    expect(state.quote?.receivedAt).toBe(42)
+    expect(Object.isFrozen(state.quote)).toBe(true)
+  })
+
+  it("an in-sequence tick's quote is the envelope version and the tick's price_cents", () => {
+    const state = apply(live, tickWith(S + 1, 2, 300), 77)
+    expect(state.quote?.version).toBe(tick.version)
+    expect(state.quote?.prices).toEqual({ 1: 260, 2: 300, 3: 260 })
+    expect(state.quote?.receivedAt).toBe(77)
+  })
+
+  it("an in-sequence order's quote is the envelope version and the order's prices", () => {
+    const state = apply(live, at({ ...order, version: 6 }, S + 1), 88)
+    expect(state.quote?.version).toBe(6)
+    expect(state.quote?.prices).toEqual({ 1: 270, 2: 260, 3: 250 })
+    expect(state.quote?.receivedAt).toBe(88)
+  })
+
+  it('a quote never mixes messages: each one replaces it whole', () => {
+    const afterTick = apply(live, at({ ...tickWith(S + 1, 1, 300), version: 6 }, S + 1), 1)
+    const afterOrder = apply(afterTick, at({ ...order, version: 7 }, S + 2), 2)
+    expect(afterTick.quote).toMatchObject({ version: 6, prices: { 1: 300 }, receivedAt: 1 })
+    expect(afterOrder.quote).toMatchObject({ version: 7, prices: { 1: 270 }, receivedAt: 2 })
+  })
+
+  it('a dropped frame leaves the quote as it was: gap, stale seq, awaiting resync', () => {
+    const gapped = apply(live, at(tick, S + 2), 5)
+    expect(gapped.quote).toBe(live.quote)
+    expect(apply(gapped, at(tick, S + 1), 6).quote).toBe(live.quote) // awaiting resync
+    const once = apply(live, at(tick, S + 1), 7)
+    expect(apply(once, at(order, S + 1), 8).quote).toBe(once.quote) // already held
+    expect(apply(once, at(order, S), 9).quote).toBe(once.quote) // older
+  })
+
+  it('a tick or order without a version keeps the latest quote (PD4)', () => {
+    expect(apply(live, at({ ...tick, version: null }, S + 1)).quote).toBe(live.quote)
+    expect(apply(live, at({ ...order, version: null }, S + 1)).quote).toBe(live.quote)
+  })
+
+  it('a new boot_id clears it, and the next snapshot rebuilds it (AC26)', () => {
+    const rebooted = apply(live, at(hello, 2, { boot_id: 'OTHER' }))
+    expect(rebooted.quote).toBeNull()
+    const rebuilt = apply(rebooted, at(snapshot, 2), 99)
+    expect(rebuilt.quote).toMatchObject({ version: snapshot.data.version, receivedAt: 99 })
+  })
+
+  it('the same boot_id keeps it', () => {
+    expect(apply(live, at(hello, S)).quote).toBe(live.quote)
+  })
+
+  it('a polled snapshot sets it with the given receivedAt (AC25)', () => {
+    const polled = applyPolledState(live, { ...snapshot.data, version: 12 }, 123)
+    expect(polled.quote).toMatchObject({ version: 12, receivedAt: 123 })
+  })
+
+  it('other broadcasts leave it alone', () => {
+    expect(apply(live, at(news, S + 1)).quote).toBe(live.quote)
+    expect(apply(live, at(eventStart, S + 1)).quote).toBe(live.quote)
+  })
+})
+
+describe('earnings (Phase 5 SD15, AC17, AC18)', () => {
+  function orderWith(seq: number, delta: Of<'order'>['data']['earnings_delta']): Of<'order'> {
+    return at(order, seq, { earnings_delta: delta })
+  }
+
+  it("a snapshot sets them to the snapshot's aggregates", () => {
+    expect(live.earnings).toEqual({ 1: { qty: 2, revenue_cents: 520 } })
+    expect(selectTotals(live)).toEqual({ revenueCents: 520, qty: 2 })
+  })
+
+  it('in-sequence orders add their deltas, including a drink the snapshot lacks', () => {
+    const one = apply(live, orderWith(S + 1, { 1: { qty: 1, revenue_cents: 270 } }))
+    const two = apply(one, orderWith(S + 2, { 3: { qty: 2, revenue_cents: 500 } }))
+    expect(selectEarnings(two)).toEqual({
+      1: { qty: 3, revenue_cents: 790 },
+      3: { qty: 2, revenue_cents: 500 },
+    })
+    expect(selectTotals(two)).toEqual({ revenueCents: 1290, qty: 5 })
+  })
+
+  it('a snapshot after orders shows exactly its own aggregates (AC18)', () => {
+    const ordered = apply(live, orderWith(S + 1, { 2: { qty: 4, revenue_cents: 1000 } }))
+    const resnap = apply(
+      ordered,
+      at(snapshot, S + 1, { earnings: { 1: { qty: 9, revenue_cents: 99 } } }),
+    )
+    expect(resnap.earnings).toEqual({ 1: { qty: 9, revenue_cents: 99 } })
+    const polled = applyPolledState(ordered, { ...snapshot.data, earnings: {} }, 5)
+    expect(polled.earnings).toEqual({})
+  })
+
+  it('a dropped or stale order changes nothing', () => {
+    const gapped = apply(live, at(order, S + 2))
+    expect(gapped.earnings).toBe(live.earnings)
+    expect(gapped.lastOrderTsMs).toBeNull()
+    const once = apply(live, at(order, S + 1))
+    expect(apply(once, at(order, S + 1)).earnings).toBe(once.earnings)
+    expect(apply(once, at(order, S)).earnings).toBe(once.earnings)
+  })
+
+  it('a new boot clears them', () => {
+    const ordered = apply(live, at(order, S + 1))
+    const rebooted = apply(ordered, at(hello, 2, { boot_id: 'OTHER' }))
+    expect(rebooted.earnings).toEqual({})
+    expect(rebooted.lastOrderTsMs).toBeNull()
+    expect(selectTotals(rebooted)).toEqual({ revenueCents: 0, qty: 0 })
+  })
+
+  it('lastOrderTsMs follows orders and a snapshot clears it (SD16)', () => {
+    expect(live.lastOrderTsMs).toBeNull()
+    const one = apply(live, { ...at(order, S + 1), ts_ms: 5_000 })
+    expect(one.lastOrderTsMs).toBe(5_000)
+    const two = apply(one, { ...at(order, S + 2), ts_ms: 6_000 })
+    expect(two.lastOrderTsMs).toBe(6_000)
+    expect(apply(two, at(tick, S + 3)).lastOrderTsMs).toBe(6_000)
+    expect(apply(two, at(snapshot, S + 2)).lastOrderTsMs).toBeNull()
   })
 })

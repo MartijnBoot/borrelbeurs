@@ -96,5 +96,58 @@ describe('request', () => {
     const error = await rejection(request('GET', '/api/auth/me', { schema: Me }))
     expect(error.status).toBe(502)
     expect(error.code).toBe('invalid_response')
+    expect(error.details).toEqual({})
+  })
+
+  it('sends custom headers alongside the JSON content type', async () => {
+    fetchMock.mockResolvedValue(respond(201, { role: 'bar' }))
+    await request('POST', '/api/orders', {
+      body: { a: 1 },
+      headers: { 'Idempotency-Key': 'k-0001' },
+      schema: Me,
+    })
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const headers = new Headers(init.headers)
+    expect(headers.get('Idempotency-Key')).toBe('k-0001')
+    expect(headers.get('Content-Type')).toBe('application/json')
+  })
+
+  it('passes the signal to fetch', async () => {
+    fetchMock.mockResolvedValue(respond(200, { role: 'bar' }))
+    const controller = new AbortController()
+    await request('GET', '/api/auth/me', { schema: Me, signal: controller.signal })
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(init.signal).toBe(controller.signal)
+  })
+
+  it('rejects an aborted request with the abort error, not an HttpError', async () => {
+    fetchMock.mockImplementation((_path: string, init: RequestInit) =>
+      Promise.reject(init.signal?.reason),
+    )
+    const controller = new AbortController()
+    controller.abort(new DOMException('timed out', 'TimeoutError'))
+    const promise = request('GET', '/api/auth/me', { schema: Me, signal: controller.signal })
+    await expect(promise).rejects.toMatchObject({ name: 'TimeoutError' })
+    await expect(promise).rejects.not.toBeInstanceOf(HttpError)
+  })
+
+  it('rejects a network failure with the original error', async () => {
+    const failure = new TypeError('Failed to fetch')
+    fetchMock.mockRejectedValue(failure)
+    await expect(request('GET', '/api/auth/me', { schema: Me })).rejects.toBe(failure)
+  })
+
+  it("keeps the envelope's extra fields as details, so a 409 carries its prices", async () => {
+    const prices = [{ drink_id: 1, price_cents: 270 }]
+    fetchMock.mockResolvedValue(
+      respond(409, {
+        error: { code: 'price_changed', message: 'moved', version: 42, prices },
+      }),
+    )
+    const error = await rejection(request('POST', '/api/orders', { body: {}, schema: Me }))
+    expect(error.status).toBe(409)
+    expect(error.code).toBe('price_changed')
+    expect(error.details.version).toBe(42)
+    expect(error.details.prices).toEqual(prices)
   })
 })

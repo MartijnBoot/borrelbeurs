@@ -206,20 +206,20 @@ Exit: big screen works end to end; theme propagates across machines.
 - [x] merge the plan — per-phase loop step 5 with `<N>` = 4
 - [x] tasks (`/build 4 <T>`, `/review 4`):
   - [x] …
-- [ ] exit criterion — open koers on two machines, change the theme on one, the other follows
+- [x] exit criterion — open koers on two machines, change the theme on one, the other follows
 - carried over from the phase-3 follow-ups (engine-guardian, 2026-10-04) — fold into the phase-4 plan:
-  - [ ] document the freeze — a wall clock stepping back by less than the catch-up budget (30 s) holds tick stamps at the last commit's time until the grid passes it, so prices freeze for at most the budget (`app/runtime/ticker.py`, `_tick_step`); say so in the ticker docstring and ADR 0003
-  - [ ] end due market events against the tick's actual stamp, not the grid stamp (`app/runtime/ticker.py`, `_iterate` → `_end_due_events`) — today an event can end one tick late
-  - [ ] in `test_a_tick_is_never_stamped_before_the_commit_it_follows`, also assert the jumped drink's price after the tick equals the price on the jump row (pins "no backwards easing" directly)
+  - [x] document the freeze — a wall clock stepping back by less than the catch-up budget (30 s) holds tick stamps at the last commit's time until the grid passes it, so prices freeze for at most the budget (`app/runtime/ticker.py`, `_tick_step`); say so in the ticker docstring and ADR 0003
+  - [x] end due market events against the tick's actual stamp, not the grid stamp (`app/runtime/ticker.py`, `_iterate` → `_end_due_events`) — today an event can end one tick late
+  - [x] in `test_a_tick_is_never_stamped_before_the_commit_it_follows`, also assert the jumped drink's price after the tick equals the price on the jump row (pins "no backwards easing" directly)
 
 ## Phase 5 — Bar + order path
 Exit: price shown equals price charged, enforced by a property test. **Build on opus.**
 
-- [ ] spec — read `docs/specs/phase-5-bar-orders.md` (`Draft`) → approve, or `/clear` then `/spec 5`
-- [ ] branch — `git switch main` then `git pull` then `git switch -c docs/phase-5-plan`
-- [ ] plan — `/clear` then `/plan 5`
-- [ ] audit — `/clear` then `/audit 5`
-- [ ] merge the plan — per-phase loop step 5 with `<N>` = 5
+- [x] spec — read `docs/specs/phase-5-bar-orders.md` (`Draft`) → approve, or `/clear` then `/spec 5`
+- [x] branch — `git switch main` then `git pull` then `git switch -c docs/phase-5-plan`
+- [x] plan — `/clear` then `/plan 5`
+- [x] audit — `/clear` then `/audit 5`
+- [x] merge the plan — per-phase loop step 5 with `<N>` = 5
 - [ ] tasks (`/build 5 <T>`, `/review 5`):
   - [ ] …
 - [ ] exit criterion — `/clear` then `/verify` reports the price-invariant property test and its case count

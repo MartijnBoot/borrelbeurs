@@ -7,6 +7,11 @@
  * generated OpenAPI error types, which describe a shape the server does not
  * send. Anything that fits neither is an `HttpError` with code
  * `invalid_response`, so a caller never holds an unvalidated body.
+ *
+ * The envelope's extra fields survive as `HttpError.details` (Phase 5 PD6): a
+ * 409 `price_changed` carries its `version` and `prices` there. A network
+ * failure or an aborted `signal` (a timeout) is not an HTTP answer, so it
+ * rejects with the original error, never an `HttpError`.
  */
 import { z } from 'zod'
 
@@ -17,12 +22,20 @@ const ErrorEnvelope = z.object({
 export class HttpError extends Error {
   readonly status: number
   readonly code: string
+  /** The error envelope's fields beyond `code` and `message`; empty without one. */
+  readonly details: Readonly<Record<string, unknown>>
 
-  constructor(status: number, code: string, message: string) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    details: Readonly<Record<string, unknown>> = {},
+  ) {
     super(message)
     this.name = 'HttpError'
     this.status = status
     this.code = code
+    this.details = details
   }
 }
 
@@ -38,12 +51,24 @@ type Method = 'GET' | 'POST' | 'PUT' | 'DELETE'
 export async function request<T>(
   method: Method,
   path: string,
-  { body, schema }: { body?: unknown; schema: z.ZodType<T> },
+  {
+    body,
+    schema,
+    headers,
+    signal,
+  }: {
+    body?: unknown
+    schema: z.ZodType<T>
+    headers?: Readonly<Record<string, string>>
+    signal?: AbortSignal
+  },
 ): Promise<T> {
+  const sent = { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...headers }
   const response = await fetch(path, {
     method,
-    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    headers: Object.keys(sent).length === 0 ? undefined : sent,
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal,
   })
   const payload = await readJson(response)
 
@@ -51,7 +76,8 @@ export async function request<T>(
     if (response.status === 401) onUnauthenticated?.()
     const envelope = ErrorEnvelope.safeParse(payload)
     if (envelope.success) {
-      throw new HttpError(response.status, envelope.data.error.code, envelope.data.error.message)
+      const { code, message, ...details } = envelope.data.error
+      throw new HttpError(response.status, code, message, details)
     }
     throw new HttpError(response.status, 'invalid_response', `HTTP ${response.status}`)
   }

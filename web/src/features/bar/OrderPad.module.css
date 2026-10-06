@@ -1,0 +1,43 @@
+/* Phase 5 SD18: v1's two-column button grid; theme tokens only. */
+.pad {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.drink {
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-align: left;
+  user-select: none;
+}
+
+.stale {
+  margin: 0;
+  color: var(--danger);
+}
+
+.age {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--warn);
+}
+
+.status {
+  margin: 0;
+  color: var(--muted);
+}
+
+@media (max-width: 768px) {
+  .drink {
+    min-height: 56px;
+  }
+}

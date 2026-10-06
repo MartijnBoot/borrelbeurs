@@ -49,6 +49,8 @@ let store: StoreApi<ExchangeState>
 let fetchState: Mock<() => Promise<{ status: number; body: unknown }>>
 let onSessionLost: Mock<() => void>
 let random: () => number
+/** The monotonic clock handed to the client (PD1); a test sets it before a frame lands. */
+let mono: number
 let client: ExchangeClient
 
 const latest = () => sockets[sockets.length - 1]
@@ -62,6 +64,7 @@ beforeEach(() => {
   fetchState.mockResolvedValue({ status: 200, body: fixture.snapshot.data })
   onSessionLost = vi.fn<() => void>()
   random = () => 0.5
+  mono = 0
   client = createExchangeClient({
     url: 'wss://example.test/ws',
     createSocket: (url) => {
@@ -73,6 +76,7 @@ beforeEach(() => {
     onSessionLost: () => onSessionLost(),
     random: () => random(),
     now: () => Date.now(),
+    monotonicNow: () => mono,
     store,
   })
 })
@@ -217,6 +221,13 @@ describe('polling (AC16, SD17)', () => {
     expect(store.getState().status).toBe('offline')
   })
 
+  it("stamps a polled state's quote with monotonicNow() at its arrival (PD1, AC25)", async () => {
+    connect().drop()
+    mono = 555
+    await vi.advanceTimersByTimeAsync(0)
+    expect(store.getState().quote?.receivedAt).toBe(555)
+  })
+
   it('a poll 409 is the empty state', async () => {
     fetchState.mockResolvedValue({
       status: 409,
@@ -288,6 +299,19 @@ describe('skew', () => {
 })
 
 describe('frames', () => {
+  it("stamps a frame's quote with monotonicNow() at receipt, not the wall clock (PD1)", () => {
+    const socket = connect()
+    mono = 4321
+    socket.receive(at(fixture.snapshot, 5))
+    expect(store.getState().quote?.receivedAt).toBe(4321)
+    mono = 4400
+    socket.receive(at(fixture.tick, 6))
+    expect(store.getState().quote).toMatchObject({
+      version: fixture.tick.version,
+      receivedAt: 4400,
+    })
+  })
+
   it('ignores a frame that is not a valid server message', () => {
     const socket = connect()
     const before = store.getState()

@@ -24,6 +24,33 @@ const htmlSinks = [
   },
 ]
 
+// AC3 (web half): import.meta.env is read only in src/lib/config.ts —
+// everywhere else must go through that module.
+const envRead = {
+  selector:
+    "MemberExpression[object.type='MetaProperty'][object.meta.name='import'][object.property.name='meta'][property.name='env']",
+  message: 'Read env vars only in src/lib/config.ts.',
+}
+
+// Phase 5 AC17 (PD16): revenue and quantities come only from the server's
+// `snapshot.earnings` and `order.earnings_delta`. Nothing in the bundle
+// multiplies by a quantity -- v1's `computeLocalEarnings` shape
+// (bar.html:200-205). Tests and e2e specs are exempt (override below): they
+// compute expected values.
+const revenueMessage =
+  'Revenue comes from the server (earnings, earnings_delta), never price × quantity (AC17).'
+const revenueArithmetic = [
+  { selector: "Identifier[name='computeLocalEarnings']", message: revenueMessage },
+  {
+    selector: "BinaryExpression[operator='*'] > Identifier[name=/qty|quantity/i]",
+    message: revenueMessage,
+  },
+  {
+    selector: "BinaryExpression[operator='*'] > MemberExpression[property.name=/qty|quantity/i]",
+    message: revenueMessage,
+  },
+]
+
 // AC12 (D-14): nothing in the bundle persists to web storage; the theme and
 // every other setting live on the server.
 const storageMessage = 'Web storage is banned; state lives on the server.'
@@ -97,17 +124,7 @@ export default tseslint.config(
           ],
         },
       ],
-      // AC3 (web half): import.meta.env is read only in src/lib/config.ts —
-      // everywhere else must go through that module.
-      'no-restricted-syntax': [
-        'error',
-        {
-          selector:
-            "MemberExpression[object.type='MetaProperty'][object.meta.name='import'][object.property.name='meta'][property.name='env']",
-          message: 'Read env vars only in src/lib/config.ts.',
-        },
-        ...htmlSinks,
-      ],
+      'no-restricted-syntax': ['error', envRead, ...htmlSinks, ...revenueArithmetic],
       'no-restricted-globals': [
         'error',
         { name: 'localStorage', message: storageMessage },
@@ -123,7 +140,13 @@ export default tseslint.config(
   {
     files: ['src/lib/config.ts'],
     rules: {
-      'no-restricted-syntax': ['error', ...htmlSinks],
+      'no-restricted-syntax': ['error', ...htmlSinks, ...revenueArithmetic],
+    },
+  },
+  {
+    files: ['**/*.test.{ts,tsx}', 'e2e/**'],
+    rules: {
+      'no-restricted-syntax': ['error', envRead, ...htmlSinks],
     },
   },
 )

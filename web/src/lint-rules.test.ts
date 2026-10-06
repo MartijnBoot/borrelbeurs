@@ -139,3 +139,62 @@ describe('web storage', () => {
     expect(await ruleIds(code, 'src/features/theme/a.ts')).toEqual([])
   })
 })
+
+// AC17 (Phase 5 PD16): revenue comes only from the server's `earnings` and
+// `earnings_delta`, never from a price times a quantity in the bundle.
+describe('revenue arithmetic', () => {
+  // Every parameter is used, so no-unused-vars stays out of the clean cases.
+  const lineFn = (body: string) =>
+    `export function f(line: { qty: number; unit_price_cents: number }, qty: number, price: number, a: number, b: number, t_ms: number) {\n  return [${body}, line, qty, price, a, b, t_ms]\n}\n`
+
+  it.each([
+    ['a member qty times a price', 'line.qty * line.unit_price_cents'],
+    ['a bare qty times a price', 'qty * price'],
+    ['a price times qty', 'price * qty'],
+  ])('forbids %s', async (_name, body) => {
+    expect(await ruleIds(lineFn(body), 'src/features/exchange/a.ts')).toContain(
+      'no-restricted-syntax',
+    )
+  })
+
+  it('forbids a quantity under another name and case', async () => {
+    const code = 'export const f = (o: { Quantity: number }, p: number) => o.Quantity * p\n'
+    expect(await ruleIds(code, 'src/features/exchange/a.ts')).toContain('no-restricted-syntax')
+  })
+
+  it('forbids computeLocalEarnings by name', async () => {
+    expect(
+      await ruleIds('export function computeLocalEarnings() {}\n', 'src/features/exchange/a.ts'),
+    ).toContain('no-restricted-syntax')
+  })
+
+  it.each([
+    ['a unit conversion', 't_ms / 1000'],
+    ['an unrelated product', 'a * b'],
+    ['a sum of quantities', 'qty + qty'],
+  ])('allows %s', async (_name, body) => {
+    expect(await ruleIds(lineFn(body), 'src/features/exchange/a.ts')).toEqual([])
+  })
+
+  it('applies in src/lib/config.ts too', async () => {
+    expect(await ruleIds(lineFn('qty * price'), 'src/lib/config.ts')).toContain(
+      'no-restricted-syntax',
+    )
+  })
+
+  it.each([
+    ['a unit test', 'src/features/exchange/a.test.ts'],
+    ['a component test', 'src/features/exchange/A.test.tsx'],
+    ['an e2e spec', 'e2e/bar.spec.ts'],
+  ])('exempts %s', async (_name, filePath) => {
+    expect(await ruleIds(lineFn('line.qty * line.unit_price_cents'), filePath)).toEqual([])
+  })
+
+  it('still forbids HTML sinks and import.meta.env in a test file', async () => {
+    const sink = 'export function f(el: HTMLElement, h: string) {\n  el.innerHTML = h\n}\n'
+    expect(await ruleIds(sink, 'src/features/exchange/a.test.ts')).toContain('no-restricted-syntax')
+    expect(
+      await ruleIds('export const e = import.meta.env\n', 'src/features/exchange/a.test.ts'),
+    ).toContain('no-restricted-syntax')
+  })
+})
