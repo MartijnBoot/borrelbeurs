@@ -249,6 +249,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Run */
+        post: operations["post_run_api_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Current Run */
+        get: operations["get_current_run_api_runs_current_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/theme.css": {
         parameters: {
             query?: never;
@@ -285,6 +319,11 @@ export interface components {
             l: number;
             /** C */
             c: number;
+        };
+        /** CreateRunRequest */
+        CreateRunRequest: {
+            /** Name */
+            name: string;
         };
         /** DrinkInfo */
         DrinkInfo: {
@@ -461,6 +500,18 @@ export interface components {
             candle_interval_ms: number;
             /** Quote Grace Versions */
             quote_grace_versions: number;
+        };
+        /** RunSummaryData */
+        RunSummaryData: {
+            /** Run Id */
+            run_id: number;
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "live" | "ended";
         };
         /** ShutdownAccepted */
         ShutdownAccepted: {
@@ -946,6 +997,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EarningsPoint"][];
+                };
+            };
+        };
+    };
+    post_run_api_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunSummaryData"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_current_run_api_runs_current_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunSummaryData"];
                 };
             };
         };

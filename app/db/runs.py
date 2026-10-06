@@ -1,9 +1,14 @@
 """Run and drink repositories.
 
-Every function but `go_live` takes an `AsyncConnection` and never begins or
-commits a transaction: the caller owns the transaction, so an import can
-compose several of these into one atomic unit (SD15). `go_live` is itself one
-whole transaction, so it takes the engine.
+Every function but `create_run` and `go_live` takes an `AsyncConnection` and
+never begins or commits a transaction: the caller owns the transaction, so an
+import can compose several of these into one atomic unit (SD15). `create_run`
+and `go_live` are each one whole transaction, so they take the engine.
+
+**At most one draft (Phase 6 SD2).** No index enforces it: `import_v1` makes a
+draft per import. `create_run` serialises itself instead (the user's choice,
+2026-10-06): its transaction first takes `run` in SHARE ROW EXCLUSIVE mode,
+which conflicts with itself, so two creates cannot both see "no draft".
 
 The only drink write besides `add_drink` is `set_bar_price`. Renaming and
 removal are Phase 6.
@@ -11,9 +16,11 @@ removal are Phase 6.
 
 from __future__ import annotations
 
-from typing import Any
+import secrets
+from dataclasses import dataclass
+from typing import Any, Literal
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import func, insert, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -53,6 +60,23 @@ class LiveRunExists(AppError):
 
     status_code = 409
     code = "live_run_exists"
+
+
+class DraftExists(AppError):
+    """A draft already exists (Phase 6 SD2); the error carries its `run_id` (PD2)."""
+
+    status_code = 409
+    code = "draft_exists"
+
+
+RunStatus = Literal["draft", "live", "ended"]
+
+
+@dataclass(frozen=True)
+class RunSummary:
+    run_id: int
+    name: str
+    status: RunStatus
 
 
 def name_key(name: str) -> str:
@@ -173,6 +197,55 @@ async def all_drinks(conn: AsyncConnection, run_id: int) -> list[DrinkRow]:
 async def active_drinks(conn: AsyncConnection, run_id: int) -> list[DrinkRow]:
     """The run's drinks that are not removed, in slot order."""
     return [row for row in await all_drinks(conn, run_id) if not row.removed]
+
+
+async def current_run(conn: AsyncConnection) -> RunSummary | None:
+    """The live run, else the newest draft, else `None` (Phase 6 SD4, PD2)."""
+    row = (
+        await conn.execute(
+            select(Run.run_id, Run.name, Run.status)
+            .where(Run.status.in_(("live", "draft")))
+            .order_by((Run.status == "live").desc(), Run.created_at.desc(), Run.run_id.desc())
+            .limit(1)
+        )
+    ).one_or_none()
+    return None if row is None else RunSummary(int(row.run_id), row.name, row.status)
+
+
+async def latest_params(conn: AsyncConnection) -> Params | None:
+    """The params of the most recently created run, if any (Phase 6 SD2)."""
+    params = (
+        await conn.execute(
+            select(Run.params).order_by(Run.created_at.desc(), Run.run_id.desc()).limit(1)
+        )
+    ).scalar_one_or_none()
+    return None if params is None else Params.from_dict(params)
+
+
+async def create_run(engine: AsyncEngine, *, name: str, author: str) -> int:
+    """A new draft and its revision 1, or `LiveRunExists` / `DraftExists` (Phase 6 SD2, PD6)."""
+    name = name.strip()
+    async with engine.begin() as conn:
+        # Conflicts with itself, so a concurrent create waits here until this commits.
+        await conn.execute(text("LOCK TABLE run IN SHARE ROW EXCLUSIVE MODE"))
+        current = await current_run(conn)
+        if current is not None and current.status == "live":
+            raise LiveRunExists(f"run {current.run_id} is live; end it before creating another")
+        if current is not None:
+            raise DraftExists(
+                f"run {current.run_id} is already a draft", extra={"run_id": current.run_id}
+            )
+        params = await latest_params(conn) or Params()
+        run_id = await create_draft_run(
+            conn, name=name, params=params, run_seed=secrets.randbits(63)
+        )
+        await append_config_revision(
+            conn,
+            run_id,
+            config={"name": name, "params": params_to_json(params), "drinks": []},
+            author=author,
+        )
+    return run_id
 
 
 async def go_live(engine: AsyncEngine, run_id: int, *, now_ms: int) -> EngineState:

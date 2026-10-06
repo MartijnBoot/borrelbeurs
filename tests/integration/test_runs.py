@@ -9,21 +9,26 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
-from typing import TypeVar
+from typing import Any, TypeVar
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from app.core.config import Settings
 from app.db.mapping import DrinkRow
 from app.db.runs import (
+    DraftExists,
     DuplicateDrinkName,
+    LiveRunExists,
+    RunSummary,
     active_drinks,
     add_drink,
     all_drinks,
     append_config_revision,
     create_draft_run,
+    create_run,
+    current_run,
     set_bar_price,
 )
 from app.db.session import create_engine
@@ -252,3 +257,143 @@ def test_all_drinks_are_every_row_in_slot_order_flagging_the_removed(
         ("Wijn", 4, False),
         ("Fris", 9, False),
     ]
+
+
+def _with_engine(settings: Settings, url: str, body: Callable[[AsyncEngine], Awaitable[T]]) -> T:
+    async def scenario() -> T:
+        engine = create_engine(settings.model_copy(update={"database_url": url}))
+        try:
+            return await body(engine)
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(scenario())
+
+
+async def _end(engine: AsyncEngine, run_id: int, status: str = "ended") -> None:
+    async with engine.begin() as conn:
+        await conn.execute(
+            text("UPDATE run SET status = :s WHERE run_id = :r"), {"s": status, "r": run_id}
+        )
+
+
+def test_create_run_takes_params_defaults_and_writes_revision_one(
+    settings: Settings, database_url: str
+) -> None:
+    """Phase 6 SD2, PD6: an empty database gives `Params()`; revision 1 by the author."""
+
+    async def body(engine: AsyncEngine) -> tuple[tuple[Any, ...], list[tuple[Any, ...]]]:
+        run_id = await create_run(engine, name="  Vrijmibo ", author="admin key")
+        async with engine.connect() as conn:
+            run = (
+                await conn.execute(
+                    text(
+                        "SELECT name, status, params, tick_interval_ms, candle_interval_ms,"
+                        " quote_grace_versions FROM run WHERE run_id = :r"
+                    ),
+                    {"r": run_id},
+                )
+            ).one()
+            revisions = (
+                await conn.execute(text("SELECT revision, author, config FROM run_config_revision"))
+            ).all()
+        return tuple(run), [tuple(r) for r in revisions]
+
+    run, revisions = _with_engine(settings, database_url, body)
+
+    name, status, params, tick, candle, grace = run
+    assert (name, status, tick, candle, grace) == ("Vrijmibo", "draft", 1000, 60_000, 2)
+    assert Params.from_dict(params) == Params()
+    ((revision, author, config),) = revisions
+    assert (revision, author) == (1, "admin key")
+    assert (config["name"], config["drinks"]) == ("Vrijmibo", [])
+    assert Params.from_dict(config["params"]) == Params()
+
+
+def test_create_run_copies_the_most_recently_created_runs_params(
+    settings: Settings, database_url: str
+) -> None:
+    async def body(engine: AsyncEngine) -> Params:
+        for step in (0.1, 0.2):
+            async with engine.begin() as conn:
+                old = await create_draft_run(
+                    conn, name="Oud", params=Params(step_quant=step), run_seed=1
+                )
+            await _end(engine, old)
+        run_id = await create_run(engine, name="Nieuw", author="a")
+        async with engine.connect() as conn:
+            stored: dict[str, Any] = (
+                await conn.execute(text("SELECT params FROM run WHERE run_id = :r"), {"r": run_id})
+            ).scalar_one()
+        return Params.from_dict(stored)
+
+    assert _with_engine(settings, database_url, body) == Params(step_quant=0.2)
+
+
+def test_create_run_refuses_while_a_draft_or_a_live_run_exists(
+    settings: Settings, database_url: str
+) -> None:
+    async def body(engine: AsyncEngine) -> tuple[int, Any, int]:
+        draft = await create_run(engine, name="Een", author="a")
+        with pytest.raises(DraftExists) as refused:
+            await create_run(engine, name="Twee", author="a")
+        await _end(engine, draft, "live")
+        with pytest.raises(LiveRunExists):
+            await create_run(engine, name="Drie", author="a")
+        async with engine.connect() as conn:
+            count = int((await conn.execute(text("SELECT count(*) FROM run"))).scalar_one())
+        return draft, refused.value.extra.get("run_id"), count
+
+    draft, carried, count = _with_engine(settings, database_url, body)
+
+    assert carried == draft
+    assert count == 1
+
+
+def test_concurrent_creates_make_exactly_one_draft(settings: Settings, database_url: str) -> None:
+    """Choice (b), the user's, 2026-10-06: creation is serialised, with no schema change."""
+
+    async def body(engine: AsyncEngine) -> tuple[list[Any], int]:
+        results = await asyncio.gather(
+            *(create_run(engine, name=f"Borrel {i}", author="a") for i in range(4)),
+            return_exceptions=True,
+        )
+        async with engine.connect() as conn:
+            drafts = int(
+                (
+                    await conn.execute(text("SELECT count(*) FROM run WHERE status = 'draft'"))
+                ).scalar_one()
+            )
+        return list(results), drafts
+
+    results, drafts = _with_engine(settings, database_url, body)
+
+    assert drafts == 1
+    assert sum(isinstance(r, int) for r in results) == 1
+    assert sum(isinstance(r, DraftExists) for r in results) == 3
+
+
+def test_current_run_is_live_over_draft_else_the_newest_draft_else_none(
+    settings: Settings, database_url: str
+) -> None:
+    async def body(engine: AsyncEngine) -> list[RunSummary | None]:
+        seen: list[RunSummary | None] = []
+        async with engine.connect() as conn:
+            seen.append(await current_run(conn))
+        async with engine.begin() as conn:
+            live = await create_draft_run(conn, name="Live", params=Params(), run_seed=1)
+            await create_draft_run(conn, name="Ouder concept", params=Params(), run_seed=1)
+            await create_draft_run(conn, name="Concept", params=Params(), run_seed=1)
+        await _end(engine, live, "live")
+        async with engine.connect() as conn:
+            seen.append(await current_run(conn))
+        await _end(engine, live)
+        async with engine.connect() as conn:
+            seen.append(await current_run(conn))
+        return seen
+
+    none, live, draft = _with_engine(settings, database_url, body)
+
+    assert none is None
+    assert live is not None and (live.name, live.status) == ("Live", "live")
+    assert draft is not None and (draft.name, draft.status) == ("Concept", "draft")
