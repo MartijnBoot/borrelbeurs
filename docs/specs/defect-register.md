@@ -40,7 +40,7 @@ intentional and documented here.
 | D-16 | News level case mismatch — select emits `Danger`, CSS keys on `.danger` | `manipulation.html:143` vs `koers.html:66` | News colouring silently fails. **Migration must normalise historical rows** | 2 |
 | D-17 | No WebSocket liveness check on any page | all pages | Half-open socket freezes the big screen silently on a stale price | 4 |
 | D-18 | `GET /state` advances the engine and rewrites globals | `api.py:278-281` | A read endpoint with write side effects; the display page's polling changes bar prices | 3 |
-| D-19 | Theme editor exposes only 13 of 21 tokens | `settings.html:428-442` | Custom themes look half-applied | 6 |
+| D-19 | Theme editor exposes only 13 of the theme's tokens (21 in this register's first count; 24 in v2's manifest, `app/runtime/theme.py`) | `settings.html:428-442` | Custom themes look half-applied | 6 |
 | D-20 | `p0_total` / `p0_per_drink` are computed from `BAR_PRICE`, not `p0` | `api.py:770` → `persistence.py:126` | A lie in the money reporting | 7 |
 | D-21 | `calibrate_s0_to_p0` anchors to current `y`, not `p0` | `engine.py:38-41` | Name lies about behaviour | 1 — **Resolved (Phase 1 T2):** renamed `anchor_s0_to_current_y`, maths unchanged, docstring says why ([exchange/spec.py](../../exchange/spec.py)) |
 | D-22 | Idle gate uses `refresh_minutes`, not `idle_decay_minutes` | `engine.py:239` | The setting labelled as the threshold is not the gate | 1 — **Resolved (Phase 1 T6):** kept as v1, documented on `apply_idle` ([exchange/steps.py](../../exchange/steps.py)) and pinned by `test_d22_idle_fires_on_the_refresh_boundary_not_the_idle_threshold` ([tests/engine/test_steps_idle_brownian.py](../../tests/engine/test_steps_idle_brownian.py)) |
@@ -82,6 +82,21 @@ Listed because v2 must not reintroduce them.
 | D-41 | `allow_origins=["*"]` with an ad-hoc CSRF middleware whose stated premise is wrong | — |
 | D-42 | Access keys stored in plaintext and committed to git | **Rotate them; they remain in history** |
 | D-43 | No `.dockerignore`; `COPY . .` copied the image tarball into the image | 1.65 GB image for an 814 kB app |
+
+## F. Found while specifying Phase 6
+
+Found by the Phase 6 spec's audit of v1's admin surface (2026-10-06). Line numbers are
+against `legacy/v1/` as it stands now, after the ADR 0007 hotfix. Some older rows above
+(D-02's `api.py:599-643`, now `:635-686`; D-29's `api.py:216`, now `:246-260`) predate the
+hotfix.
+
+| ID | Defect | Where | Consequence | Phase |
+|---|---|---|---|---|
+| D-44 | `POST /config` allows the bar role | `api.py:404` | A bar key can rewrite every bound, coefficient and engine scalar; only the `/settings` *page* was admin-gated | 6 |
+| D-45 | `/config` mutates bounds before the retarget, and retargets on every save | `api.py:409-419`, `:453` | Changing a bound **rescales every price** instead of holding it; even an idle-only save snaps `y` and discards drift | 6 |
+| D-46 | Price-jump form coerces with `+""` | `manipulation.html:348-351` | An empty target jumps the drink to `p_min` | 6 |
+| D-47 | Upload size checked after reading the whole body | `api.py:254-256` | Any authenticated admin request can make the server buffer an unbounded body | 6 |
+| D-48 | Theme image→slot mapping kept in `localStorage['theme-images']` | `theme.js:150,215` | Uploaded logo, background and promo tile show only in the admin's own browser, never on the big screen | 6 |
 
 ## Deliberately not treated as defects
 
