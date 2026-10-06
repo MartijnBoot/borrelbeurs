@@ -10,6 +10,9 @@ from exchange.spec import DrinkSpec, MarketSpec, Params, anchor_s0_to_current_y
 from exchange.state import (
     EngineState,
     PriceJump,
+    append_slot,
+    cancel_jumps,
+    hold_quoted_prices,
     initial_state,
     retarget_y_to_hold_quantized_prices,
 )
@@ -25,6 +28,9 @@ __all__ = [
     "PriceJump",
     "advance",
     "anchor_s0_to_current_y",
+    "append_slot",
+    "cancel_jumps",
+    "hold_quoted_prices",
     "initial_state",
     "next_due_ms",
     "prices_from_y",
