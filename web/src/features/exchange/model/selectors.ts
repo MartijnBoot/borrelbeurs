@@ -19,3 +19,15 @@ export const selectTheme = (state: ExchangeState) => state.theme
 export const selectStatus = (state: ExchangeState) => state.status
 export const selectEmpty = (state: ExchangeState) => state.empty
 export const selectQuote = (state: ExchangeState) => state.quote
+export const selectEarnings = (state: ExchangeState) => state.earnings
+
+/** The panel's totals (SD15): sums of the server's per-drink numbers, nothing derived. */
+export function selectTotals(state: ExchangeState): { revenueCents: number; qty: number } {
+  let revenueCents = 0
+  let qty = 0
+  for (const line of Object.values(state.earnings)) {
+    revenueCents += line.revenue_cents
+    qty += line.qty
+  }
+  return { revenueCents, qty }
+}

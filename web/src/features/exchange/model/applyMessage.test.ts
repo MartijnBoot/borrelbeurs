@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import fixture from './__fixtures__/ws-messages.json'
 import { applyMessage, applyPolledState, initialState, type ExchangeState } from './applyMessage'
 import { ServerMessage } from './schemas'
-import { pulseDirection } from './selectors'
+import { pulseDirection, selectEarnings, selectTotals } from './selectors'
 
 type Of<K extends ServerMessage['type']> = Extract<ServerMessage, { type: K }>
 
@@ -377,5 +377,64 @@ describe('quote (Phase 5 T4: AC2, SD2, PD1, PD4)', () => {
   it('other broadcasts leave it alone', () => {
     expect(apply(live, at(news, S + 1)).quote).toBe(live.quote)
     expect(apply(live, at(eventStart, S + 1)).quote).toBe(live.quote)
+  })
+})
+
+describe('earnings (Phase 5 SD15, AC17, AC18)', () => {
+  function orderWith(seq: number, delta: Of<'order'>['data']['earnings_delta']): Of<'order'> {
+    return at(order, seq, { earnings_delta: delta })
+  }
+
+  it("a snapshot sets them to the snapshot's aggregates", () => {
+    expect(live.earnings).toEqual({ 1: { qty: 2, revenue_cents: 520 } })
+    expect(selectTotals(live)).toEqual({ revenueCents: 520, qty: 2 })
+  })
+
+  it('in-sequence orders add their deltas, including a drink the snapshot lacks', () => {
+    const one = apply(live, orderWith(S + 1, { 1: { qty: 1, revenue_cents: 270 } }))
+    const two = apply(one, orderWith(S + 2, { 3: { qty: 2, revenue_cents: 500 } }))
+    expect(selectEarnings(two)).toEqual({
+      1: { qty: 3, revenue_cents: 790 },
+      3: { qty: 2, revenue_cents: 500 },
+    })
+    expect(selectTotals(two)).toEqual({ revenueCents: 1290, qty: 5 })
+  })
+
+  it('a snapshot after orders shows exactly its own aggregates (AC18)', () => {
+    const ordered = apply(live, orderWith(S + 1, { 2: { qty: 4, revenue_cents: 1000 } }))
+    const resnap = apply(
+      ordered,
+      at(snapshot, S + 1, { earnings: { 1: { qty: 9, revenue_cents: 99 } } }),
+    )
+    expect(resnap.earnings).toEqual({ 1: { qty: 9, revenue_cents: 99 } })
+    const polled = applyPolledState(ordered, { ...snapshot.data, earnings: {} }, 5)
+    expect(polled.earnings).toEqual({})
+  })
+
+  it('a dropped or stale order changes nothing', () => {
+    const gapped = apply(live, at(order, S + 2))
+    expect(gapped.earnings).toBe(live.earnings)
+    expect(gapped.lastOrderTsMs).toBeNull()
+    const once = apply(live, at(order, S + 1))
+    expect(apply(once, at(order, S + 1)).earnings).toBe(once.earnings)
+    expect(apply(once, at(order, S)).earnings).toBe(once.earnings)
+  })
+
+  it('a new boot clears them', () => {
+    const ordered = apply(live, at(order, S + 1))
+    const rebooted = apply(ordered, at(hello, 2, { boot_id: 'OTHER' }))
+    expect(rebooted.earnings).toEqual({})
+    expect(rebooted.lastOrderTsMs).toBeNull()
+    expect(selectTotals(rebooted)).toEqual({ revenueCents: 0, qty: 0 })
+  })
+
+  it('lastOrderTsMs follows orders and a snapshot clears it (SD16)', () => {
+    expect(live.lastOrderTsMs).toBeNull()
+    const one = apply(live, { ...at(order, S + 1), ts_ms: 5_000 })
+    expect(one.lastOrderTsMs).toBe(5_000)
+    const two = apply(one, { ...at(order, S + 2), ts_ms: 6_000 })
+    expect(two.lastOrderTsMs).toBe(6_000)
+    expect(apply(two, at(tick, S + 3)).lastOrderTsMs).toBe(6_000)
+    expect(apply(two, at(snapshot, S + 2)).lastOrderTsMs).toBeNull()
   })
 })

@@ -29,9 +29,15 @@
  * (`quote.ts`), stamped with the `receivedAt` the caller passes in -- the
  * monotonic clock at receipt, so this stays pure. A dropped frame moves
  * nothing, and a new `boot_id` clears it until the next snapshot.
+ *
+ * **Earnings (Phase 5 SD15, AC17).** A snapshot replaces `earnings` wholesale;
+ * an in-sequence `order` adds its `earnings_delta` per drink and records its
+ * envelope `ts_ms` as `lastOrderTsMs` (SD16), which a snapshot clears. These
+ * are the server's numbers, summed -- revenue is never computed here.
  */
 import type {
   Bar,
+  DrinkEarnings,
   DrinkPrice,
   MarketEventInfo,
   NewsItem,
@@ -71,6 +77,10 @@ export interface ExchangeState {
   snapshotGen: number
   /** The latest quote: one message's version and prices (Phase 5 SD2). */
   quote: Quote | null
+  /** Per-drink sales, from the server's snapshot and order deltas only (SD15). */
+  earnings: Record<DrinkId, DrinkEarnings>
+  /** The last in-sequence `order` envelope's `ts_ms`; `null` after a snapshot (SD16). */
+  lastOrderTsMs: number | null
 }
 
 export const NEWS_LIMIT = 50
@@ -92,6 +102,8 @@ export const initialState: ExchangeState = {
   marketEvents: [],
   snapshotGen: 0,
   quote: null,
+  earnings: {},
+  lastOrderTsMs: null,
 }
 
 const UNICAST: ReadonlySet<ServerMessage['type']> = new Set(['hello', 'snapshot', 'pong', 'error'])
@@ -136,7 +148,12 @@ function applyBroadcast(
     }
     case 'order': {
       const next = applyPrices(state, message.data.prices)
-      return { ...next, quote: quoteFromOrder(message, receivedAt) ?? state.quote }
+      return {
+        ...next,
+        quote: quoteFromOrder(message, receivedAt) ?? state.quote,
+        earnings: withDelta(state.earnings, message.data.earnings_delta),
+        lastOrderTsMs: message.ts_ms,
+      }
     }
     case 'market_event':
       return applyMarketEvent(state, message)
@@ -214,7 +231,22 @@ function applySnapshot(
     marketEvents: data.market_events,
     snapshotGen: state.snapshotGen + 1,
     quote: quoteFromSnapshot(data, receivedAt),
+    earnings: keyed(data.earnings),
+    lastOrderTsMs: null,
   }
+}
+
+function withDelta(
+  earnings: Record<DrinkId, DrinkEarnings>,
+  delta: Record<string, DrinkEarnings>,
+): Record<DrinkId, DrinkEarnings> {
+  const next = { ...earnings }
+  for (const [key, line] of Object.entries(delta)) {
+    const id = Number(key)
+    const held = next[id] ?? { qty: 0, revenue_cents: 0 }
+    next[id] = { qty: held.qty + line.qty, revenue_cents: held.revenue_cents + line.revenue_cents }
+  }
+  return next
 }
 
 function applyTick(state: ExchangeState, message: Of<'tick'>): ExchangeState {
