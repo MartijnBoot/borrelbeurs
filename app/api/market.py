@@ -67,8 +67,10 @@ async def post_jump(
     if holder.is_empty or holder.spec is None:
         raise NoLiveRunError("there is no live run")
     if body.drink_id not in holder.drink_ids:
-        raise InvalidManipulation(f"drink {body.drink_id} is not an active drink of the live run")
+        raise InvalidManipulation(f"drink {body.drink_id} is not a drink of the live run")
     i = holder.drink_ids.index(body.drink_id)
+    if not holder.spec.active[i]:
+        raise InvalidManipulation(f"drink {body.drink_id} is removed from the live run")
     p_min = round(float(holder.spec.p_min[i]) * 100)
     p_max = round(float(holder.spec.p_max[i]) * 100)
     if not p_min <= body.target_price_cents <= p_max:

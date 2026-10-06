@@ -7,8 +7,9 @@
    of `(drink_id, qty, unit_price_cents)` (plan PD6) -- replays the stored
    receipt and changes nothing; any difference is 422 `idempotency_key_reused`.
 2. **Domain checks (SD17).** `quote_version` ahead of the current version, a
-   drink that is not an active drink of the live run, or a drink named twice,
-   is 422 `invalid_request`.
+   drink that is not a drink of the live run, or a drink named twice, is 422
+   `invalid_request`. A drink removed from the live run (Phase 6 SD13) is 422
+   `drink_unavailable`, decided from the in-memory mask.
 3. **The grace rule (SD18)** against the live `price_cents` (`cents_from_quantised`
    of `p_q`, SD24). A rejection is 409 `price_changed` with the current version
    and every line's live price; nothing is charged, written or moved.
@@ -55,6 +56,13 @@ _UNIQUE_KEY = "order_idempotency_key_key"
 class InvalidOrder(AppError):
     status_code = 422
     code = "invalid_request"
+
+
+class DrinkUnavailable(AppError):
+    """An order line names a drink removed from the live run (Phase 6 SD13)."""
+
+    status_code = 422
+    code = "drink_unavailable"
 
 
 class PriceChangedError(AppError):
@@ -153,9 +161,12 @@ async def place_order(
         named = [line.drink_id for line in request.lines]
         if not named or len(set(named)) != len(named):
             raise InvalidOrder("an order names each drink once, and at least one")
-        inactive = sorted(set(named) - set(drink_ids))
-        if inactive:
-            raise InvalidOrder(f"not an active drink of the live run: {inactive}")
+        unknown = sorted(set(named) - set(drink_ids))
+        if unknown:
+            raise InvalidOrder(f"not a drink of the live run: {unknown}")
+        removed = sorted(d for d in named if not spec.active[drink_ids.index(d)])
+        if removed:
+            raise DrinkUnavailable(f"removed from the live run: {removed}")
         if any(line.qty < 1 for line in request.lines):
             raise InvalidOrder("every qty must be at least 1")
 

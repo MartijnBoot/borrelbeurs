@@ -7,7 +7,7 @@ tick, which carries a higher version (plan PD13).
 A **market event** is one transaction that:
 
 1. ends any active event at `now` (its `t_end_ms` rewritten), emitting its end;
-2. schedules a jump per active drink to its `p_min`, `p_max` or `p0`
+2. schedules a jump per active drink (never a removed one) to its `p_min`, `p_max` or `p0`
    (`target_cents`), writing one `jump` tick per jump -- each `schedule_jump` is
    an accepted transition with its own version (Phase 2 SD10, one row each);
 3. inserts the `market_event` row;
@@ -107,6 +107,8 @@ async def start_event(
         run_id, spec = view.run_id, view.spec
         now_ms = clock.wall_ms()
         state = view.state
+        # A removed drink keeps its slot but takes no jump (Phase 6 SD13).
+        targets = tuple(d for d, on in zip(view.drink_ids, spec.active, strict=True) if on)
         ticks: list[TickEntry] = []
         async with engine.begin() as conn:
             ended = []
@@ -116,7 +118,7 @@ async def start_event(
                 await end_event(conn, active.event_id, t_end_ms=t_end_ms)
                 ended.append(dataclasses.replace(active, t_end_ms=t_end_ms))
             rows = {row.drink_id: row for row in await active_drinks(conn, run_id)}
-            for drink_id in view.drink_ids:
+            for drink_id in targets:
                 before = state
                 state = schedule_jump(
                     spec,
@@ -152,7 +154,7 @@ async def start_event(
                 conn,
                 run_id=run_id,
                 kind=kind,
-                drink_ids=view.drink_ids,
+                drink_ids=targets,
                 t_start_ms=now_ms,
                 t_end_ms=now_ms + duration_ms,
             )
@@ -162,7 +164,7 @@ async def start_event(
         event = ActiveEvent(
             event_id=event_id,
             kind=kind,
-            drink_ids=view.drink_ids,
+            drink_ids=targets,
             t_start_ms=now_ms,
             t_end_ms=now_ms + duration_ms,
         )

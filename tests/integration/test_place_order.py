@@ -32,6 +32,7 @@ from app.runtime.holder import (
     TickCommitted,
 )
 from app.runtime.orders import (
+    DrinkUnavailable,
     IdempotencyKeyReused,
     InvalidOrder,
     OrderRequest,
@@ -163,22 +164,6 @@ async def _market(settings: Settings, url: str, *, grace: int = 2) -> AsyncItera
                 text("UPDATE run SET quote_grace_versions = :g WHERE run_id = :r"),
                 {"g": grace, "r": run_id},
             )
-            removed = await add_drink(
-                conn,
-                run_id,
-                name="Weg",
-                slot=3,
-                p_min_cents=150,
-                p0_cents=260,
-                p_max_cents=500,
-                a=1.0,
-                d=0.1,
-                s0=1.0,
-                c=0.1,
-                bar_price_cents=260,
-            )
-            # A draft removal is a hard delete (Phase 6 SD13); the id stays unknown.
-            await conn.execute(text("DELETE FROM drink WHERE drink_id = :d"), {"d": removed})
         await go_live(engine, run_id, now_ms=T0)
         run = await rehydrate(engine, now_ms=T0)
         assert isinstance(run, RehydratedRun)
@@ -190,7 +175,6 @@ async def _market(settings: Settings, url: str, *, grace: int = 2) -> AsyncItera
 
         holder = MarketHolder.from_rehydrated(run, engine=engine, clock=clock, sink=sink)
         market = Market(engine, holder, clock)
-        market.removed_drink = removed  # type: ignore[attr-defined]
         yield market
     finally:
         await engine.dispose()
@@ -506,9 +490,7 @@ def test_every_statement_is_covered(settings: Settings, database_url: str) -> No
     )
 
 
-@pytest.mark.parametrize(
-    "case", ["inactive-drink", "unknown-drink", "future-quote", "duplicate-drink"]
-)
+@pytest.mark.parametrize("case", ["unknown-drink", "future-quote", "duplicate-drink"])
 def test_domain_checks_are_422_and_write_nothing(
     settings: Settings, database_url: str, case: str
 ) -> None:
@@ -519,7 +501,6 @@ def test_domain_checks_are_422_and_write_nothing(
             bier = m.drinks[0]
             live = m.live()[bier]
             requests = {
-                "inactive-drink": m.request("k-00000011", {m.removed_drink: (1, live)}),  # type: ignore[attr-defined]
                 "unknown-drink": m.request("k-00000011", {999_999: (1, live)}),
                 "future-quote": m.request("k-00000011", {bier: (1, live)}, quote=m.version + 1),
                 "duplicate-drink": OrderRequest(
@@ -532,6 +513,41 @@ def test_domain_checks_are_422_and_write_nothing(
             with pytest.raises(InvalidOrder) as excinfo:
                 await m.place(requests[case])
             assert (excinfo.value.status_code, excinfo.value.code) == (422, "invalid_request")
+            assert await m.counts() == before
+            assert m.holder.state is state
+
+    asyncio.run(scenario())
+
+
+async def _remove_and_reboot(m: Market, drink_id: int) -> Market:
+    """A live soft removal (Phase 6 SD13) as a restart sees it: the slot comes back inactive."""
+    async with m.engine.begin() as conn:
+        await conn.execute(
+            text("UPDATE drink SET removed_at = now() WHERE drink_id = :d"), {"d": drink_id}
+        )
+    run = await rehydrate(m.engine, now_ms=m.clock.wall_ms())
+    assert isinstance(run, RehydratedRun)
+    holder = MarketHolder.from_rehydrated(run, engine=m.engine, clock=m.clock, sink=m.events.extend)
+    return Market(m.engine, holder, m.clock)
+
+
+def test_an_order_naming_a_removed_drink_is_422_drink_unavailable_and_writes_nothing(
+    settings: Settings, database_url: str
+) -> None:
+    """Phase 6 AC19: refused before any price is read; an unknown drink stays invalid_request."""
+
+    async def scenario() -> None:
+        async with _market(settings, database_url) as booted:
+            bier, _, fris = booted.drinks
+            m = await _remove_and_reboot(booted, fris)
+            live = m.live()
+            before, state = await m.counts(), m.holder.state
+
+            with pytest.raises(DrinkUnavailable) as excinfo:
+                await m.place(m.request("k-00000012", {bier: (1, live[bier]), fris: (1, 260)}))
+
+            assert (excinfo.value.status_code, excinfo.value.code) == (422, "drink_unavailable")
+            assert str(fris) in str(excinfo.value)
             assert await m.counts() == before
             assert m.holder.state is state
 

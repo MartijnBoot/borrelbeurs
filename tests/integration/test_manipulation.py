@@ -215,6 +215,38 @@ def test_an_event_writes_its_row_the_jumps_and_lowercase_dutch_news(
     asyncio.run(scenario())
 
 
+def test_an_event_skips_a_removed_drink(settings: Settings, database_url: str) -> None:
+    """Phase 6 AC18, SD13: jumps and `market_event.drink_ids` cover the active drinks only."""
+
+    async def scenario() -> None:
+        async with _market(settings, database_url) as booted:
+            bier, wijn = booted.holder.drink_ids
+            async with booted.engine.begin() as conn:
+                await conn.execute(
+                    text("UPDATE drink SET removed_at = now() WHERE drink_id = :d"), {"d": wijn}
+                )
+            run = await rehydrate(booted.engine, now_ms=T0)
+            assert isinstance(run, RehydratedRun)
+            holder = MarketHolder.from_rehydrated(
+                run, engine=booted.engine, clock=booted.clock, sink=booted.events.extend
+            )
+            assert holder.state is not None
+            before = holder.state.version
+
+            ev = await start_event(holder, "bubble", 30_000, clock=booted.clock)
+
+            assert ev.drink_ids == (bier,)
+            assert holder.state is not None and holder.state.version == before + 1
+            assert {j.i for j in holder.state.jumps} == {0}
+            async with booted.engine.connect() as conn:
+                stored: list[int] = (
+                    await conn.execute(text("SELECT drink_ids FROM market_event"))
+                ).scalar_one()
+            assert stored == [bier]
+
+    asyncio.run(scenario())
+
+
 def test_each_kind_jumps_to_its_bound(settings: Settings, database_url: str) -> None:
     """Crash to p_min, bubble to p_max, correction to p0: the jumps' end points, in y."""
 

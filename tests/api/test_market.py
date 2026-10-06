@@ -101,6 +101,49 @@ def test_each_jump_bound_is_422_and_writes_nothing(
     assert _counts(settings, api_env) == before
 
 
+@pytest.fixture
+def removed_drink(live_run: int, api_env: str, settings: Settings) -> int:
+    """`Fris` removed from the live run before the app boots, so it rehydrates inactive."""
+
+    async def scenario() -> int:
+        engine = create_engine(settings.model_copy(update={"database_url": api_env}))
+        try:
+            async with engine.begin() as conn:
+                return int(
+                    (
+                        await conn.execute(
+                            text(
+                                "UPDATE drink SET removed_at = now()"
+                                " WHERE run_id = :r AND name = 'Fris' RETURNING drink_id"
+                            ),
+                            {"r": live_run},
+                        )
+                    ).scalar_one()
+                )
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(scenario())
+
+
+def test_a_jump_at_a_removed_drink_is_422_and_writes_nothing(
+    removed_drink: int, live_client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """Phase 6 SD13: the slot is still in `drink_ids`, but inactive."""
+    bar = login("bar")
+    assert removed_drink in bar.app.state.holder.drink_ids  # type: ignore[attr-defined]
+    before = _counts(settings, api_env)
+
+    response = bar.post(
+        "/api/market/jumps",
+        json={"drink_id": removed_drink, "target_price_cents": 300, "duration_ms": 5_000},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_request"
+    assert _counts(settings, api_env) == before
+
+
 @pytest.mark.parametrize("target", [150, 500])
 def test_the_bounds_themselves_are_accepted(bar: TestClient, target: int) -> None:
     response = bar.post(
