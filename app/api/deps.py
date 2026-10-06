@@ -42,6 +42,11 @@ class Forbidden(AppError):
     code = "forbidden"
 
 
+class ShuttingDown(AppError):
+    status_code = 503
+    code = "shutting_down"
+
+
 @dataclass(frozen=True)
 class Principal:
     key_id: int
@@ -100,3 +105,14 @@ def require_role(*roles: Role) -> Callable[[Request], Awaitable[Principal]]:
 
     setattr(dependency, REQUIRE_ROLE_MARKER, allowed)
     return dependency
+
+
+def refuse_while_draining(request: Request) -> None:
+    """A write's dependency: 503 `shutting_down` once the process drains (Phase 6 SD24).
+
+    Declare it as a parameter *after* the route's `require_role` one, so a role
+    that may not write is still 401/403 while draining (PD19). A decorator's
+    `dependencies=[...]` would run it first.
+    """
+    if getattr(request.app.state, "draining", False):
+        raise ShuttingDown("the server is shutting down; try again in a moment")

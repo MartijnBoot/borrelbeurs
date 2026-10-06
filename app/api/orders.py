@@ -4,7 +4,7 @@ The request shape is validated here -- the `Idempotency-Key` header (required,
 8-128 of `[A-Za-z0-9_-]`), `quote_version >= 0`, 1..N lines with `qty` 1-99
 and each `drink_id` once -- and everything that needs the live market is
 `place_order`'s, under the holder's lock (T18). A process that is shutting
-down refuses new orders with 503 `shutting_down` (SD10).
+down refuses new orders with 503 `shutting_down` (SD10; `refuse_while_draining`).
 
 The body is the receipt's bytes exactly: 201 the first time, 200 on a replay,
 byte-identical (plan PD7).
@@ -18,19 +18,13 @@ from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import Response
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
-from app.api.deps import Principal, clock_of, require_role
-from app.core.errors import AppError
+from app.api.deps import Principal, clock_of, refuse_while_draining, require_role
 from app.runtime.grace import QuotedLine
 from app.runtime.orders import OrderRequest, Receipt, place_order
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
 IDEMPOTENCY_KEY_PATTERN = r"^[A-Za-z0-9_-]{8,128}$"
-
-
-class ShuttingDown(AppError):
-    status_code = 503
-    code = "shutting_down"
 
 
 class OrderLine(BaseModel):
@@ -67,9 +61,8 @@ async def post_order(
         str, Header(alias="Idempotency-Key", pattern=IDEMPOTENCY_KEY_PATTERN)
     ],
     principal: Annotated[Principal, Depends(require_role("bar", "admin"))],
+    _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> Response:
-    if getattr(request.app.state, "draining", False):
-        raise ShuttingDown("the server is shutting down; try again in a moment")
     placed = await place_order(
         request.app.state.holder,
         OrderRequest(

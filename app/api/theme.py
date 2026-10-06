@@ -24,7 +24,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict
 
-from app.api.deps import Principal, clock_of, require_role
+from app.api.deps import Principal, clock_of, refuse_while_draining, require_role
 from app.db.theme import set_theme
 from app.realtime.hub import Hub
 from app.realtime.messages import Envelope, ThemeData, theme_data
@@ -56,6 +56,7 @@ async def put_theme(
     body: ThemeRequest,
     request: Request,
     _: Annotated[Principal, Depends(require_role("admin"))],
+    _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> ThemeData:
     state = request.app.state
     async with state.engine.begin() as conn:

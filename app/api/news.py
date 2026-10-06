@@ -16,7 +16,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
-from app.api.deps import ALL_ROLES, Principal, clock_of, require_role
+from app.api.deps import ALL_ROLES, Principal, clock_of, refuse_while_draining, require_role
 from app.core.errors import AppError
 from app.db.news import NewsItem, NewsLevel, create_news, soft_delete_news
 from app.realtime.messages import NewsItemData
@@ -58,6 +58,7 @@ async def add_item(
     body: NewsRequest,
     request: Request,
     _: Annotated[Principal, Depends(require_role("bar", "admin"))],
+    _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> NewsItemData:
     holder = _holder(request)
     clock = clock_of(request)
@@ -86,6 +87,7 @@ async def delete_item(
     news_id: int,
     request: Request,
     _: Annotated[Principal, Depends(require_role("bar", "admin"))],
+    _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> NewsItemData:
     holder = _holder(request)
 

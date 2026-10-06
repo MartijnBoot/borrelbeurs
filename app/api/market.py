@@ -17,7 +17,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.deps import Principal, clock_of, require_role
+from app.api.deps import Principal, clock_of, refuse_while_draining, require_role
 from app.core.errors import AppError
 from app.realtime.messages import MarketEventInfo
 from app.runtime.holder import MarketHolder, NoLiveRunError
@@ -61,6 +61,7 @@ async def post_jump(
     body: JumpRequest,
     request: Request,
     _: Annotated[Principal, Depends(require_role("bar", "admin"))],
+    _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> JumpResult:
     holder = _holder(request)
     if holder.is_empty or holder.spec is None:
@@ -85,6 +86,7 @@ async def post_event(
     body: EventRequest,
     request: Request,
     _: Annotated[Principal, Depends(require_role("bar", "admin"))],
+    _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> MarketEventInfo:
     event = await start_event(
         _holder(request), body.kind, body.duration_ms, clock=clock_of(request)
