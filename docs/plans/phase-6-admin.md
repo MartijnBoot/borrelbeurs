@@ -1,6 +1,6 @@
 # Plan: Phase 6 — Manipulation, settings and the admin hub
 
-Spec: [docs/specs/phase-6-admin.md](../specs/phase-6-admin.md) (`Status: Approved`, 2026-10-06; the working-tree text) · Status: Draft — awaiting plan-auditor
+Spec: [docs/specs/phase-6-admin.md](../specs/phase-6-admin.md) (`Status: Approved`, 2026-10-06; the working-tree text) · Status: Audited — PASS (human, 2026-10-06)
 Design: [architecture.md](../design/architecture.md) ("Non-destructive drink add and remove", "Durability", "Authorization"), [data-model.md](../design/data-model.md), [realtime-protocol.md](../design/realtime-protocol.md), [frontend-architecture.md](../design/frontend-architecture.md) ("Forms", "State")
 ADRs honoured: 0003 (one writer; the in-process go-live addendum is written in T39), 0004 (Postgres only; images are `bytea`), 0005 (server-side theme; the token count is corrected in T39), 0006 (no new runtime asset source), 0008 (the order path is unchanged except the `drink_unavailable` refusal), 0009/0010 (hard stops: new dependency, `docs/design/`, product ADR text, pricing maths), 0011 (the migration runs at boot), 0012 (`flow_ema` semantics unchanged)
 Fixes: D-02, D-03, D-04, D-19, D-26, D-29, D-44, D-45, D-46, D-47, D-48
@@ -1408,20 +1408,28 @@ Everything in the spec's Out of scope, and also:
 
 ## Audit (plan-auditor — PASS required before implementation starts)
 
-- [ ] Every AC maps to at least one task
-- [ ] Every task maps to at least one AC (no orphans)
-- [ ] Each task's expected output is what we actually need
-- [ ] Existing patterns reused; nothing reinvented
-- [ ] No new dependency without an approval note
-- [ ] Data changes additive and reversible
-- [ ] Errors, empty states and permissions are tasks, not afterthoughts
-- [ ] Each task reviewable in one sitting
-- [ ] Verification named per task
-- [ ] Nothing touches prod, secrets or infra it should not
-- [ ] Every task has a Depends on and an Autonomy note
-- [ ] No two tasks in one parallel group write the same file
+- [x] Every AC maps to at least one task
+- [x] Every task maps to at least one AC (no orphans)
+- [x] Each task's expected output is what we actually need
+- [x] Existing patterns reused; nothing reinvented
+- [x] No new dependency without an approval note
+- [x] Data changes additive and reversible
+- [x] Errors, empty states and permissions are tasks, not afterthoughts
+- [x] Each task reviewable in one sitting
+- [x] Verification named per task
+- [x] Nothing touches prod, secrets or infra it should not
+- [x] Every task has a Depends on and an Autonomy note
+- [x] No two tasks in one parallel group write the same file
 - [x] PD1 answered by the human: (b) `python-multipart` (2026-10-06)
-- [ ] PD2, PD3, PD8, PD18 confirmed or overruled
-- [ ] R1 resolved: the working-tree spec and register are committed
+- [x] PD2, PD3, PD8, PD18 confirmed or overruled (all confirmed as written)
+- [x] R1 resolved: the working-tree spec and register are committed (`9d95400`)
 
-Audited by: ______  Date: ______
+Findings raised at the audit and accepted as written (the existing stop-and-ask notes stand):
+- T30 / R19: no server route supplies a non-active preset's tokens; T30 stops and asks if needed.
+- T33: the jump `[p_min, p_max]` hint is admin-only, so a bar session sees no hint (SD23 reads as
+  unconditional).
+- T7, T9, T16, T18, T19 and T24 sit at or above ~10 source files; T9 may split (R20).
+- T25–T32 do not each name their loading / no-current-run / fetch-error state.
+- `run_ended` (409) is tested only in T10, not in T12–T15.
+
+Audited by: Martijn Boot (human audit, `/audit 6`)  Date: 2026-10-06
