@@ -190,7 +190,8 @@ class Outcome(Generic[T]):
     """A step's result: what `mutate` returns, the new view, and what to publish after commit.
 
     `earnings_lines` are `(drink_id, qty, line_total_cents)`, as
-    `EarningsAggregate.add_lines` takes them.
+    `EarningsAggregate.add_lines` takes them. `ring_window_ms`, when set, is the
+    history ring's new window (a live `history_window_minutes` change, Phase 6 PD18).
     """
 
     result: T
@@ -198,6 +199,7 @@ class Outcome(Generic[T]):
     events: tuple[DomainEvent, ...] = ()
     ticks: tuple[TickEntry, ...] = ()
     earnings_lines: tuple[tuple[int, int, int], ...] = field(default=())
+    ring_window_ms: int | None = None
 
 
 Step = Callable[[MarketView], Awaitable[Outcome[T]]]
@@ -421,6 +423,8 @@ class MarketHolder:
 
     def _publish(self, outcome: Outcome[T]) -> None:
         """Fold a committed outcome into memory. Pure memory: no I/O, no await."""
+        if outcome.ring_window_ms is not None:
+            self._ring.resize(outcome.ring_window_ms)
         for entry in outcome.ticks:
             self._ring.append(entry)
         if outcome.earnings_lines:

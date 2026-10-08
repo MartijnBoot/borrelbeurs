@@ -129,7 +129,9 @@ def _publish(events: list[DomainEvent], holder: MarketHolder | None = None) -> l
         socket = RecordingSocket()
         hub.connect(socket)
         held = holder or _holder()
-        publisher = Publisher(hub, seeded_book(held), active=active_drink_ids(held))
+        publisher = Publisher(
+            hub, seeded_book(held), active=active_drink_ids(held), ring=lambda: held.ring
+        )
         publisher(events)
         for _ in range(100):
             await asyncio.sleep(0)

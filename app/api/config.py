@@ -5,8 +5,11 @@
 only the keys present into a draft and returns `{revision}`: the new one, or the
 current one when nothing changed. A violation of SD8 is 422 naming the field.
 
-404 `run_not_found`; 409 `run_ended`; a live run's PATCH is 409 `run_not_draft`
-until live writes exist (T11). Admin only. The PATCH refuses while draining (SD24).
+On the run this process holds live, the PATCH is one engine transition with
+one `config` broadcast (SD7); on a draft it is a plain transaction.
+
+404 `run_not_found`; 409 `run_ended`. Admin only. The PATCH refuses while
+draining (SD24).
 """
 
 from __future__ import annotations
@@ -15,14 +18,22 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
 
-from app.api.deps import Principal, db_engine, refuse_while_draining, require_role
+from app.api.deps import (
+    Principal,
+    clock_of,
+    db_engine,
+    refuse_while_draining,
+    require_role,
+)
 from app.runtime.config import (
     ConfigData,
     ConfigPatch,
     RevisionData,
     read_config,
     write_draft_config,
+    write_live_config,
 )
+from app.runtime.holder import MarketHolder
 
 router = APIRouter(prefix="/runs", tags=["config"])
 
@@ -42,5 +53,13 @@ async def patch_config(
     principal: Annotated[Principal, Depends(require_role("admin"))],
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> RevisionData:
-    revision = await write_draft_config(db_engine(request), run_id, body, author=principal.label)
+    holder: MarketHolder = request.app.state.holder
+    if holder.run_id == run_id:
+        revision = await write_live_config(
+            holder, run_id, body, author=principal.label, clock=clock_of(request)
+        )
+    else:
+        revision = await write_draft_config(
+            db_engine(request), run_id, body, author=principal.label
+        )
     return RevisionData(revision=revision)

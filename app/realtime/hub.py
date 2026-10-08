@@ -172,6 +172,16 @@ class Hub:
         self._seq += 1
         self._run_id, self._version = run_id, None
 
+    @property
+    def replay_window_ms(self) -> int:
+        return self._replay_window_ms
+
+    def resize_replay_window(self, replay_window_ms: int) -> None:
+        """A live `history_window_minutes` change (Phase 6 PD18): applies from now on."""
+        self._replay_window_ms = replay_window_ms
+        if self._log:
+            self._trim(self._log[-1][1])
+
     def resync_frame(self) -> str:
         return Envelope(
             type="resync",

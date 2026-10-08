@@ -95,7 +95,10 @@ class Runtime:
         )
         self.hub = Hub(clock=clock, replay_window_ms=60_000)
         self.publisher = Publisher(
-            self.hub, seeded_book(self.holder), active=active_drink_ids(self.holder)
+            self.hub,
+            seeded_book(self.holder),
+            active=active_drink_ids(self.holder),
+            ring=lambda: self.holder.ring,
         )
         self.ticker = Ticker(self.holder, clock=clock, interval_ms=BOOT_INTERVAL)
         self.tick_interval_ms = BOOT_INTERVAL

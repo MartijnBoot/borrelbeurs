@@ -53,6 +53,12 @@ class HistoryRing:
         self._entries.append(entry)
         self._trim()
 
+    def resize(self, window_ms: int) -> None:
+        """A new window from now on (Phase 6 PD18): a shorter one trims at once, a longer one
+        fills as ticks arrive."""
+        self._window_ms = window_ms
+        self._trim()
+
     def window(self) -> tuple[TickEntry, ...]:
         return tuple(self._entries)
 

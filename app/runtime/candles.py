@@ -53,6 +53,10 @@ class CandleBook:
         self._open: dict[int, Candle] = {}
         self._generation = 0
 
+    @property
+    def interval_ms(self) -> int:
+        return self._interval_ms
+
     def update(self, ts_ms: int, source: str, prices: Mapping[int, int]) -> dict[int, Candle]:
         """Fold one committed tick's chart prices in; the current candle of each drink given."""
         start = bucket_start(ts_ms, self._interval_ms)

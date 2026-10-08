@@ -13,7 +13,10 @@ it only builds frames and enqueues them -- `Hub.broadcast` never awaits (SD29).
 - `NewsChanged` -> `news`; `MarketEventStarted` / `MarketEventEnded` ->
   `market_event` with absolute times.
 - `ConfigChanged` -> `config` (Phase 6 SD18, PD5): the run, every drink with
-  `active`, the params. Prices it moved reach clients on the next tick.
+  `active`, the params. Prices it moved reach clients on the next tick. A new
+  candle interval rebuilds the candle book from the holder's ring, so the next
+  tick's candle is its bucket's as the snapshot re-buckets it (SD10); a new
+  `history_window_minutes` resizes the hub's replay window (PD18).
 
 Every envelope carries the committed engine `version`.
 
@@ -30,7 +33,7 @@ It is built purely from holder memory -- never the database, never the engine
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from typing import Literal
 
 from app.db.mapping import cents_from_quantised, params_to_json
@@ -111,8 +114,12 @@ def _event_info(event: ActiveEvent) -> MarketEventInfo:
 
 def seeded_book(holder: MarketHolder) -> CandleBook:
     """A candle book that has seen the ring, so the first tick's candle is the bucket's."""
-    book = CandleBook(holder.candle_interval_ms)
-    for entry in holder.ring:
+    return _book_over(holder.ring, holder.candle_interval_ms)
+
+
+def _book_over(entries: Iterable[TickEntry], interval_ms: int) -> CandleBook:
+    book = CandleBook(interval_ms)
+    for entry in entries:
         book.update(entry.wall_ts_ms, entry.source, _chart(entry))
     return book
 
@@ -122,10 +129,19 @@ def _chart(entry: TickEntry) -> dict[int, int]:
 
 
 class Publisher:
-    def __init__(self, hub: Hub, candle_book: CandleBook, *, active: Collection[int]) -> None:
+    def __init__(
+        self,
+        hub: Hub,
+        candle_book: CandleBook,
+        *,
+        active: Collection[int],
+        ring: Callable[[], Iterable[TickEntry]],
+    ) -> None:
+        """`ring` reads the holder's committed ticks, to re-bucket on a new candle interval."""
         self._hub = hub
         self._book = candle_book
         self._active = frozenset(active)
+        self._ring = ring
 
     def adopt(self, candle_book: CandleBook, *, active: Collection[int]) -> None:
         """A run went live in this process (Phase 6 PD11): its candle book and drinks."""
@@ -199,6 +215,9 @@ class Publisher:
             )
         elif isinstance(event, ConfigChanged):
             self._active = frozenset(d for d, _, on in event.drinks if on)
+            if event.candle_interval_ms != self._book.interval_ms:
+                self._book = _book_over(self._ring(), event.candle_interval_ms)
+            self._hub.resize_replay_window(round(event.params.history_window_minutes * 60_000))
             self._broadcast("config", event.run_id, event.version, config_data(event))
         elif isinstance(event, NewsChanged):
             self._broadcast(

@@ -413,15 +413,31 @@ def test_a_stored_target_with_no_active_drink_is_dropped_from_the_response(
     assert body["params"]["idle_targets"] == [bier]
 
 
-def test_a_live_run_is_409_until_live_writes_exist(
+def test_a_live_patch_is_one_transition_and_one_config_frame(
     live_run: int, live_client: TestClient, login: Login
 ) -> None:
-    admin = login("admin")
+    """T11: AC9, AC12 over HTTP and a real socket."""
+    admin = login("admin", label="Bestuur")
+    before = admin.get(f"/api/runs/{live_run}/config").json()
+    version = admin.get("/api/state").json()["version"]
 
-    assert admin.get(f"/api/runs/{live_run}/config").status_code == 200
-    response = admin.patch(f"/api/runs/{live_run}/config", json={"params": {"eta": 0.9}})
+    with admin.websocket_connect("wss://testserver/ws") as ws:
+        assert json.loads(ws.receive_text())["type"] == "hello"
+        ws.send_text(json.dumps({"type": "hello", "boot_id": "elsewhere", "last_seq": 0}))
+        assert json.loads(ws.receive_text())["type"] == "snapshot"
+        response = admin.patch(f"/api/runs/{live_run}/config", json={"params": {"eta": 0.9}})
+        frame = json.loads(ws.receive_text())
+        while frame["type"] != "config":
+            frame = json.loads(ws.receive_text())
 
-    assert response.status_code == 409
+    assert response.status_code == 200, response.text
+    assert response.json() == {"revision": before["revision"] + 1}
+    assert frame["version"] == version + 1
+    assert frame["data"]["revision"] == before["revision"] + 1
+    assert frame["data"]["params"]["eta"] == 0.9
+    after = admin.get(f"/api/runs/{live_run}/config").json()
+    assert after["params"] == {**before["params"], "eta": 0.9}
+    assert after["run"]["status"] == "live"
 
 
 def test_an_ended_run_is_409_run_ended(

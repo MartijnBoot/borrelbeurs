@@ -106,6 +106,7 @@ class RunRow:
     status: RunStatus
     params: dict[str, Any]
     candle_interval_ms: int
+    tick_interval_ms: int
 
 
 def name_key(name: str) -> str:
@@ -216,14 +217,19 @@ async def latest_revision(conn: AsyncConnection, run_id: int) -> int:
 
 async def get_run(conn: AsyncConnection, run_id: int, *, lock: bool = False) -> RunRow:
     """The run, or `RunNotFound`; with `lock`, under `SELECT … FOR UPDATE` (SD6)."""
-    statement = select(Run.run_id, Run.name, Run.status, Run.params, Run.candle_interval_ms).where(
-        Run.run_id == run_id
-    )
+    statement = select(
+        Run.run_id, Run.name, Run.status, Run.params, Run.candle_interval_ms, Run.tick_interval_ms
+    ).where(Run.run_id == run_id)
     row = (await conn.execute(statement.with_for_update() if lock else statement)).one_or_none()
     if row is None:
         raise RunNotFound(f"no run {run_id}")
     return RunRow(
-        int(row.run_id), row.name, row.status, dict(row.params), int(row.candle_interval_ms)
+        int(row.run_id),
+        row.name,
+        row.status,
+        dict(row.params),
+        int(row.candle_interval_ms),
+        int(row.tick_interval_ms),
     )
 
 

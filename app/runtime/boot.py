@@ -165,7 +165,9 @@ async def start_runtime(
             replay_window_ms = DEFAULT_REPLAY_WINDOW_MS
 
         hub = Hub(clock=clock, replay_window_ms=replay_window_ms)
-        publisher = Publisher(hub, seeded_book(holder), active=active_drink_ids(holder))
+        publisher = Publisher(
+            hub, seeded_book(holder), active=active_drink_ids(holder), ring=lambda: holder.ring
+        )
         sink.target = publisher
         ticker = Ticker(holder, clock=clock, interval_ms=tick_interval_ms)
 

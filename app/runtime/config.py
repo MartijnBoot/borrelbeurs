@@ -20,12 +20,16 @@ that is unknown or removed is 422 naming the field.
 
 **A draft write (SD5, SD6)** is one plain transaction: lock the `run` row,
 merge only the present keys, and append a revision only if something changed.
-An empty body returns the current revision and writes nothing (AC2). A live run
-is 409 until live writes exist (T11); an ended one is 409 `run_ended`.
+**A live write (SD7)** does the same inside `holder.mutate("config", ...)`, and
+in that one transaction also compare-and-sets `engine_state` to `version + 1`
+and writes a `price_tick` of source `config`; it emits `ConfigChanged`. An
+empty body returns the current revision and writes nothing (AC2). An ended run
+is 409 `run_ended`.
 """
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Annotated, Any
 
 from pydantic import (
@@ -41,6 +45,8 @@ from pydantic import (
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from app.core.errors import AppError
+from app.db.codec import tick_prices
+from app.db.engine_state import compare_and_set, insert_tick
 from app.db.mapping import DrinkRow
 from app.db.runs import (
     RunEnded,
@@ -53,7 +59,10 @@ from app.db.runs import (
     latest_revision,
     update_run,
 )
-from exchange import Params
+from app.runtime.clock import Clock
+from app.runtime.history import TickEntry
+from app.runtime.holder import ConfigChanged, MarketHolder, MarketView, Outcome
+from exchange import Params, hold_quoted_prices
 
 
 class InvalidConfig(AppError):
@@ -254,37 +263,163 @@ def _target_names(drinks: list[DrinkRow], field: str, drink_ids: list[int]) -> l
     return [d.name for d in active if d.drink_id in wanted]
 
 
+def _is_empty(patch: ConfigPatch) -> bool:
+    return (
+        patch.name is None
+        and patch.candle_interval_s is None
+        and (patch.params is None or not patch.params.model_fields_set)
+    )
+
+
+async def _merged(conn: AsyncConnection, run: RunRow, patch: ConfigPatch) -> RunRow | None:
+    """`run` with only the present keys of `patch` applied; `None` if that changes nothing."""
+    changes: dict[str, Any] = patch.params.model_dump(exclude_unset=True) if patch.params else {}
+    drinks = await all_drinks(conn, run.run_id)
+    for field in _TARGETS:
+        if field in changes:
+            changes[field] = _target_names(drinks, field, changes[field])
+    merged = dataclasses.replace(
+        run,
+        name=run.name if patch.name is None else patch.name,
+        candle_interval_ms=(
+            run.candle_interval_ms
+            if patch.candle_interval_s is None
+            else patch.candle_interval_s * 1000
+        ),
+        params={**run.params, **changes},
+    )
+    return None if merged == run else merged
+
+
+async def _record(conn: AsyncConnection, run: RunRow, *, author: str) -> int:
+    """Write `run`'s columns and append its config as the next revision; that revision."""
+    await update_run(
+        conn,
+        run.run_id,
+        name=run.name,
+        params=run.params,
+        candle_interval_ms=run.candle_interval_ms,
+    )
+    document = await config_document(conn, run)
+    document.revision += 1  # the number this append takes: the row lock is held
+    revision = await append_config_revision(
+        conn, run.run_id, config=document.model_dump(mode="json"), author=author
+    )
+    assert revision == document.revision
+    return revision
+
+
+async def current_revision(engine: AsyncEngine, run_id: int) -> int:
+    """An empty PATCH's answer: no lock, no write, no transition (AC2)."""
+    async with engine.connect() as conn:
+        run = _readable(await get_run(conn, run_id))
+        return await latest_revision(conn, run.run_id)
+
+
 async def write_draft_config(
     engine: AsyncEngine, run_id: int, patch: ConfigPatch, *, author: str
 ) -> int:
     """Merge `patch` into a draft run; the new revision, or the current one if nothing changed."""
+    if _is_empty(patch):
+        return await current_revision(engine, run_id)
     async with engine.begin() as conn:
         run = _readable(await get_run(conn, run_id, lock=True))
         if run.status != "draft":
-            raise RunNotDraft(f"run {run_id} is {run.status}; live config writes are not built")
-        changes: dict[str, Any] = (
-            patch.params.model_dump(exclude_unset=True) if patch.params else {}
-        )
-        drinks = await all_drinks(conn, run_id)
-        for field in _TARGETS:
-            if field in changes:
-                changes[field] = _target_names(drinks, field, changes[field])
-        name = run.name if patch.name is None else patch.name
-        candle_ms = (
-            run.candle_interval_ms
-            if patch.candle_interval_s is None
-            else patch.candle_interval_s * 1000
-        )
-        params = {**run.params, **changes}
-        if (name, candle_ms, params) == (run.name, run.candle_interval_ms, run.params):
+            raise RunNotDraft(f"run {run_id} is {run.status}, and not live in this process")
+        merged = await _merged(conn, run, patch)
+        if merged is None:
             return await latest_revision(conn, run_id)
+        return await _record(conn, merged, author=author)
 
-        await update_run(conn, run_id, name=name, params=params, candle_interval_ms=candle_ms)
-        updated = RunRow(run_id, name, run.status, params, candle_ms)
-        document = await config_document(conn, updated)
-        document.revision += 1  # the number this append takes: the row lock is held
-        revision = await append_config_revision(
-            conn, run_id, config=document.model_dump(mode="json"), author=author
+
+async def write_live_config(
+    holder: MarketHolder, run_id: int, patch: ConfigPatch, *, author: str, clock: Clock
+) -> int:
+    """Merge `patch` into the live run as one engine transition (SD7); the new revision.
+
+    A `step_quant` change holds every active slot's quoted price (SD9,
+    `hold_quoted_prices`, its jumps cancelled); any other change leaves `y`
+    alone. A patch that changes nothing returns the current revision and takes
+    no transition.
+    """
+    engine = holder.engine
+    if _is_empty(patch):
+        return await current_revision(engine, run_id)
+
+    async def step(view: MarketView) -> Outcome[int]:
+        assert view.run_id == run_id and view.spec is not None and view.state is not None
+        now_ms = clock.wall_ms()
+        async with engine.begin() as conn:
+            run = _readable(await get_run(conn, run_id, lock=True))
+            merged = await _merged(conn, run, patch)
+            if merged is None:
+                return Outcome(result=await latest_revision(conn, run_id), view=view)
+            params = Params.from_dict(merged.params)
+            spec = dataclasses.replace(view.spec, params=params)
+            state = view.state
+            if params.step_quant != view.spec.params.step_quant:
+                active = [i for i, on in enumerate(spec.active.tolist()) if on]
+                state = hold_quoted_prices(view.spec, spec, state, active)
+            candidate = dataclasses.replace(state, version=view.state.version + 1)
+            revision = await _record(conn, merged, author=author)
+            await compare_and_set(
+                conn,
+                run_id=run_id,
+                expected_version=view.state.version,
+                state=candidate,
+                drink_ids=view.drink_ids,
+                wall_ts_ms=now_ms,
+            )
+            await insert_tick(
+                conn,
+                run_id=run_id,
+                state=candidate,
+                spec=spec,
+                drink_ids=view.drink_ids,
+                source="config",
+                wall_ts_ms=now_ms,
+            )
+        old_window = view.spec.params.history_window_minutes
+        return Outcome(
+            result=revision,
+            view=dataclasses.replace(
+                view,
+                spec=spec,
+                state=candidate,
+                last_commit_wall_ms=now_ms,
+                candle_interval_ms=merged.candle_interval_ms,
+            ),
+            events=(
+                ConfigChanged(
+                    run_id=run_id,
+                    version=candidate.version,
+                    revision=revision,
+                    name=merged.name,
+                    tick_interval_ms=merged.tick_interval_ms,
+                    candle_interval_ms=merged.candle_interval_ms,
+                    quote_grace_versions=view.quote_grace_versions,
+                    drinks=tuple(
+                        (d, name, bool(on))
+                        for d, name, on in zip(
+                            view.drink_ids, spec.names, spec.active.tolist(), strict=True
+                        )
+                    ),
+                    params=params,
+                ),
+            ),
+            ticks=(
+                TickEntry(
+                    candidate.version,
+                    now_ms,
+                    "config",
+                    tick_prices(spec, candidate, view.drink_ids),
+                ),
+            ),
+            ring_window_ms=(
+                None
+                if params.history_window_minutes == old_window
+                else round(params.history_window_minutes * 60_000)
+            ),
         )
-        assert revision == document.revision
-        return revision
+
+    return await holder.mutate("config", step)

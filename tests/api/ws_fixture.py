@@ -228,7 +228,9 @@ async def _publish_config(client: TestClient) -> None:
         ),
         params=holder.spec.params,
     )
-    Publisher(state.hub, seeded_book(holder), active=active_drink_ids(holder))([event])
+    Publisher(
+        state.hub, seeded_book(holder), active=active_drink_ids(holder), ring=lambda: holder.ring
+    )([event])
 
 
 def record(settings: Settings) -> dict[str, Frame]:
