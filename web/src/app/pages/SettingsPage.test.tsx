@@ -60,6 +60,6 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
     await act(async () => {})
 
-    expect(screen.getAllByText('Nog niet beschikbaar')).toHaveLength(5)
+    expect(screen.getAllByText('Nog niet beschikbaar')).toHaveLength(4)
   })
 })
