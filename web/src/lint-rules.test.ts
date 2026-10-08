@@ -198,3 +198,34 @@ describe('revenue arithmetic', () => {
     ).toContain('no-restricted-syntax')
   })
 })
+
+describe('form values and native dialogs (Phase 6 PD16; SD27, AC39)', () => {
+  it('forbids unary + in a feature file', async () => {
+    const code = 'export const f = (el: HTMLInputElement) => +el.value\n'
+    expect(await ruleIds(code, 'src/features/koers/ui/Thing.ts')).toContain('no-restricted-syntax')
+  })
+
+  it('forbids unary + in components and lib too', async () => {
+    const code = 'export const f = (s: string) => +s\n'
+    expect(await ruleIds(code, 'src/components/ui/Button.ts')).toContain('no-restricted-syntax')
+    expect(await ruleIds(code, 'src/lib/format.ts')).toContain('no-restricted-syntax')
+  })
+
+  it('allows binary + and Number()', async () => {
+    const code = 'export const f = (a: number, s: string) => a + Number(s)\n'
+    expect(await ruleIds(code, 'src/features/koers/ui/Thing.ts')).toEqual([])
+  })
+
+  it('exempts tests from the unary + ban', async () => {
+    const code = 'export const f = (s: string) => +s\n'
+    expect(await ruleIds(code, 'src/features/koers/a.test.ts')).toEqual([])
+  })
+
+  it.each(["window.confirm('x')", "confirm('x')", "alert('x')", "prompt('x')"])(
+    'forbids %s',
+    async (call) => {
+      const ids = await ruleIds(`export const f = () => ${call}\n`, 'src/features/koers/a.ts')
+      expect(ids.some((id) => id.startsWith('no-restricted'))).toBe(true)
+    },
+  )
+})

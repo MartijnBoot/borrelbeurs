@@ -51,6 +51,18 @@ const revenueArithmetic = [
   },
 ]
 
+// Phase 6 SD27 (PD16, D-03): a form value is never coerced with `+x`, which
+// turns "" into 0. Parse it (NumberField, MoneyField, parseEuroCents). Every
+// unary + in non-test source, whatever it is named. Tests are exempt.
+const unaryPlus = {
+  selector: "UnaryExpression[operator='+']",
+  message: 'Parse form values (NumberField, parseEuroCents); `+x` turns "" into 0 (SD27).',
+}
+
+// Phase 6 AC39 (PD16): destructive actions confirm with ConfirmDialog, never the
+// browser's own dialogs.
+const dialogMessage = 'Use ConfirmDialog or Toast, never a native dialog (AC39).'
+
 // AC12 (D-14): nothing in the bundle persists to web storage; the theme and
 // every other setting live on the server.
 const storageMessage = 'Web storage is banned; state lives on the server.'
@@ -124,23 +136,29 @@ export default tseslint.config(
           ],
         },
       ],
-      'no-restricted-syntax': ['error', envRead, ...htmlSinks, ...revenueArithmetic],
+      'no-restricted-syntax': ['error', envRead, ...htmlSinks, ...revenueArithmetic, unaryPlus],
       'no-restricted-globals': [
         'error',
         { name: 'localStorage', message: storageMessage },
         { name: 'sessionStorage', message: storageMessage },
+        { name: 'confirm', message: dialogMessage },
+        { name: 'alert', message: dialogMessage },
+        { name: 'prompt', message: dialogMessage },
       ],
       'no-restricted-properties': [
         'error',
         { object: 'window', property: 'localStorage', message: storageMessage },
         { object: 'window', property: 'sessionStorage', message: storageMessage },
+        { object: 'window', property: 'confirm', message: dialogMessage },
+        { object: 'window', property: 'alert', message: dialogMessage },
+        { object: 'window', property: 'prompt', message: dialogMessage },
       ],
     },
   },
   {
     files: ['src/lib/config.ts'],
     rules: {
-      'no-restricted-syntax': ['error', ...htmlSinks, ...revenueArithmetic],
+      'no-restricted-syntax': ['error', ...htmlSinks, ...revenueArithmetic, unaryPlus],
     },
   },
   {
