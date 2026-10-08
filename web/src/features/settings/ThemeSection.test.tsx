@@ -43,8 +43,7 @@ async function choose(label: string) {
 }
 
 describe('ThemeSection', () => {
-  it('shows the five presets under "Thema", the current one marked', () => {
-    expect(screen.getByRole('heading', { name: 'Thema' })).toBeTruthy()
+  it('shows the five presets, the current one marked', () => {
     expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(LABELS)
     expect(marked()).toEqual(['Paars'])
   })

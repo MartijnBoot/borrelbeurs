@@ -1,5 +1,6 @@
 /**
- * The "Thema" section of `/settings` (SD10): the five presets, the current
+ * The "🎨 Kleurenschema" section of `/settings` (Phase 4 SD10; moved here by
+ * Phase 6 PD13; `SettingsLayout` gives it its heading): the five presets, the current
  * one marked. The key -> label pairs are UI strings, not theme data -- the
  * tokens stay on the server (SD6) -- so these are labelled buttons, not
  * colour swatches (Risks R3, option a).
@@ -51,8 +52,7 @@ export function ThemeSection() {
   }
 
   return (
-    <section className={styles.section}>
-      <h2>Thema</h2>
+    <div>
       <div className={styles.presets}>
         {PRESETS.map(([key, label]) => (
           <Button
@@ -70,6 +70,6 @@ export function ThemeSection() {
           {error}
         </p>
       )}
-    </section>
+    </div>
   )
 }
