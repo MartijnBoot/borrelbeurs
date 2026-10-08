@@ -33,7 +33,8 @@ from starlette.routing import BaseRoute, Mount, WebSocketRoute
 import app.main
 from app.api.deps import REQUIRE_ROLE_MARKER, Principal, require_role
 
-# (kind, path): SD1's public row, SD3's docs and Phase 4 SD8's theme stylesheet.
+# (kind, path): SD1's public row, SD3's docs, Phase 4 SD8's theme stylesheet and
+# Phase 6 SD29's uploaded images.
 # Nothing else, ever, without the human.
 PUBLIC_ROUTES: Final = frozenset(
     {
@@ -45,6 +46,8 @@ PUBLIC_ROUTES: Final = frozenset(
         ("GET", "/docs"),
         ("GET", "/redoc"),
         ("GET", "/theme.css"),
+        # Phase 6 SD29: the board and the login page paint with uploaded images.
+        ("GET", "/assets/{asset_id:int}"),
     }
 )
 
@@ -124,7 +127,8 @@ def test_the_walk_reaches_the_routes_that_matter(built_frontend: None) -> None:
 
 def test_the_allowlist_is_exactly_sd1_sd3_and_phase_4_sd8() -> None:
     """`/theme.css` was authorised by the human in Phase 4 SD8: the login page must
-    paint themed too, and the tokens are not secret."""
+    paint themed too, and the tokens are not secret. `/assets/{asset_id:int}` was, in
+    the approved Phase 6 spec (SD29), for the same reason: uploaded theme images."""
     assert {path for _, path in PUBLIC_ROUTES} == {
         "/api/auth/login",
         "/healthz",
@@ -134,6 +138,7 @@ def test_the_allowlist_is_exactly_sd1_sd3_and_phase_4_sd8() -> None:
         "/docs",
         "/redoc",
         "/theme.css",
+        "/assets/{asset_id:int}",
     }
 
 

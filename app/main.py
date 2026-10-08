@@ -41,6 +41,7 @@ from starlette.responses import Response
 from starlette.types import Scope
 
 from app.api.admin import router as admin_router
+from app.api.assets import router as assets_router
 from app.api.auth import router as auth_router
 from app.api.config import router as config_router
 from app.api.drinks import router as drinks_router
@@ -216,6 +217,8 @@ def create_app(
     application.include_router(ws_router)
     # Public (Phase 4 SD8), and in front of the SPA mount, which would otherwise catch it.
     application.include_router(theme_css_router)
+    # Public (Phase 6 SD29); `{asset_id:int}`, so the SPA's own `/assets/*.js` fall through.
+    application.include_router(assets_router)
 
     # Mounted last, at "/", and after /api: everything above already owns its
     # namespace, so the SPA only ever catches what neither router claimed

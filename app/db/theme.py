@@ -6,20 +6,33 @@ one row; `get_theme` returning `None` means "Blauw at revision 0" to the caller.
 
 The custom theme (Phase 6 SD28) is `custom_tokens`, an object keyed by token
 name, and `custom_font`; a write without one keeps the stored one.
+
+The four image slots (Phase 6 SD29) are one `asset` pointer each. `set_image`
+points a slot and returns the pointer it replaced, for the caller to delete in
+the same transaction (AC34).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, cast
+from typing import Any, Final, Literal, cast
 
-from sqlalchemy import Row, func, select
+from sqlalchemy import Row, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.db.models import Theme
-from app.runtime.theme import CustomTheme, FontName, PresetName
+from app.runtime.theme import DEFAULT_PRESET, CustomTheme, FontName, PresetName
+
+ImageSlot = Literal["bg", "header", "logo", "promo"]
+
+_SLOT_COLUMNS: Final = {
+    "bg": Theme.bg_asset_id,
+    "header": Theme.header_asset_id,
+    "logo": Theme.logo_asset_id,
+    "promo": Theme.promo_asset_id,
+}
 
 
 @dataclass(frozen=True)
@@ -75,3 +88,41 @@ async def set_theme(
         *_COLUMNS
     )
     return _row((await conn.execute(upsert)).one())
+
+
+async def set_image(
+    conn: AsyncConnection, slot: ImageSlot, asset_id: int | None
+) -> tuple[ThemeRow, int | None]:
+    """Point `slot` at `asset_id` (or nothing) and bump the revision; the row and the old pointer.
+
+    With no theme row yet, the first write inserts Blauw at revision 1. Otherwise
+    the row is locked first, so the pointer read is the one this write replaces.
+    """
+    column = _SLOT_COLUMNS[slot]
+    inserted = (
+        await conn.execute(
+            insert(Theme)
+            .values(preset=DEFAULT_PRESET, revision=1, **{column.key: asset_id})
+            .on_conflict_do_nothing(index_elements=[Theme.id])
+            .returning(*_COLUMNS)
+        )
+    ).one_or_none()
+    if inserted is not None:
+        return _row(inserted), None
+    old = (await conn.execute(select(column).with_for_update())).scalar_one()
+    row = (
+        await conn.execute(
+            update(Theme)
+            .values(
+                {column: asset_id, Theme.revision: Theme.revision + 1, Theme.updated_at: func.now()}
+            )
+            .returning(*_COLUMNS)
+        )
+    ).one()
+    return _row(row), None if old is None else int(old)
+
+
+async def get_image(conn: AsyncConnection, slot: ImageSlot) -> int | None:
+    """The asset `slot` points at, if any."""
+    value = (await conn.execute(select(_SLOT_COLUMNS[slot]))).scalar_one_or_none()
+    return None if value is None else int(value)

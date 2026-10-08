@@ -41,6 +41,10 @@ dependencies = [
     # HS256 session tokens with `exp` validation: no JWT in stdlib, and
     # hand-rolled HMAC/base64url/claims is where auth bugs live.
     "PyJWT>=2.9,<3",
+    # Multipart image uploads (Phase 6 SD29; PD1 (b), approved 2026-10-06).
+    # Starlette's form parser needs it; stdlib has no multipart parser since
+    # `cgi` was removed. Apache-2.0, maintained under the Kludex/Starlette org.
+    "python-multipart>=0.0.18,<1.0",
 ]
 
 [dependency-groups]

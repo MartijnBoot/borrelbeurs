@@ -18,6 +18,16 @@ forbids the engine state lock for theme writes. So it commits in its own
 transaction, replaces `app.state.theme` only if the committed revision is higher
 (two racing writes converge on the last one), and broadcasts `theme` straight on
 the hub, which takes the next `seq` with or without a run.
+
+**`POST /api/theme/images/{slot}`** (Phase 6 SD29; AC31, AC33, AC34) takes
+multipart `file`. A `Content-Length` past the limit is 413 `too_large` before
+any read; otherwise the request stream passes through `read_limited` before it
+reaches the multipart parser, which caps nothing itself, so a body past the
+limit is refused within one chunk of it. The image is typed by `sniff` alone,
+else 415 `unsupported_media_type`. One transaction stores the asset, points the
+slot at it, deletes the slot's previous asset and bumps the revision; the theme
+is then broadcast as `PUT` does. **`DELETE /api/theme/images/{slot}`** clears
+the slot and deletes its asset the same way; an empty slot changes nothing.
 """
 
 from __future__ import annotations
@@ -26,13 +36,23 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, StringConstraints, field_validator, model_validator
+from starlette.datastructures import UploadFile
+from starlette.formparsers import MultiPartException, MultiPartParser
 
 from app.api.deps import Principal, clock_of, refuse_while_draining, require_role
 from app.core.errors import AppError
-from app.db.theme import get_theme, set_theme
+from app.db.assets import delete_asset, insert_asset
+from app.db.theme import ImageSlot, ThemeRow, get_image, get_theme, set_image, set_theme
 from app.realtime.hub import Hub
 from app.realtime.messages import Envelope, ThemeData, theme_data
 from app.runtime.holder import MarketHolder
+from app.runtime.images import (
+    MAX_IMAGE_BYTES,
+    TooLarge,
+    UnsupportedMediaType,
+    read_limited,
+    sniff,
+)
 from app.runtime.theme import (
     HEX,
     TOKEN_NAMES,
@@ -47,6 +67,10 @@ from app.runtime.theme import (
 theme_css_router = APIRouter(tags=["theme"])
 theme_router = APIRouter(prefix="/theme", tags=["theme"])
 
+
+# Room for the multipart boundary and part headers around a full-size image; the
+# reader stops within one chunk of this, the image itself is held to 5 MB after.
+_BODY_LIMIT = MAX_IMAGE_BYTES + 16 * 1024
 
 HexColour = Annotated[str, StringConstraints(pattern=HEX.pattern)]
 
@@ -114,6 +138,24 @@ async def put_theme(
             # even when it only updates.
             custom = stored.custom
         row = await set_theme(conn, body.preset, custom=custom)
+    return _publish(request, row)
+
+
+class ImageData(BaseModel):
+    """A slot write's result: the slot's asset now (`None` once removed) and the revision."""
+
+    asset_id: int | None
+    revision: int
+
+
+class InvalidUpload(AppError):
+    status_code = 422
+    code = "invalid_request"
+
+
+def _publish(request: Request, row: ThemeRow) -> ThemeData:
+    """Adopt a committed theme row if it is newer, and broadcast it (SD9)."""
+    state = request.app.state
     theme = resolve(row.preset, row.revision, custom=row.custom)
     if theme.revision > state.theme.revision:
         state.theme = theme
@@ -131,3 +173,70 @@ async def put_theme(
         )
     )
     return data
+
+
+async def _read_file(request: Request) -> bytes:
+    """The multipart `file` part, read through `read_limited` before the parser (AC33)."""
+    length = request.headers.get("content-length")
+    if length is not None and length.isdigit() and int(length) > _BODY_LIMIT:
+        raise TooLarge(f"the upload is larger than {MAX_IMAGE_BYTES} bytes")
+    if not request.headers.get("content-type", "").startswith("multipart/form-data"):
+        raise _no_file("send the image as multipart/form-data")
+    parser = MultiPartParser(
+        request.headers, read_limited(request.stream(), _BODY_LIMIT), max_files=1, max_fields=0
+    )
+    try:
+        form = await parser.parse()
+    except MultiPartException as error:
+        raise _no_file(error.message) from None
+    try:
+        upload = form.get("file")
+        if not isinstance(upload, UploadFile):
+            raise _no_file("the form has no file field 'file'")
+        data = await upload.read()
+    finally:
+        await form.close()
+    if len(data) > MAX_IMAGE_BYTES:
+        raise TooLarge(f"the image is larger than {MAX_IMAGE_BYTES} bytes")
+    return data
+
+
+def _no_file(message: str) -> InvalidUpload:
+    return InvalidUpload(message, extra={"faults": [{"loc": ["body", "file"], "msg": message}]})
+
+
+@theme_router.post("/images/{slot}", status_code=201)
+async def post_image(
+    slot: ImageSlot,
+    request: Request,
+    _: Annotated[Principal, Depends(require_role("admin"))],
+    _draining: Annotated[None, Depends(refuse_while_draining)],
+) -> ImageData:
+    data = await _read_file(request)
+    content_type = sniff(data[:16])
+    if content_type is None:
+        raise UnsupportedMediaType("only PNG, JPEG, WebP and GIF images are accepted")
+    async with request.app.state.engine.begin() as conn:
+        asset_id = await insert_asset(conn, content_type=content_type, data=data)
+        row, replaced = await set_image(conn, slot, asset_id)
+        if replaced is not None:
+            await delete_asset(conn, replaced)
+    _publish(request, row)
+    return ImageData(asset_id=asset_id, revision=row.revision)
+
+
+@theme_router.delete("/images/{slot}")
+async def delete_image(
+    slot: ImageSlot,
+    request: Request,
+    _: Annotated[Principal, Depends(require_role("admin"))],
+    _draining: Annotated[None, Depends(refuse_while_draining)],
+) -> ImageData:
+    async with request.app.state.engine.begin() as conn:
+        if await get_image(conn, slot) is None:
+            return ImageData(asset_id=None, revision=request.app.state.theme.revision)
+        row, replaced = await set_image(conn, slot, None)
+        if replaced is not None:
+            await delete_asset(conn, replaced)
+    _publish(request, row)
+    return ImageData(asset_id=None, revision=row.revision)

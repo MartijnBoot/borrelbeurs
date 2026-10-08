@@ -56,6 +56,9 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     ("POST", "/api/keys"): ADMIN,
     ("DELETE", "/api/keys/{key_id}"): ADMIN,
     ("GET", "/api/admin/connections"): ADMIN,
+    # Phase 6 SD29.
+    ("POST", "/api/theme/images/{slot}"): ADMIN,
+    ("DELETE", "/api/theme/images/{slot}"): ADMIN,
 }
 
 ACTORS: Final = ("anonymous", "revoked", "display", "bar", "admin")
@@ -98,6 +101,7 @@ def _status(client: TestClient, method: str, path: str) -> int:
         .replace("{run_id}", "999999")
         .replace("{drink_id}", "999999")
         .replace("{key_id}", "999999")
+        .replace("{slot}", "bg")
     )
     if method == "WS":
         from starlette.websockets import WebSocketDisconnect

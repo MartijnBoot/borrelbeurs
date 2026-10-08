@@ -249,6 +249,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/theme/images/{slot}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Image */
+        post: operations["post_image_api_theme_images__slot__post"];
+        /** Delete Image */
+        delete: operations["delete_image_api_theme_images__slot__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/earnings/series": {
         parameters: {
             query?: never;
@@ -431,6 +449,23 @@ export interface paths {
         };
         /** Theme Css */
         get: operations["theme_css_theme_css_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/assets/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Asset Bytes */
+        get: operations["get_asset_bytes_assets__asset_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -644,6 +679,16 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * ImageData
+         * @description A slot write's result: the slot's asset now (`None` once removed) and the revision.
+         */
+        ImageData: {
+            /** Asset Id */
+            asset_id: number | null;
+            /** Revision */
+            revision: number;
         };
         JsonValue: unknown;
         /** JumpRequest */
@@ -1390,6 +1435,68 @@ export interface operations {
             };
         };
     };
+    post_image_api_theme_images__slot__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slot: "bg" | "header" | "logo" | "promo";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageData"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_image_api_theme_images__slot__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slot: "bg" | "header" | "logo" | "promo";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageData"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_series_api_earnings_series_get: {
         parameters: {
             query?: never;
@@ -1791,6 +1898,35 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_asset_bytes_assets__asset_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

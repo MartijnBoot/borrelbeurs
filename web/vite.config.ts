@@ -10,6 +10,8 @@ export default defineConfig({
   server: {
     proxy: {
       '/theme.css': 'http://127.0.0.1:8000',
+      // Uploaded images (Phase 6 PD10): numeric ids only; Vite's own `/assets/*.js` stay local.
+      '^/assets/\\d+$': 'http://127.0.0.1:8000',
       '/api': 'http://127.0.0.1:8000',
       '/ws': { target: 'ws://127.0.0.1:8000', ws: true },
     },
