@@ -1,0 +1,40 @@
+.table {
+  border-collapse: collapse;
+  margin-bottom: 12px;
+}
+
+.table th,
+.table td {
+  padding: 4px 8px;
+  text-align: left;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.secret {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--grid);
+  border-radius: 8px;
+}
+
+.secret code {
+  display: block;
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+
+.muted {
+  margin: 0 0 8px;
+  color: var(--muted);
+}
+
+.error {
+  margin: 12px 0 0;
+  color: var(--danger);
+}
