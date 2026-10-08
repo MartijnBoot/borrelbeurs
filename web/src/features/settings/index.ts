@@ -3,6 +3,7 @@
 // later task replaces its own (T25-T31). The keys section lives in
 // `features/keys`, composed by `app/pages/SettingsPage.tsx`.
 export { BorrelSection } from './BorrelSection'
+export { DemandSection } from './DemandSection'
 export { BoundsSection } from './BoundsSection'
 export { DrinksSection } from './DrinksSection'
 export { GlobalSection } from './GlobalSection'

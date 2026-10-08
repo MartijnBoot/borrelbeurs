@@ -7,14 +7,16 @@ export interface FieldProps {
   label: string
   hint?: string
   error?: string
+  /** For a table cell: the label is read out but not shown; the column header shows it. */
+  hideLabel?: boolean
   children: ReactNode
 }
 
 /** A labelled form control with an optional hint and error (SD27). */
-export function Field({ id, label, hint, error, children }: FieldProps) {
+export function Field({ id, label, hint, error, hideLabel = false, children }: FieldProps) {
   return (
     <div className={styles.field}>
-      <label htmlFor={id} className={styles.label}>
+      <label htmlFor={id} className={hideLabel ? styles.hidden : styles.label}>
         {label}
       </label>
       {children}

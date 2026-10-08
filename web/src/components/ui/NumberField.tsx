@@ -22,6 +22,7 @@ export interface NumberFieldProps {
   error?: string
   /** Text only: a number here would read as a value the field does not hold. */
   placeholder?: string
+  hideLabel?: boolean
 }
 
 export function NumberField(props: NumberFieldProps) {
@@ -37,6 +38,7 @@ interface TextNumberFieldProps<T> {
   hint?: string
   error?: string
   placeholder?: string
+  hideLabel?: boolean
   inputMode?: 'decimal'
 }
 
@@ -50,6 +52,7 @@ export function TextNumberField<T>({
   hint,
   error,
   placeholder,
+  hideLabel,
 }: TextNumberFieldProps<T>) {
   const id = useId()
   const [text, setText] = useState(() => (value === 'invalid' ? '' : format(value)))
@@ -62,7 +65,7 @@ export function TextNumberField<T>({
     if (value !== 'invalid' && !Object.is(parse(text), value)) setText(format(value))
   }
   return (
-    <Field id={id} label={label} hint={hint} error={error}>
+    <Field id={id} label={label} hint={hint} error={error} hideLabel={hideLabel}>
       <input
         id={id}
         className={styles.input}

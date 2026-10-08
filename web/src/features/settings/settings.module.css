@@ -88,6 +88,21 @@
   margin-bottom: 12px;
 }
 
+.table {
+  border-collapse: collapse;
+  margin-bottom: 12px;
+}
+
+.table th,
+.table td {
+  padding: 4px 8px;
+  text-align: left;
+}
+
+.table td input {
+  width: 6rem;
+}
+
 .muted {
   margin: 0;
   color: var(--muted);
