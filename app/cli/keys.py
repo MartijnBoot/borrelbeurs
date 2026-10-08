@@ -5,9 +5,8 @@
     uv run python -m app.cli.keys revoke <key_id>
 
 `create` prints `bb_<key_id>_<secret>` **once**: only the argon2id hash is
-stored, so a lost key is revoked and replaced, never recovered. The row is
-inserted with a placeholder hash and updated with the real one in the same
-transaction, because the printed key needs the `key_id`. `list` shows id,
+stored, so a lost key is revoked and replaced, never recovered
+(`app.api.security.issue_key`, shared with `POST /api/keys`). `list` shows id,
 label, role and status, never a secret or a hash. `revoke` takes effect on the
 key's next request (SD8). Exit status: 0 on success, 2 on bad input, 1 on an
 unknown key or a database error.
@@ -23,13 +22,11 @@ from typing import cast
 
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.security import format_key, hash_secret, mint_secret
+from app.api.security import issue_key
 from app.core.config import ConfigError, get_settings
-from app.db.keys import ROLES, AuthKeyRow, Role, create_key, list_keys, revoke_key, set_secret_hash
+from app.db.keys import ROLES, AuthKeyRow, Role, list_keys, revoke_key
 from app.db.session import create_engine
 
-# Never a valid argon2 hash, and never committed: replaced before the commit.
-_PLACEHOLDER_HASH = "pending"
 _MAX_LABEL = 100
 
 
@@ -37,10 +34,7 @@ async def create(role: Role, label: str) -> str:
     engine = create_engine(get_settings())
     try:
         async with engine.begin() as conn:
-            key_id = await create_key(conn, label=label, role=role, secret_hash=_PLACEHOLDER_HASH)
-            secret = mint_secret()
-            await set_secret_hash(conn, key_id, hash_secret(secret))
-        return format_key(key_id, secret)
+            return await issue_key(conn, role=role, label=label)
     finally:
         await engine.dispose()
 

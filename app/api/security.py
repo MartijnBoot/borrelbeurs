@@ -41,12 +41,13 @@ from urllib.parse import urlsplit
 import jwt
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
+from sqlalchemy.ext.asyncio import AsyncConnection
 from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.core.config import Settings
-from app.db.keys import ROLES, AuthKeyRow, Role
+from app.db.keys import ROLES, AuthKeyRow, Role, create_key, set_secret_hash
 from app.runtime.clock import Clock
 
 KEY_PREFIX: Final = "bb"
@@ -82,6 +83,23 @@ def parse_key(raw: str) -> ParsedKey | None:
     if prefix != KEY_PREFIX or not _KEY_ID.fullmatch(key_id) or not _SECRET.fullmatch(secret):
         return None
     return ParsedKey(key_id=int(key_id), secret=secret)
+
+
+# Never a valid argon2 hash, and never committed: `issue_key` replaces it first.
+_PLACEHOLDER_HASH: Final = "pending"
+
+
+async def issue_key(conn: AsyncConnection, *, role: Role, label: str) -> str:
+    """Mint a key in the caller's transaction; `bb_<key_id>_<secret>`, the only time it exists.
+
+    The row is inserted with a placeholder hash and updated with the real one,
+    because the key needs its `key_id`. Only the argon2id hash is stored (AC36).
+    Shared by `app.cli.keys create` and `POST /api/keys` (Phase 6 SD30).
+    """
+    key_id = await create_key(conn, label=label, role=role, secret_hash=_PLACEHOLDER_HASH)
+    secret = mint_secret()
+    await set_secret_hash(conn, key_id, hash_secret(secret))
+    return format_key(key_id, secret)
 
 
 def hash_secret(secret: str) -> str:

@@ -49,7 +49,7 @@ from app.api.deps import (
     authenticate,
 )
 from app.api.security import same_origin
-from app.realtime.hub import Connection, Hub
+from app.realtime.hub import Connection, Hub, Peer
 from app.realtime.messages import (
     PROTOCOL_VERSION,
     ClientHello,
@@ -222,7 +222,15 @@ class _Session:
                 parsed = parse_client_message(first)
 
         # No await from here until the replay or snapshot is queued.
-        self.connection = self.hub.connect(_Socket(self.ws))
+        self.connection = self.hub.connect(
+            _Socket(self.ws),
+            Peer(
+                key_id=self.principal.key_id,
+                role=self.principal.role,
+                label=self.principal.label,
+                connected_at_ms=self.clock.wall_ms(),
+            ),
+        )
         replay = (
             self.hub.replay_after(parsed.boot_id, parsed.last_seq)
             if isinstance(parsed, ClientHello)
@@ -240,6 +248,7 @@ class _Session:
         while True:
             raw = await self.receive()
             assert raw is not None
+            self.connection.last_seen_ms = self.clock.wall_ms()
             if self.too_fast():
                 self.connection.close(CLOSE_POLICY_VIOLATION)
                 return

@@ -215,6 +215,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/connections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Connections */
+        get: operations["connections_api_admin_connections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/theme": {
         parameters: {
             query?: never;
@@ -370,6 +387,41 @@ export interface paths {
         patch: operations["patch_drink_api_runs__run_id__drinks__drink_id__patch"];
         trace?: never;
     };
+    "/api/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Keys */
+        get: operations["get_keys_api_keys_get"];
+        put?: never;
+        /** Post Key */
+        post: operations["post_key_api_keys_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/keys/{key_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Key */
+        delete: operations["delete_key_api_keys__key_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/theme.css": {
         parameters: {
             query?: never;
@@ -430,6 +482,27 @@ export interface components {
             candle_interval_s?: number | null;
             params?: components["schemas"]["ParamsPatch"] | null;
         };
+        /** ConnectionInfo */
+        ConnectionInfo: {
+            /** Role */
+            role: string;
+            /** Label */
+            label: string;
+            /** Connected At Ms */
+            connected_at_ms: number;
+            /** Last Seen Ms */
+            last_seen_ms: number;
+        };
+        /** CreateKeyRequest */
+        CreateKeyRequest: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "display" | "bar" | "admin";
+            /** Label */
+            label: string;
+        };
         /** CreateRunRequest */
         CreateRunRequest: {
             /** Name */
@@ -441,6 +514,13 @@ export interface components {
             drink_id: number;
             /** Revision */
             revision: number;
+        };
+        /** CreatedKey */
+        CreatedKey: {
+            /** Key Id */
+            key_id: number;
+            /** Key */
+            key: string;
         };
         /** DrinkConfigData */
         DrinkConfigData: {
@@ -579,6 +659,27 @@ export interface components {
         JumpResult: {
             /** Version */
             version: number;
+        };
+        /** KeyInfo */
+        KeyInfo: {
+            /** Key Id */
+            key_id: number;
+            /** Label */
+            label: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "display" | "bar" | "admin";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Revoked */
+            revoked: boolean;
         };
         /** LoginRequest */
         LoginRequest: {
@@ -1236,6 +1337,26 @@ export interface operations {
             };
         };
     };
+    connections_api_admin_connections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectionInfo"][];
+                };
+            };
+        };
+    };
     put_theme_api_theme_put: {
         parameters: {
             query?: never;
@@ -1561,6 +1682,88 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["RevisionData"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_keys_api_keys_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeyInfo"][];
+                };
+            };
+        };
+    };
+    post_key_api_keys_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateKeyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedKey"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_key_api_keys__key_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

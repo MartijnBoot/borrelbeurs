@@ -95,3 +95,18 @@ async def touch_last_used(conn: AsyncConnection, key_id: int) -> None:
     await conn.execute(
         update(AuthKey).where(AuthKey.key_id == key_id).values(last_used_at=func.now())
     )
+
+
+async def lock_unrevoked_admins(conn: AsyncConnection) -> list[int]:
+    """The unrevoked admin keys' ids, each row locked `FOR UPDATE` (Phase 6 SD30).
+
+    Two concurrent revokes of the last two admins serialise here, so neither
+    can see the other's admin as still there.
+    """
+    result = await conn.execute(
+        select(AuthKey.key_id)
+        .where(AuthKey.role == "admin", AuthKey.revoked_at.is_(None))
+        .order_by(AuthKey.key_id)
+        .with_for_update()
+    )
+    return [int(key_id) for key_id in result.scalars()]

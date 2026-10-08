@@ -22,6 +22,11 @@ ticker nor another client ever waits on a slow socket. On overflow every queued
 `tick` is dropped and one `resync` is enqueued; if the queue is still full of
 other frames the connection is closed with 1013. A single send taking longer
 than `SEND_TIMEOUT_MS` on the injected clock also closes it with 1013.
+
+**Who is connected (Phase 6 SD30, AC41).** A connection may carry a `Peer`: the
+key, role and label it authenticated with and when it connected; `last_seen_ms`
+is stamped by `/ws` on every client frame. `close_key` closes every connection
+of a revoked key; `peers` is what `GET /api/admin/connections` lists.
 """
 
 from __future__ import annotations
@@ -30,6 +35,7 @@ import asyncio
 import contextlib
 import secrets
 from collections import deque
+from dataclasses import dataclass
 from typing import Final, Protocol
 
 from app.realtime.messages import Envelope, Resync
@@ -47,12 +53,24 @@ class Socket(Protocol):
     async def close(self, code: int) -> None: ...
 
 
+@dataclass(frozen=True)
+class Peer:
+    """Who a connection is: its session's key, and when it connected."""
+
+    key_id: int
+    role: str
+    label: str
+    connected_at_ms: int
+
+
 class Connection:
     """One client: a bounded queue of serialised frames, drained by its own writer task."""
 
-    def __init__(self, hub: Hub, socket: Socket) -> None:
+    def __init__(self, hub: Hub, socket: Socket, peer: Peer | None = None) -> None:
         self._hub = hub
         self.socket = socket
+        self.peer = peer
+        self.last_seen_ms = None if peer is None else peer.connected_at_ms
         self._queue: deque[tuple[str, str]] = deque()  # (type, frame)
         self._wake = asyncio.Event()
         self.closed = False
@@ -133,10 +151,25 @@ class Hub:
     def connections(self) -> frozenset[Connection]:
         return frozenset(self._connections)
 
-    def connect(self, socket: Socket) -> Connection:
-        connection = Connection(self, socket)
+    def connect(self, socket: Socket, peer: Peer | None = None) -> Connection:
+        connection = Connection(self, socket, peer)
         self._connections.add(connection)
         return connection
+
+    def close_key(self, key_id: int, code: int) -> None:
+        """Close every connection authenticated with `key_id` (a revoked key, SD30)."""
+        for connection in tuple(self._connections):
+            if connection.peer is not None and connection.peer.key_id == key_id:
+                connection.close(code)
+
+    def peers(self) -> list[tuple[Peer, int]]:
+        """Each open connection's peer and `last_seen_ms`, oldest first."""
+        known = [
+            (c.peer, c.last_seen_ms)
+            for c in self._connections
+            if c.peer is not None and c.last_seen_ms is not None
+        ]
+        return sorted(known, key=lambda item: (item[0].connected_at_ms, item[0].key_id))
 
     def forget(self, connection: Connection) -> None:
         self._connections.discard(connection)

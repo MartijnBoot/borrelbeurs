@@ -46,6 +46,7 @@ from app.api.config import router as config_router
 from app.api.drinks import router as drinks_router
 from app.api.earnings import router as earnings_router
 from app.api.health import router as health_router
+from app.api.keys import router as keys_router
 from app.api.market import router as market_router
 from app.api.news import router as news_router
 from app.api.orders import router as orders_router
@@ -78,6 +79,7 @@ api_router.include_router(earnings_router)
 api_router.include_router(runs_router)
 api_router.include_router(config_router)
 api_router.include_router(drinks_router)
+api_router.include_router(keys_router)
 
 # `pnpm --dir web build` output (T6). Not built by every checkout -- a Python
 # test run has no reason to have run pnpm first -- so its absence only means
