@@ -220,18 +220,18 @@ Exit: price shown equals price charged, enforced by a property test. **Build on 
 - [x] plan — `/clear` then `/plan 5`
 - [x] audit — `/clear` then `/audit 5`
 - [x] merge the plan — per-phase loop step 5 with `<N>` = 5
-- [ ] tasks (`/build 5 <T>`, `/review 5`):
-  - [ ] …
-- [ ] exit criterion — `/clear` then `/verify` reports the price-invariant property test and its case count
+- [x] tasks (`/build 5 <T>`, `/review 5`):
+  - [x] …
+- [x] exit criterion — `/clear` then `/verify` reports the price-invariant property test and its case count
 
 ## Phase 6 — Manipulation + settings
 Exit: an admin can configure a borrel from scratch.
 
-- [ ] spec — read `docs/specs/phase-6-admin.md` (`Draft`) → approve, or `/clear` then `/spec 6`
-- [ ] branch — `git switch main` then `git pull` then `git switch -c docs/phase-6-plan`
-- [ ] plan — `/clear` then `/plan 6`
-- [ ] audit — `/clear` then `/audit 6`
-- [ ] merge the plan — per-phase loop step 5 with `<N>` = 6
+- [x] spec — read `docs/specs/phase-6-admin.md` (`Draft`) → approve, or `/clear` then `/spec 6`
+- [x] branch — `git switch main` then `git pull` then `git switch -c docs/phase-6-plan`
+- [x] plan — `/clear` then `/plan 6`
+- [x] audit — `/clear` then `/audit 6`
+- [x] merge the plan — per-phase loop step 5 with `<N>` = 6
 - [ ] tasks (`/build 6 <T>`, `/review 6`):
   - [ ] …
 - [ ] exit criterion — start from an empty database and configure a whole borrel through the UI
