@@ -60,3 +60,23 @@
   margin: 0 0 12px;
   color: var(--danger);
 }
+
+.targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 0 0 12px;
+  border: none;
+  padding: 0;
+}
+
+.targets legend {
+  margin-bottom: 6px;
+  color: var(--muted);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
