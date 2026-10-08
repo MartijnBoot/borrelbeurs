@@ -1,6 +1,7 @@
 import { KeysSection } from '../../features/keys'
 import {
   BorrelSection,
+  GlobalSection,
   NotYet,
   type SettingsSection,
   SettingsLayout,
@@ -15,7 +16,7 @@ import {
 const SECTIONS: readonly SettingsSection[] = [
   { id: 'borrel', label: 'Borrel', content: <BorrelSection /> },
   { id: 'systeem', label: '🧹 Systeemacties', content: <NotYet /> },
-  { id: 'globaal', label: '⚙️ Globale instellingen', content: <NotYet /> },
+  { id: 'globaal', label: '⚙️ Globale instellingen', content: <GlobalSection /> },
   { id: 'kleuren', label: '🎨 Kleurenschema', content: <ThemeSection /> },
   { id: 'afbeeldingen', label: '🖼️ Afbeeldingen', content: <NotYet /> },
   { id: 'drankjes', label: '🥤 Drankjes beheren', content: <NotYet /> },

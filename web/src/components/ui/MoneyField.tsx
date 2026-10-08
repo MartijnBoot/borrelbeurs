@@ -8,7 +8,7 @@ import { TextNumberField } from './NumberField'
 
 export interface MoneyFieldProps {
   label: string
-  cents: number | null
+  cents: FieldValue
   onChange: (cents: FieldValue) => void
   hint?: string
   error?: string

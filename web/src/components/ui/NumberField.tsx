@@ -15,7 +15,8 @@ import { describedBy } from './fieldAria'
 
 export interface NumberFieldProps {
   label: string
-  value: number | null
+  /** The owner's value; `'invalid'` echoes the field's own report and keeps the text. */
+  value: FieldValue
   onChange: (value: FieldValue) => void
   hint?: string
   error?: string
@@ -29,7 +30,7 @@ export function NumberField(props: NumberFieldProps) {
 
 interface TextNumberFieldProps<T> {
   label: string
-  value: T | null
+  value: T | null | 'invalid'
   onChange: (value: T | null | 'invalid') => void
   parse: (text: string) => T | null | 'invalid'
   format: (value: T | null) => string
@@ -51,13 +52,14 @@ export function TextNumberField<T>({
   placeholder,
 }: TextNumberFieldProps<T>) {
   const id = useId()
-  const [text, setText] = useState(() => format(value))
+  const [text, setText] = useState(() => (value === 'invalid' ? '' : format(value)))
   const [shown, setShown] = useState(value)
   // A new value from the owner (a reload, "Overnemen") replaces the text --
-  // unless the text already says it, so typing "0," over 0 is not undone.
+  // unless the text already says it, so typing "0," over 0 is not undone, and an
+  // echoed 'invalid' keeps what was typed.
   if (!Object.is(value, shown)) {
     setShown(value)
-    if (!Object.is(parse(text), value)) setText(format(value))
+    if (value !== 'invalid' && !Object.is(parse(text), value)) setText(format(value))
   }
   return (
     <Field id={id} label={label} hint={hint} error={error}>
