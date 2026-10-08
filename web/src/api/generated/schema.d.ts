@@ -318,6 +318,23 @@ export interface paths {
         patch: operations["patch_config_api_runs__run_id__config_patch"];
         trace?: never;
     };
+    "/api/runs/{run_id}/anchor-s0": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Anchor S0 */
+        post: operations["post_anchor_s0_api_runs__run_id__anchor_s0_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{run_id}/drinks": {
         parameters: {
             query?: never;
@@ -1401,6 +1418,37 @@ export interface operations {
                 "application/json": components["schemas"]["ConfigPatch"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionData"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_anchor_s0_api_runs__run_id__anchor_s0_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

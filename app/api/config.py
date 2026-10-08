@@ -1,6 +1,9 @@
 """A run's config over HTTP (Phase 6 SD5, SD6, SD8; PD4, PD6, PD7).
 
 `GET /api/runs/{run_id}/config` is the config document (`app/runtime/config.py`).
+`POST /api/runs/{run_id}/anchor-s0` anchors every active drink's `s0` on the
+current prices (SD26: no confirmation, as in v1), live only, and returns
+`{revision}`; a draft is 409 `run_not_live`.
 `PATCH /api/runs/{run_id}/config {name?, candle_interval_s?, params?}` merges
 only the keys present into a draft and returns `{revision}`: the new one, or the
 current one when nothing changed. A violation of SD8 is 422 naming the field.
@@ -29,6 +32,7 @@ from app.runtime.config import (
     ConfigData,
     ConfigPatch,
     RevisionData,
+    anchor_s0,
     read_config,
     write_draft_config,
     write_live_config,
@@ -62,4 +66,16 @@ async def patch_config(
         revision = await write_draft_config(
             db_engine(request), run_id, body, author=principal.label
         )
+    return RevisionData(revision=revision)
+
+
+@router.post("/{run_id}/anchor-s0")
+async def post_anchor_s0(
+    run_id: int,
+    request: Request,
+    principal: Annotated[Principal, Depends(require_role("admin"))],
+    _draining: Annotated[None, Depends(refuse_while_draining)],
+) -> RevisionData:
+    holder: MarketHolder = request.app.state.holder
+    revision = await anchor_s0(holder, run_id, author=principal.label, clock=clock_of(request))
     return RevisionData(revision=revision)

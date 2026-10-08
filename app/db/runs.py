@@ -94,6 +94,13 @@ class DrinkRemoved(AppError):
     code = "drink_removed"
 
 
+class RunNotLive(AppError):
+    """An action that needs the live market, asked of a draft (Phase 6 PD4)."""
+
+    status_code = 409
+    code = "run_not_live"
+
+
 class LastActiveDrink(AppError):
     """A run keeps at least one active drink (Phase 6 SD16)."""
 
@@ -303,6 +310,10 @@ async def remove_drink(conn: AsyncConnection, drink_id: int) -> None:
     await conn.execute(
         update(Drink).where(Drink.drink_id == drink_id).values(removed_at=func.now())
     )
+
+
+async def set_drink_s0(conn: AsyncConnection, drink_id: int, s0: float) -> None:
+    await conn.execute(update(Drink).where(Drink.drink_id == drink_id).values(s0=s0))
 
 
 async def delete_drink(conn: AsyncConnection, drink_id: int) -> None:

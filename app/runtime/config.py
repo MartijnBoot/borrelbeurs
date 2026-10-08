@@ -25,6 +25,12 @@ in that one transaction also compare-and-sets `engine_state` to `version + 1`
 and writes a `price_tick` of source `config`; it emits `ConfigChanged`. An
 empty body returns the current revision and writes nothing (AC2). An ended run
 is 409 `run_ended`.
+
+**Anchor s0 (SD5, SD26)** is v1's "📌 Zet huidige prijs als evenwicht", live
+only: one `mutate("config")` running `anchor_s0_to_current_y` on the masked
+spec -- the mean over active drinks, a removed drink's `s0` kept (AC16) -- and
+writing every active drink's `drink.s0`. No `y` moves. A draft is 409
+`run_not_live`.
 """
 
 from __future__ import annotations
@@ -52,18 +58,20 @@ from app.db.mapping import DrinkRow
 from app.db.runs import (
     RunEnded,
     RunNotDraft,
+    RunNotLive,
     RunRow,
     RunStatus,
     all_drinks,
     append_config_revision,
     get_run,
     latest_revision,
+    set_drink_s0,
     update_run,
 )
 from app.runtime.clock import Clock
 from app.runtime.history import TickEntry
 from app.runtime.holder import ConfigChanged, MarketHolder, MarketView, Outcome
-from exchange import EngineState, MarketSpec, Params, hold_quoted_prices
+from exchange import EngineState, MarketSpec, Params, anchor_s0_to_current_y, hold_quoted_prices
 
 
 class InvalidConfig(AppError):
@@ -449,6 +457,33 @@ async def write_live_config(
             revision = await _record(conn, merged, author=author)
             return await commit_transition(
                 conn, view, merged, spec=spec, state=state, revision=revision, now_ms=now_ms
+            )
+
+    return await holder.mutate("config", step)
+
+
+async def anchor_s0(holder: MarketHolder, run_id: int, *, author: str, clock: Clock) -> int:
+    """Anchor every active drink's `s0` on the current prices (SD26); the new revision."""
+    engine = holder.engine
+    if holder.run_id != run_id:
+        async with engine.connect() as conn:
+            run = readable(await get_run(conn, run_id))
+        raise RunNotLive(f"run {run_id} is {run.status}; anchor-s0 needs the live market")
+
+    async def step(view: MarketView) -> Outcome[int]:
+        assert view.run_id == run_id and view.spec is not None and view.state is not None
+        now_ms = clock.wall_ms()
+        spec = anchor_s0_to_current_y(view.spec, view.state.y)
+        async with engine.begin() as conn:
+            run = readable(await get_run(conn, run_id, lock=True))
+            for drink_id, s0, active in zip(
+                view.drink_ids, spec.s0.tolist(), spec.active.tolist(), strict=True
+            ):
+                if active:
+                    await set_drink_s0(conn, drink_id, s0)
+            revision = await append_revision(conn, run, author=author)
+            return await commit_transition(
+                conn, view, run, spec=spec, state=view.state, revision=revision, now_ms=now_ms
             )
 
     return await holder.mutate("config", step)

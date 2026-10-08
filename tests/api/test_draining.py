@@ -41,6 +41,7 @@ DRAINING_WRITES: Final[list[tuple[str, str, dict[str, Any] | None]]] = [
     ),
     ("PATCH", "/api/runs/999999/drinks/999999", {"a": 1.0}),
     ("DELETE", "/api/runs/999999/drinks/999999", None),
+    ("POST", "/api/runs/999999/anchor-s0", None),
 ]
 
 READS: Final = ("/api/state", "/api/news", "/api/auth/me", "/theme.css")
