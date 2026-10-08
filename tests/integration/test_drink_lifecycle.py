@@ -31,7 +31,8 @@ from app.db.runs import (
     go_live,
 )
 from app.db.session import create_engine
-from app.runtime.drinks import DrinkCreate, add_live_drink
+from app.runtime.config import ConfigPatch, write_live_config
+from app.runtime.drinks import DrinkCreate, DrinkPatch, add_live_drink, edit_live_drink
 from app.runtime.grace import QuotedLine
 from app.runtime.history import TickEntry
 from app.runtime.holder import (
@@ -274,5 +275,103 @@ def test_a_duplicate_active_name_is_refused_and_changes_nothing(
 
             assert market.state is state
             assert len(market.holder.drink_ids) == 3
+
+    asyncio.run(scenario())
+
+
+# --- T13: edit on the live run ----------------------------------------------
+
+
+async def _edit(market: Market, drink_id: int, **fields: Any) -> int:
+    return await edit_live_drink(
+        market.holder,
+        market.run_id,
+        drink_id,
+        DrinkPatch.model_validate(fields),
+        author="Bestuur",
+        clock=market.clock,
+    )
+
+
+def test_a_bound_change_holds_the_quote_and_cancels_that_drinks_jump(
+    settings: Settings, database_url: str
+) -> None:
+    """AC8, AC10: clamped and re-quantised; others' `y` bitwise; the jump gone in that version."""
+
+    async def scenario() -> None:
+        async with _live(settings, database_url) as market:
+            bier, wijn, _ = market.holder.drink_ids
+            await schedule(market.holder, bier, 480, 20_000, clock=market.clock)
+            await schedule(market.holder, wijn, 450, 120_000, clock=market.clock)
+            for _ in range(12):
+                await market.tick()
+            before = market.state
+            assert market.quoted()[bier] > 330
+            assert sorted(j.i for j in before.jumps) == [0, 1]  # both still running
+
+            # 3.25 is half a 0.10 step off the grid: clamped, it would round to 3.30,
+            # outside the bound, so the hold steps back to 3.20 (AC8, R6).
+            await _edit(market, bier, p_max_cents=325)
+
+            after = market.state
+            assert after.version == before.version + 1
+            assert market.quoted()[bier] == 320
+            assert [j.i for j in after.jumps] == [1]  # Wijn's jump stays, Bier's is gone
+            assert after.y[1:].tobytes() == before.y[1:].tobytes()
+
+    asyncio.run(scenario())
+
+
+def test_a_coefficient_p0_or_bar_price_change_moves_no_y(
+    settings: Settings, database_url: str
+) -> None:
+    """AC9."""
+
+    async def scenario() -> None:
+        async with _live(settings, database_url) as market:
+            bier = market.holder.drink_ids[0]
+            await market.tick()
+            changes: list[dict[str, Any]] = [
+                {"a": 2.0, "s0": 3.0},
+                {"p0_cents": 300},
+                {"bar_price_cents": 199},
+            ]
+            for fields in changes:
+                y = market.state.y.tobytes()
+
+                await _edit(market, bier, **fields)
+
+                assert market.state.y.tobytes() == y, fields
+            assert market.holder.view.bar_price_cents[bier] == 199
+            assert market.holder.spec is not None
+            assert float(market.holder.spec.p0[0]) == 3.0
+            assert float(market.holder.spec.a[0]) == 2.0
+
+    asyncio.run(scenario())
+
+
+def test_a_live_rename_reaches_the_spec_and_idle_targets(
+    settings: Settings, database_url: str
+) -> None:
+    """AC22 (rename) on the live run, in the same transition."""
+
+    async def scenario() -> None:
+        async with _live(settings, database_url) as market:
+            bier = market.holder.drink_ids[0]
+            await write_live_config(
+                market.holder,
+                market.run_id,
+                ConfigPatch.model_validate({"params": {"idle_targets": [bier]}}),
+                author="Bestuur",
+                clock=market.clock,
+            )
+
+            await _edit(market, bier, name="Pils")
+
+            assert market.holder.spec is not None
+            assert market.holder.spec.names[0] == "Pils"
+            assert market.holder.spec.params.idle_targets == ("Pils",)
+            changed = [e for e in market.events if isinstance(e, ConfigChanged)]
+            assert (bier, "Pils", True) in changed[-1].drinks
 
     asyncio.run(scenario())

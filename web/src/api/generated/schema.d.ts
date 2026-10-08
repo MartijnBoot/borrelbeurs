@@ -335,6 +335,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{run_id}/drinks/{drink_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Drink */
+        patch: operations["patch_drink_api_runs__run_id__drinks__drink_id__patch"];
+        trace?: never;
+    };
     "/theme.css": {
         parameters: {
             query?: never;
@@ -466,6 +483,30 @@ export interface components {
             name: string;
             /** Active */
             active: boolean;
+        };
+        /**
+         * DrinkPatch
+         * @description `PATCH /api/runs/{run_id}/drinks/{drink_id}` (SD5): any subset, `PATCH config`'s rules.
+         */
+        DrinkPatch: {
+            /** Name */
+            name?: string | null;
+            /** P Min Cents */
+            p_min_cents?: number | null;
+            /** P0 Cents */
+            p0_cents?: number | null;
+            /** P Max Cents */
+            p_max_cents?: number | null;
+            /** Bar Price Cents */
+            bar_price_cents?: number | null;
+            /** A */
+            a?: number | null;
+            /** D */
+            d?: number | null;
+            /** S0 */
+            s0?: number | null;
+            /** C */
+            c?: number | null;
         };
         /** DrinkPrice */
         DrinkPrice: {
@@ -1402,6 +1443,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CreatedDrink"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_drink_api_runs__run_id__drinks__drink_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+                drink_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DrinkPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionData"];
                 };
             };
             /** @description Validation Error */

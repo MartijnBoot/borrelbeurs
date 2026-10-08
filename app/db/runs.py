@@ -80,6 +80,20 @@ class RunEnded(AppError):
     code = "run_ended"
 
 
+class DrinkNotFound(AppError):
+    """The run has no drink with this id (Phase 6 PD4)."""
+
+    status_code = 404
+    code = "drink_not_found"
+
+
+class DrinkRemoved(AppError):
+    """The drink was removed from the live run; it cannot be edited (Phase 6 PD4)."""
+
+    status_code = 409
+    code = "drink_removed"
+
+
 class DraftExists(AppError):
     """A draft already exists (Phase 6 SD2); the error carries its `run_id` (PD2)."""
 
@@ -159,6 +173,11 @@ async def add_drink(
         )
         .returning(Drink.drink_id)
     )
+    return await _named_write(conn, statement, run_id=run_id, name=name)
+
+
+async def _named_write(conn: AsyncConnection, statement: Any, *, run_id: int, name: str) -> int:
+    """Run an insert or update of a drink's name; its `drink_id`, or `DuplicateDrinkName`."""
     # A savepoint, so the violation leaves the caller's transaction usable.
     try:
         async with conn.begin_nested():
@@ -171,6 +190,30 @@ async def add_drink(
             "ignoring case)"
         ) from error
     return int(result.scalar_one())
+
+
+async def update_drink(conn: AsyncConnection, run_id: int, row: DrinkRow) -> None:
+    """Write every editable column of `row`, or raise `DuplicateDrinkName` (Phase 6 SD17)."""
+    await _named_write(
+        conn,
+        update(Drink)
+        .where(Drink.drink_id == row.drink_id)
+        .values(
+            name=row.name,
+            name_key=name_key(row.name),
+            p_min_cents=row.p_min_cents,
+            p0_cents=row.p0_cents,
+            p_max_cents=row.p_max_cents,
+            a=row.a,
+            d=row.d,
+            s0=row.s0,
+            c=row.c,
+            bar_price_cents=row.bar_price_cents,
+        )
+        .returning(Drink.drink_id),
+        run_id=run_id,
+        name=row.name,
+    )
 
 
 async def set_bar_price(conn: AsyncConnection, drink_id: int, cents: int) -> None:

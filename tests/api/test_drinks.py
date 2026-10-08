@@ -244,3 +244,135 @@ def test_an_ended_run_is_409_and_an_unknown_one_404(
 @pytest.mark.parametrize("role", ["display", "bar"])
 def test_other_roles_are_403(draft: int, client: TestClient, login: Login, role: str) -> None:
     assert login(role).post(f"/api/runs/{draft}/drinks", json=BIER).status_code == 403
+
+
+# --- T13: edit ---------------------------------------------------------------
+
+
+def _bier(admin: TestClient, run_id: int) -> int:
+    response = admin.post(f"/api/runs/{run_id}/drinks", json={**BIER, "p0_cents": 250})
+    assert response.status_code == 201, response.text
+    return int(response.json()["drink_id"])
+
+
+def _drink(admin: TestClient, run_id: int, drink_id: int) -> dict[str, Any]:
+    drinks = admin.get(f"/api/runs/{run_id}/config").json()["drinks"]
+    return dict(next(d for d in drinks if d["drink_id"] == drink_id))
+
+
+def test_an_edit_changes_only_present_fields_and_appends_a_revision(
+    draft: int, client: TestClient, login: Login
+) -> None:
+    admin = login("admin")
+    bier = _bier(admin, draft)
+    before = _drink(admin, draft, bier)
+
+    response = admin.patch(
+        f"/api/runs/{draft}/drinks/{bier}", json={"a": 2.5, "bar_price_cents": 280}
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"revision": 3}
+    assert _drink(admin, draft, bier) == {**before, "a": 2.5, "bar_price_cents": 280}
+
+
+@pytest.mark.parametrize("body", [{}, {"a": 10.0}])
+def test_an_edit_that_changes_nothing_writes_no_revision(
+    draft: int, client: TestClient, login: Login, settings: Settings, api_env: str, body: Any
+) -> None:
+    """AC2 (empty drink PATCH)."""
+    admin = login("admin")
+    bier = _bier(admin, draft)
+
+    response = admin.patch(f"/api/runs/{draft}/drinks/{bier}", json=body)
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"revision": 2}
+    assert _revisions(settings, api_env, draft) == 2
+
+
+@pytest.mark.parametrize(
+    ("body", "field"),
+    [
+        ({"p_min_cents": 300}, "p_min_cents"),
+        ({"p_max_cents": 250}, "p_max_cents"),
+        ({"p0_cents": 600}, "p0_cents"),
+        ({"a": None}, "a"),
+        ({"name": ""}, "name"),
+        ({"bar_price_cents": -5}, "bar_price_cents"),
+        ({"slot": 3}, "slot"),
+    ],
+)
+def test_an_invalid_resulting_row_is_422_naming_the_field_and_stores_nothing(
+    draft: int,
+    client: TestClient,
+    login: Login,
+    settings: Settings,
+    api_env: str,
+    body: dict[str, Any],
+    field: str,
+) -> None:
+    """AC11: `{"p_min_cents": 300}` against `p0 = 250` names `p_min_cents`."""
+    admin = login("admin")
+    bier = _bier(admin, draft)
+    before = _drink(admin, draft, bier)
+
+    response = admin.patch(f"/api/runs/{draft}/drinks/{bier}", json=body)
+
+    assert response.status_code == 422, response.text
+    assert field in _faults(response)
+    assert _drink(admin, draft, bier) == before
+    assert _revisions(settings, api_env, draft) == 2
+
+
+def test_a_rename_rewrites_both_idle_target_lists(
+    draft: int, client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """AC22 (rename), SD11."""
+    admin = login("admin")
+    bier = _bier(admin, draft)
+    admin.patch(
+        f"/api/runs/{draft}/config",
+        json={"params": {"idle_targets": [bier], "idle_rise_targets": [bier]}},
+    )
+
+    response = admin.patch(f"/api/runs/{draft}/drinks/{bier}", json={"name": " Pils "})
+
+    assert response.status_code == 200, response.text
+    assert _drink(admin, draft, bier)["name"] == "Pils"
+    params = _sql(settings, api_env, "SELECT params FROM run WHERE run_id = :r", r=draft)
+    assert (params["idle_targets"], params["idle_rise_targets"]) == (["Pils"], ["Pils"])
+
+
+def test_a_rename_onto_an_active_name_is_409(draft: int, client: TestClient, login: Login) -> None:
+    """AC21 (rename)."""
+    admin = login("admin")
+    bier = _bier(admin, draft)
+    admin.post(f"/api/runs/{draft}/drinks", json={**BIER, "name": "Wijn"})
+
+    response = admin.patch(f"/api/runs/{draft}/drinks/{bier}", json={"name": "  WIJN"})
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "duplicate_drink_name"
+    assert _drink(admin, draft, bier)["name"] == "Bier"
+
+
+def test_a_removed_drink_is_409_and_an_unknown_one_404(
+    draft: int, client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    admin = login("admin")
+    bier = _bier(admin, draft)
+    missing = admin.patch(f"/api/runs/{draft}/drinks/999999", json={"a": 1.0})
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "drink_not_found"
+    _sql(settings, api_env, "UPDATE drink SET removed_at = now() WHERE drink_id = :d", d=bier)
+
+    response = admin.patch(f"/api/runs/{draft}/drinks/{bier}", json={"a": 1.0})
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "drink_removed"
+
+
+@pytest.mark.parametrize("role", ["display", "bar"])
+def test_other_roles_may_not_edit(draft: int, client: TestClient, login: Login, role: str) -> None:
+    assert login(role).patch(f"/api/runs/{draft}/drinks/1", json={}).status_code == 403
