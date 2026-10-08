@@ -42,8 +42,8 @@ test('every Phase 4 page works with every non-origin request blocked (AC1)', asy
   await page.goto('/login')
   await expectThemeFontLoaded(page)
 
-  await loginAs('admin') // lands on `/`, a placeholder
-  await expect(page.getByText('Nog niet beschikbaar')).toBeVisible()
+  await loginAs('admin') // lands on `/`, the home hub (Phase 6 SD31)
+  await expect(page.getByRole('heading', { name: 'Welkom bij de Beurs Borrel' })).toBeVisible()
   await expectThemeFontLoaded(page)
 
   await page.goto('/koers')

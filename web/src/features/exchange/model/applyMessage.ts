@@ -39,6 +39,9 @@
  * `params` and `run`. Prices and bars stay: when the active `drink_id` set or
  * `candle_interval_ms` changed they no longer fit, so it sets `awaitingResync`
  * and the client asks for the snapshot that replaces them.
+ *
+ * **Last frame (Phase 6 PD14).** Every frame, applied or dropped, stamps
+ * `lastFrameAt` with its `receivedAt`: home shows the socket's age from it.
  */
 import type {
   Bar,
@@ -91,6 +94,8 @@ export interface ExchangeState {
   earnings: Record<DrinkId, DrinkEarnings>
   /** The last in-sequence `order` envelope's `ts_ms`; `null` after a snapshot (SD16). */
   lastOrderTsMs: number | null
+  /** The monotonic `receivedAt` of the last frame, applied or dropped (Phase 6 PD14). */
+  lastFrameAt: number | null
 }
 
 export const NEWS_LIMIT = 50
@@ -115,11 +120,20 @@ export const initialState: ExchangeState = {
   quote: null,
   earnings: {},
   lastOrderTsMs: null,
+  lastFrameAt: null,
 }
 
 const UNICAST: ReadonlySet<ServerMessage['type']> = new Set(['hello', 'snapshot', 'pong', 'error'])
 
 export function applyMessage(
+  state: ExchangeState,
+  message: ServerMessage,
+  receivedAt: number,
+): ExchangeState {
+  return { ...applyFrame(state, message, receivedAt), lastFrameAt: receivedAt }
+}
+
+function applyFrame(
   state: ExchangeState,
   message: ServerMessage,
   receivedAt: number,

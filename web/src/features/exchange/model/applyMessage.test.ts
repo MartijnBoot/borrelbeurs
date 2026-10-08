@@ -37,6 +37,11 @@ function run(...messages: ServerMessage[]): ExchangeState {
   return messages.reduce((state, message) => apply(state, message), initialState)
 }
 
+/** `state` with nothing applied: only `lastFrameAt` moves, on every frame (Phase 6 PD14). */
+function unchanged(state: ExchangeState, receivedAt: number): ExchangeState {
+  return { ...state, lastFrameAt: receivedAt }
+}
+
 /** A connected client holding the recorded snapshot at seq S. */
 const live = run(at(hello, S), snapshot)
 
@@ -141,15 +146,15 @@ describe('seq (AC18)', () => {
 
   it('ignores a broadcast it already holds', () => {
     const once = apply(live, at(tick, S + 1))
-    expect(apply(once, at(tickWith(S + 1, 1, 999), S + 1))).toBe(once)
+    expect(apply(once, at(tickWith(S + 1, 1, 999), S + 1), 2_000)).toEqual(unchanged(once, 2_000))
   })
 
   it('accepts unicasts at the held seq', () => {
     const state = apply(live, at(theme, S, { revision: 1, preset: 'groen' }))
     expect(state.theme?.preset).toBe('groen')
     expect(state.seq).toBe(S)
-    expect(apply(live, at(frame('pong'), S))).toBe(live)
-    expect(apply(live, at(frame('error'), S))).toBe(live)
+    expect(apply(live, at(frame('pong'), S), 2_000)).toEqual(unchanged(live, 2_000))
+    expect(apply(live, at(frame('error'), S), 2_000)).toEqual(unchanged(live, 2_000))
   })
 
   it('a resync frame awaits a resync', () => {
@@ -157,7 +162,7 @@ describe('seq (AC18)', () => {
   })
 
   it('ignores broadcasts before any baseline', () => {
-    expect(run(tick)).toBe(initialState)
+    expect(run(tick)).toEqual(unchanged(initialState, AT))
   })
 })
 
@@ -492,5 +497,20 @@ describe('config (Phase 6 SD18, AC23, AC28)', () => {
     expect(ids(apply(live, at(config, S + 1)))).not.toContain(removed)
     expect(ids(apply(live, at(config, S + 1)))).toHaveLength(2)
     expect(selectActiveDrinks(live)).toBe(selectActiveDrinks(live))
+  })
+})
+
+describe('lastFrameAt (Phase 6 PD14)', () => {
+  it('starts null', () => {
+    expect(initialState.lastFrameAt).toBeNull()
+  })
+
+  it('is the receivedAt of every frame, applied or dropped', () => {
+    expect(apply(live, at(tick, S + 1), 2_000).lastFrameAt).toBe(2_000)
+    // A gap is dropped (it awaits a resync), yet the socket is alive.
+    expect(apply(live, at(tick, S + 5), 3_000).lastFrameAt).toBe(3_000)
+    // An old seq is dropped too.
+    expect(apply(live, at(tick, S - 1), 4_000).lastFrameAt).toBe(4_000)
+    expect(apply(initialState, at(hello, S), 5_000).lastFrameAt).toBe(5_000)
   })
 })

@@ -5,24 +5,24 @@
  * render -- not who may see them, which only the server decides.
  *
  * Phase 4 builds `/koers` (T20) and the theme section of `/settings` (T18);
- * Phase 5 builds `/bar` (T15); Phase 6 builds `/manipulation` (T33); every
- * other route is SD4's placeholder until Phase 6. An unknown path is "Geen toegang" inside the shell.
+ * Phase 5 builds `/bar` (T15); Phase 6 builds `/manipulation` (T33) and `/`
+ * (T35). An unknown path is "Geen toegang" inside the shell.
  */
 import { useEffect, type ReactNode } from 'react'
 import { Outlet, Route, Routes, useNavigate } from 'react-router'
 import { LoginPage, RequireRole, SessionProvider, useGoToLogin, useSession } from '../features/auth'
 import { BarPage } from '../features/bar'
+import { HomePage } from '../features/home'
 import { KoersPage } from '../features/koers'
 import { ManipulationPage } from '../features/manipulation'
 import { setOnUnauthenticated } from '../lib/http'
 import { AppShell } from './AppShell'
 import { NoAccess } from './pages/NoAccess'
-import { Placeholder } from './pages/Placeholder'
 import { SettingsPage } from './pages/SettingsPage'
 import { Providers } from './providers'
 
 const PAGES: readonly (readonly [string, ReactNode])[] = [
-  ['/', <Placeholder />],
+  ['/', <HomePage />],
   ['/koers', <KoersPage />],
   ['/bar', <BarPage />],
   ['/manipulation', <ManipulationRoute />],
