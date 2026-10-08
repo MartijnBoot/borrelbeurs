@@ -8,7 +8,7 @@
  */
 import { useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
-import logo from '../../assets/logo.png'
+import { Logo } from '../../components/ui/Logo'
 import { HttpError, request } from '../../lib/http'
 import styles from './LoginPage.module.css'
 import { Me, useSession } from './useSession'
@@ -55,7 +55,7 @@ export function LoginPage() {
   return (
     <div className={styles.wrap}>
       <form className={styles.card} onSubmit={submit}>
-        <img src={logo} alt="Beurs Borrel" className={styles.logo} />
+        <Logo alt="Beurs Borrel" className={styles.logo} />
         <h1>Welkom</h1>
         <div className={styles.sub}>Voer je toegangscode in.</div>
         <label htmlFor="key">Toegangscode</label>

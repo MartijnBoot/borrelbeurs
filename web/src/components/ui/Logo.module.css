@@ -1,0 +1,5 @@
+.logo {
+  display: block;
+  aspect-ratio: 1;
+  background: var(--img-logo, url('../../assets/logo.png')) center / contain no-repeat;
+}

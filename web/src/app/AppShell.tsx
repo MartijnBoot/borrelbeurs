@@ -5,7 +5,7 @@
  * page puts its own header content, as the board does with its clock.
  */
 import type { ReactNode } from 'react'
-import logo from '../assets/logo.png'
+import { Logo } from '../components/ui/Logo'
 import { NavMenu } from '../components/ui/NavMenu'
 import { selectStatus, useExchange } from '../features/exchange'
 import styles from './AppShell.module.css'
@@ -23,7 +23,7 @@ export function AppShell({ routes, onLogout, headerExtra, children }: AppShellPr
     <div className={styles.page}>
       <header className={styles.header}>
         <div className={styles.brand}>
-          <img src={logo} alt="Bier Beurs" className={styles.logo} />
+          <Logo alt="Bier Beurs" className={styles.logo} />
           <h1>Beurs Borrel</h1>
         </div>
         {headerExtra}

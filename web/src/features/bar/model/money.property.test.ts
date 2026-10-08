@@ -40,7 +40,13 @@ const CASES = REPLAY === undefined ? Number(ENV?.PROPERTY_CASES ?? 10_000) : 1
 const BASE_SEED = REPLAY === undefined ? Date.now() >>> 0 : Number(REPLAY) >>> 0
 
 const DRINKS = [1, 2, 3]
-const THEME = { preset: 'blauw' as const, revision: 0, tokens: {}, font_family: 'sans-serif' }
+const THEME = {
+  preset: 'blauw' as const,
+  revision: 0,
+  tokens: {},
+  font_family: 'sans-serif',
+  images: { bg: null, header: null, logo: null, promo: null },
+}
 const RUN = {
   run_id: 1,
   tick_interval_ms: 1000,

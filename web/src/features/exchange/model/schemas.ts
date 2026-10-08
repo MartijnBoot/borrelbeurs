@@ -126,6 +126,13 @@ export const ThemeData = z.strictObject({
   revision: NonNegative,
   tokens: z.record(z.string(), z.string()),
   font_family: z.string(),
+  /** Each image slot as `/assets/<id>`, or null (Phase 6 PD9). */
+  images: z.strictObject({
+    bg: z.string().nullable(),
+    header: z.string().nullable(),
+    logo: z.string().nullable(),
+    promo: z.string().nullable(),
+  }),
 })
 
 export const HelloData = z.strictObject({

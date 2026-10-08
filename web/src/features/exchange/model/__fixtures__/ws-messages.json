@@ -41,7 +41,13 @@
           "--news-bg": "#0b1325",
           "--sma-line": "#fbbf24"
         },
-        "font_family": "Inter, system-ui, sans-serif"
+        "font_family": "Inter, system-ui, sans-serif",
+        "images": {
+          "bg": null,
+          "header": null,
+          "logo": null,
+          "promo": null
+        }
       }
     }
   },
@@ -81,7 +87,13 @@
         "--news-bg": "#0b1325",
         "--sma-line": "#fbbf24"
       },
-      "font_family": "Inter, system-ui, sans-serif"
+      "font_family": "Inter, system-ui, sans-serif",
+      "images": {
+        "bg": null,
+        "header": null,
+        "logo": null,
+        "promo": null
+      }
     }
   },
   "pong": {

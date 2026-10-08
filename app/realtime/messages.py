@@ -47,7 +47,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.runtime.theme import TOKEN_NAMES, PresetName, Theme
+from app.runtime.theme import TOKEN_NAMES, PresetName, Theme, image_url
 
 PROTOCOL_VERSION: Final = 1
 
@@ -186,6 +186,13 @@ class NewsData(_Closed):
     item: NewsItemData
 
 
+class ThemeImages(_Closed):
+    bg: str | None
+    header: str | None
+    logo: str | None
+    promo: str | None
+
+
 class ThemeData(_Closed):
     """The active theme (PD3): `revision` 0 is "no stored row, Blauw"."""
 
@@ -195,6 +202,8 @@ class ThemeData(_Closed):
     tokens: dict[str, str]
     # The CSS font stack: EB Garamond for Oud Geld, Inter otherwise.
     font_family: str
+    # Each image slot as "/assets/<id>", or null (Phase 6 PD9).
+    images: ThemeImages
 
     @field_validator("tokens")
     @classmethod
@@ -212,6 +221,12 @@ def theme_data(theme: Theme) -> ThemeData:
         revision=theme.revision,
         tokens=dict(theme.tokens),
         font_family=theme.font_family,
+        images=ThemeImages(
+            bg=image_url(theme.images["bg"]),
+            header=image_url(theme.images["header"]),
+            logo=image_url(theme.images["logo"]),
+            promo=image_url(theme.images["promo"]),
+        ),
     )
 
 

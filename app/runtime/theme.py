@@ -20,6 +20,12 @@ entry in `PRESETS`: its 24 tokens and its font (`inter` or `garamond`) are
 stored, and `resolve` takes them as a `CustomTheme`. Every value, a preset's
 too, matches `HEX`, so nothing else can reach `/theme.css`.
 
+**Images (Phase 6 SD29, PD9).** A theme carries the four slots' asset ids
+(`ImageSlot`). `render_css` emits `--img-<slot>: url("/assets/<id>")` for each
+set slot -- an integer id, so nothing else reaches the CSS either -- plus v1's
+faint background (`body::before`) when `bg` is set and the header image when
+`header` is.
+
 No I/O, no clock.
 """
 
@@ -27,7 +33,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Final, Literal
 
@@ -88,6 +94,18 @@ class CustomTheme:
     font: FontName
 
 
+ImageSlot = Literal["bg", "header", "logo", "promo"]
+IMAGE_SLOTS: Final[tuple[ImageSlot, ...]] = ("bg", "header", "logo", "promo")
+NO_IMAGES: Final[Mapping[ImageSlot, int | None]] = MappingProxyType(
+    dict.fromkeys(IMAGE_SLOTS, None)
+)
+
+
+def image_url(asset_id: int | None) -> str | None:
+    """Where `GET /assets/{asset_id}` serves a slot's image (SD29)."""
+    return None if asset_id is None else f"/assets/{asset_id}"
+
+
 @dataclass(frozen=True)
 class Theme:
     """The active theme: a preset's tokens and font at a revision (0 = no stored row)."""
@@ -96,6 +114,8 @@ class Theme:
     revision: int
     tokens: Mapping[str, str]
     font_family: str
+    # Each image slot's asset id, or None (Phase 6 PD9).
+    images: Mapping[ImageSlot, int | None] = field(default_factory=lambda: NO_IMAGES)
 
 
 def _preset(
@@ -263,24 +283,54 @@ PRESETS: Final[Mapping[BuiltinPreset, Preset]] = MappingProxyType(
 )
 
 
-def resolve(preset: PresetName, revision: int, *, custom: CustomTheme | None = None) -> Theme:
+def resolve(
+    preset: PresetName,
+    revision: int,
+    *,
+    custom: CustomTheme | None = None,
+    images: Mapping[ImageSlot, int | None] = NO_IMAGES,
+) -> Theme:
     """The theme `preset` names, at `revision`; `KeyError` for a preset not in the manifest.
 
-    `custom` is the stored custom theme, which `preset == "custom"` requires.
+    `custom` is the stored custom theme, which `preset == "custom"` requires;
+    `images` the slots' asset ids.
     """
+    images = MappingProxyType({slot: images.get(slot) for slot in IMAGE_SLOTS})
     if revision < 0:
         raise ValueError(f"a theme revision is never negative, got {revision}")
     if preset == "custom":
         if custom is None:
             raise ValueError("the custom preset needs the stored custom theme")
         tokens = MappingProxyType({name: custom.tokens[name] for name in TOKEN_NAMES})
-        return Theme(preset, revision, tokens, FONTS[custom.font])
+        return Theme(preset, revision, tokens, FONTS[custom.font], images)
     entry = PRESETS[preset]
-    return Theme(preset, revision, entry.tokens, entry.font_family)
+    return Theme(preset, revision, entry.tokens, entry.font_family, images)
 
 
 def render_css(theme: Theme) -> str:
-    """`/theme.css`: the tokens on `:root`, and the body's background, text and font (SD7)."""
+    """`/theme.css`: the tokens and set image slots on `:root`, the body, and v1's image rules.
+
+    The body's background, text and font are SD7's. With `bg` set, v1's faint
+    full-page image (`theme.js`, opacity .12); with `header` set, the header's
+    image (PD9).
+    """
+    images = "".join(
+        f'--img-{slot}:url("{image_url(asset_id)}");'
+        for slot, asset_id in theme.images.items()
+        if asset_id is not None
+    )
     tokens = "".join(f"{name}:{theme.tokens[name]};" for name in TOKEN_NAMES)
     body = f"background:var(--bg);color:var(--text);font-family:{theme.font_family}"
-    return f":root{{{tokens}}}\nbody{{{body}}}\n"
+    css = f":root{{{tokens}{images}}}\nbody{{{body}}}\n"
+    if theme.images["bg"] is not None:
+        css += (
+            'body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;'
+            "background-image:var(--img-bg);background-size:cover;background-position:center;"
+            "background-repeat:no-repeat;opacity:.12}\n"
+        )
+    if theme.images["header"] is not None:
+        css += (
+            "header{background-image:var(--img-header)!important;background-size:cover;"
+            "background-position:center;background-repeat:no-repeat}\n"
+        )
+    return css

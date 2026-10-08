@@ -20,6 +20,27 @@
   align-items: stretch;
 }
 
+.container:global(.has-promo) {
+  grid-template-columns: 1fr clamp(180px, 22%, 360px);
+}
+
+/* v1's promo tile (`koers.html:77-79`): beside the board while a promo image is set. */
+.promo {
+  background: var(--panel);
+  border: 1px solid var(--grid);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.promo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 .board {
   background: var(--panel);
   border: 1px solid var(--grid);

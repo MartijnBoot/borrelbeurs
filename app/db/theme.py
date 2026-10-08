@@ -14,18 +14,17 @@ the same transaction (AC34).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Final, Literal, cast
+from typing import Any, Final, cast
 
 from sqlalchemy import Row, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.db.models import Theme
-from app.runtime.theme import DEFAULT_PRESET, CustomTheme, FontName, PresetName
-
-ImageSlot = Literal["bg", "header", "logo", "promo"]
+from app.runtime.theme import DEFAULT_PRESET, CustomTheme, FontName, ImageSlot, PresetName
 
 _SLOT_COLUMNS: Final = {
     "bg": Theme.bg_asset_id,
@@ -41,9 +40,21 @@ class ThemeRow:
     revision: int
     updated_at: datetime
     custom: CustomTheme | None = None
+    # Each image slot's asset id, or None (Phase 6 SD29).
+    images: Mapping[ImageSlot, int | None] = field(default_factory=dict)
 
 
-_COLUMNS = (Theme.preset, Theme.revision, Theme.updated_at, Theme.custom_tokens, Theme.custom_font)
+_COLUMNS = (
+    Theme.preset,
+    Theme.revision,
+    Theme.updated_at,
+    Theme.custom_tokens,
+    Theme.custom_font,
+    Theme.bg_asset_id,
+    Theme.header_asset_id,
+    Theme.logo_asset_id,
+    Theme.promo_asset_id,
+)
 
 
 def _row(row: Row[Any]) -> ThemeRow:
@@ -53,7 +64,13 @@ def _row(row: Row[Any]) -> ThemeRow:
         if row.custom_tokens is None or row.custom_font is None
         else CustomTheme(tokens=row.custom_tokens, font=cast(FontName, row.custom_font))
     )
-    return ThemeRow(cast(PresetName, row.preset), row.revision, row.updated_at, custom)
+    images: dict[ImageSlot, int | None] = {
+        "bg": row.bg_asset_id,
+        "header": row.header_asset_id,
+        "logo": row.logo_asset_id,
+        "promo": row.promo_asset_id,
+    }
+    return ThemeRow(cast(PresetName, row.preset), row.revision, row.updated_at, custom, images)
 
 
 async def get_theme(conn: AsyncConnection) -> ThemeRow | None:

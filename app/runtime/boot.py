@@ -94,7 +94,7 @@ async def _stored_theme(engine: AsyncEngine) -> Theme:
         row = await get_theme(conn)
     if row is None:
         return resolve(DEFAULT_PRESET, 0)
-    return resolve(row.preset, row.revision, custom=row.custom)
+    return resolve(row.preset, row.revision, custom=row.custom, images=row.images)
 
 
 class _LateSink:

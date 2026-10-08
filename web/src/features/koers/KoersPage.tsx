@@ -6,6 +6,9 @@
  * (SD21). With no live run, SD20's empty state -- inside the shell, so the
  * header, nav and theme still work, and the same page shows the board once a
  * snapshot arrives (AC34).
+ *
+ * While the theme has a promo image (Phase 6 PD9), v1's promo tile sits beside
+ * the board and the container takes v1's `has-promo` grid.
  */
 import { selectActiveDrinks, selectEmpty, useExchange } from '../exchange'
 import { HeaderClock } from './HeaderClock'
@@ -24,6 +27,7 @@ export function KoersPage() {
       .join(','),
   )
   const event = useActiveMarketEvent()
+  const promo = useExchange((s) => s.theme?.images.promo ?? null)
 
   return (
     <div className={styles.page}>
@@ -33,7 +37,7 @@ export function KoersPage() {
           <NewsMarquee playbackRate={newsRate(event)} />
         </>
       )}
-      <div className={styles.container}>
+      <div className={promo === null ? styles.container : `${styles.container} has-promo`}>
         <div className={styles.board}>
           <div className={styles.bar}>
             <div className={styles.legend}>
@@ -51,6 +55,11 @@ export function KoersPage() {
             </div>
           )}
         </div>
+        {promo !== null && (
+          <div className={styles.promo}>
+            <img src={promo} alt="Promotie" />
+          </div>
+        )}
       </div>
       {!empty && <MarketEventLayer kind={event} />}
     </div>

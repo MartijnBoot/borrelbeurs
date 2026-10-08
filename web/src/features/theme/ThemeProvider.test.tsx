@@ -12,6 +12,7 @@ const blauw: ThemeData = {
   revision: 0,
   tokens: Object.fromEntries(Array.from({ length: 24 }, (_, i) => [`--t${i}`, `#0000${10 + i}`])),
   font_family: 'Inter, system-ui, sans-serif',
+  images: { bg: null, header: null, logo: null, promo: null },
 }
 const GARAMOND = "'EB Garamond', Georgia, serif"
 
@@ -59,6 +60,17 @@ describe('ThemeProvider', () => {
     setTheme(theme(1, { preset: 'oudgeld', font_family: GARAMOND }))
     // The CSSOM normalises the stack's quotes to double ones.
     expect(document.body.style.fontFamily).toBe('"EB Garamond", Georgia, serif')
+  })
+
+  it('sets each set image slot as --img-*, and removes it when null (Phase 6 PD9)', () => {
+    setTheme(theme(1, { images: { ...blauw.images, logo: '/assets/7', promo: '/assets/9' } }))
+    expect(root().getPropertyValue('--img-logo')).toBe('url("/assets/7")')
+    expect(root().getPropertyValue('--img-promo')).toBe('url("/assets/9")')
+    expect(root().getPropertyValue('--img-bg')).toBe('')
+
+    setTheme(theme(2, { images: { ...blauw.images, promo: '/assets/9' } }))
+    expect(root().getPropertyValue('--img-logo')).toBe('')
+    expect(root().getPropertyValue('--img-promo')).toBe('url("/assets/9")')
   })
 
   it('leaves /theme.css in charge until a theme arrives', () => {

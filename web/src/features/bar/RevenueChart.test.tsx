@@ -76,6 +76,7 @@ const theme = (revision: number, accent: string): ThemeData => ({
     '--accent': accent,
   },
   font_family: 'Inter',
+  images: { bg: null, header: null, logo: null, promo: null },
 })
 
 let narrow = false

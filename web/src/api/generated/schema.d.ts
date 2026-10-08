@@ -1001,6 +1001,18 @@ export interface components {
             };
             /** Font Family */
             font_family: string;
+            images: components["schemas"]["ThemeImages"];
+        };
+        /** ThemeImages */
+        ThemeImages: {
+            /** Bg */
+            bg: string | null;
+            /** Header */
+            header: string | null;
+            /** Logo */
+            logo: string | null;
+            /** Promo */
+            promo: string | null;
         };
         /** ThemeRequest */
         ThemeRequest: {

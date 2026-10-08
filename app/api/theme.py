@@ -42,7 +42,7 @@ from starlette.formparsers import MultiPartException, MultiPartParser
 from app.api.deps import Principal, clock_of, refuse_while_draining, require_role
 from app.core.errors import AppError
 from app.db.assets import delete_asset, insert_asset
-from app.db.theme import ImageSlot, ThemeRow, get_image, get_theme, set_image, set_theme
+from app.db.theme import ThemeRow, get_image, get_theme, set_image, set_theme
 from app.realtime.hub import Hub
 from app.realtime.messages import Envelope, ThemeData, theme_data
 from app.runtime.holder import MarketHolder
@@ -58,6 +58,7 @@ from app.runtime.theme import (
     TOKEN_NAMES,
     CustomTheme,
     FontName,
+    ImageSlot,
     PresetName,
     Theme,
     render_css,
@@ -156,7 +157,7 @@ class InvalidUpload(AppError):
 def _publish(request: Request, row: ThemeRow) -> ThemeData:
     """Adopt a committed theme row if it is newer, and broadcast it (SD9)."""
     state = request.app.state
-    theme = resolve(row.preset, row.revision, custom=row.custom)
+    theme = resolve(row.preset, row.revision, custom=row.custom, images=row.images)
     if theme.revision > state.theme.revision:
         state.theme = theme
     data = theme_data(theme)

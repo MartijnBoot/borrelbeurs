@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient
 
 from app.runtime.theme import PRESETS
 from tests.api.conftest import Login
+from tests.api.test_assets import _upload
+from tests.unit.test_images import PNG
 
 
 def _connect(client: TestClient) -> Any:
@@ -143,3 +145,19 @@ def test_two_racing_puts_converge_on_the_last_committed(client: TestClient, logi
     assert all(b["type"] == "theme" for b in broadcasts)
     assert sorted(b["data"]["revision"] for b in broadcasts) == [1, 2]
     assert client.app.state.theme.revision == 2  # type: ignore[attr-defined]
+
+
+def test_hello_carries_the_theme_images(client: TestClient, login: Login) -> None:
+    """Phase 6 T19 (PD9; AC35): each slot as "/assets/<id>", or null."""
+    admin = login("admin")
+    logo = _upload(admin, "logo", PNG).json()["asset_id"]
+
+    with _connect(admin) as ws:
+        hello = _frame(ws)
+
+    assert hello["data"]["theme"]["images"] == {
+        "bg": None,
+        "header": None,
+        "logo": f"/assets/{logo}",
+        "promo": None,
+    }

@@ -341,8 +341,22 @@ def _theme_fields(**changes: Any) -> dict[str, Any]:
     return fields
 
 
-def test_theme_data_carries_pd3s_four_fields() -> None:
-    assert set(ThemeData.model_fields) == {"preset", "revision", "tokens", "font_family"}
+def test_theme_data_carries_pd3s_four_fields_and_the_images() -> None:
+    """PD3's four fields; Phase 6 PD9 adds `images`."""
+    fields = {"preset", "revision", "tokens", "font_family", "images"}
+    assert set(ThemeData.model_fields) == fields
+
+
+def test_theme_data_gives_each_set_image_slot_its_asset_url() -> None:
+    """Phase 6 PD9: "/assets/<id>" for a set slot, null otherwise."""
+    data = theme_data(resolve("blauw", 2, images={"logo": 7, "promo": 9}))
+
+    assert data.images.model_dump() == {
+        "bg": None,
+        "header": None,
+        "logo": "/assets/7",
+        "promo": "/assets/9",
+    }
 
 
 def test_theme_data_is_the_resolved_preset() -> None:

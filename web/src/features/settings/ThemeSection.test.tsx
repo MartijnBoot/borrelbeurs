@@ -12,6 +12,7 @@ const held: ThemeData = {
   revision: 3,
   tokens: {},
   font_family: 'Inter, system-ui, sans-serif',
+  images: { bg: null, header: null, logo: null, promo: null },
 }
 
 let fetchMock: ReturnType<typeof vi.fn>

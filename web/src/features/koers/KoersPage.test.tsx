@@ -63,7 +63,13 @@ beforeEach(() => {
     tick_interval_ms: 1000,
     protocol: 1,
     role: 'display',
-    theme: { preset: 'blauw', revision: 0, tokens: {}, font_family: 'sans-serif' },
+    theme: {
+      preset: 'blauw',
+      revision: 0,
+      tokens: {},
+      font_family: 'sans-serif',
+      images: { bg: null, header: null, logo: null, promo: null },
+    },
   })
   dispatch('snapshot', SNAPSHOT)
 })
@@ -107,5 +113,31 @@ describe('KoersPage', () => {
     removeWijn()
     const strip = [...container.querySelectorAll(`.${styles.tickName}`)].map((el) => el.textContent)
     expect(strip).toEqual(['Bier', 'Fris', 'Bier', 'Fris']) // the row twice over
+  })
+})
+
+describe('the promo tile (Phase 6 T19: SD29, PD9; AC35)', () => {
+  const theme = (revision: number, promo: string | null) => ({
+    preset: 'blauw' as const,
+    revision,
+    tokens: {},
+    font_family: 'sans-serif',
+    images: { bg: null, header: null, logo: null, promo },
+  })
+  const container = (root: HTMLElement) => root.querySelector(`.${styles.container}`)!
+  const promo = () => document.querySelector('img[alt="Promotie"]')
+
+  it('a theme with images.promo gives has-promo and the promo image; removal drops both', () => {
+    const { container: root } = render(<KoersPage />)
+    expect(container(root).classList.contains('has-promo')).toBe(false)
+    expect(promo()).toBeNull()
+
+    act(() => exchangeStore.setState({ theme: theme(1, '/assets/9') }))
+    expect(container(root).classList.contains('has-promo')).toBe(true)
+    expect(promo()?.getAttribute('src')).toBe('/assets/9')
+
+    act(() => exchangeStore.setState({ theme: theme(2, null) }))
+    expect(container(root).classList.contains('has-promo')).toBe(false)
+    expect(promo()).toBeNull()
   })
 })

@@ -75,6 +75,7 @@ const theme = (revision: number, bg = '#0a1426'): ThemeData => ({
   revision,
   tokens: tokens(bg),
   font_family: 'Inter',
+  images: { bg: null, header: null, logo: null, promo: null },
 })
 
 function setStore(patch: Partial<ExchangeState>) {

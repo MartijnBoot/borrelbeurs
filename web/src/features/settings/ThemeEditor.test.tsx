@@ -24,6 +24,7 @@ const held: ThemeData = {
     TOKEN_NAMES.map((name, i) => [name, `#${(0x101010 + i).toString(16)}`]),
   ),
   font_family: 'Inter, system-ui, sans-serif',
+  images: { bg: null, header: null, logo: null, promo: null },
 }
 
 let fetchMock: ReturnType<typeof vi.fn>

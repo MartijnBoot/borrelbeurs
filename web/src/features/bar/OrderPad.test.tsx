@@ -18,7 +18,13 @@ import { createBarController, type BarController } from './model/barController'
 import { AGE_SHOW_MS, STALE_MS } from './model/constants'
 import { OrderPad } from './OrderPad'
 
-const THEME = { preset: 'blauw' as const, revision: 0, tokens: {}, font_family: 'sans-serif' }
+const THEME = {
+  preset: 'blauw' as const,
+  revision: 0,
+  tokens: {},
+  font_family: 'sans-serif',
+  images: { bg: null, header: null, logo: null, promo: null },
+}
 const RUN = {
   run_id: 1,
   tick_interval_ms: 1000,

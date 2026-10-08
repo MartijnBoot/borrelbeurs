@@ -14,6 +14,8 @@ from app.db.session import create_engine
 from app.db.theme import ThemeRow, get_theme
 from app.runtime.theme import PRESETS, TOKEN_NAMES, resolve
 from tests.api.conftest import Login
+from tests.api.test_assets import _upload
+from tests.unit.test_images import PNG
 
 BLAUW_BG = PRESETS["blauw"].tokens["--bg"]
 INTER = PRESETS["blauw"].font_family
@@ -291,3 +293,28 @@ def test_an_invalid_custom_body_is_422_and_changes_nothing(
 
     assert response.status_code == 422, response.text
     assert _stored(settings, api_env) is None
+
+
+def test_theme_css_paints_the_uploaded_images(client: TestClient, login: Login) -> None:
+    """Phase 6 T19 (PD9; AC35): a set slot is a `--img-*` variable, and bg/header get rules."""
+    admin = login("admin")
+    logo = _upload(admin, "logo", PNG).json()["asset_id"]
+    promo = _upload(admin, "promo", PNG).json()["asset_id"]
+
+    css = client.get("/theme.css").text
+    assert f'--img-logo:url("/assets/{logo}");' in css
+    assert f'--img-promo:url("/assets/{promo}");' in css
+    assert "--img-bg" not in css
+    assert "--img-header" not in css
+    assert "body::before" not in css
+
+    bg = _upload(admin, "bg", PNG).json()["asset_id"]
+    header = _upload(admin, "header", PNG).json()["asset_id"]
+    css = client.get("/theme.css").text
+    assert f'--img-bg:url("/assets/{bg}");' in css
+    assert f'--img-header:url("/assets/{header}");' in css
+    assert "body::before{" in css and "opacity:.12" in css
+    assert "header{background-image:var(--img-header)" in css
+
+    admin.delete("/api/theme/images/logo")
+    assert "--img-logo" not in client.get("/theme.css").text
