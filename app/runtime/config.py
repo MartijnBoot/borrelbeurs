@@ -30,6 +30,7 @@ is 409 `run_ended`.
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Mapping
 from typing import Annotated, Any
 
 from pydantic import (
@@ -62,7 +63,7 @@ from app.db.runs import (
 from app.runtime.clock import Clock
 from app.runtime.history import TickEntry
 from app.runtime.holder import ConfigChanged, MarketHolder, MarketView, Outcome
-from exchange import Params, hold_quoted_prices
+from exchange import EngineState, MarketSpec, Params, hold_quoted_prices
 
 
 class InvalidConfig(AppError):
@@ -196,7 +197,8 @@ class RevisionData(BaseModel):
 _TARGETS = ("idle_targets", "idle_rise_targets")
 
 
-def _readable(run: RunRow) -> RunRow:
+def readable(run: RunRow) -> RunRow:
+    """`run`, unless it has ended (`RunEnded`, SD5)."""
     if run.status == "ended":
         raise RunEnded(f"run {run.run_id} has ended")
     return run
@@ -243,7 +245,7 @@ def _drink_data(row: DrinkRow) -> DrinkConfigData:
 
 async def read_config(engine: AsyncEngine, run_id: int) -> ConfigData:
     async with engine.connect() as conn:
-        return await config_document(conn, _readable(await get_run(conn, run_id)))
+        return await config_document(conn, readable(await get_run(conn, run_id)))
 
 
 def _target_names(drinks: list[DrinkRow], field: str, drink_ids: list[int]) -> list[str]:
@@ -300,6 +302,14 @@ async def _record(conn: AsyncConnection, run: RunRow, *, author: str) -> int:
         params=run.params,
         candle_interval_ms=run.candle_interval_ms,
     )
+    return await append_revision(conn, run, author=author)
+
+
+async def append_revision(conn: AsyncConnection, run: RunRow, *, author: str) -> int:
+    """Append the run's config as it now stands as the next revision (PD6); that revision.
+
+    The caller holds the `run` row lock (SD6).
+    """
     document = await config_document(conn, run)
     document.revision += 1  # the number this append takes: the row lock is held
     revision = await append_config_revision(
@@ -309,10 +319,86 @@ async def _record(conn: AsyncConnection, run: RunRow, *, author: str) -> int:
     return revision
 
 
+async def commit_transition(
+    conn: AsyncConnection,
+    view: MarketView,
+    run: RunRow,
+    *,
+    spec: MarketSpec,
+    state: EngineState,
+    revision: int,
+    now_ms: int,
+    drink_ids: tuple[int, ...] | None = None,
+    bar_price_cents: Mapping[int, int] | None = None,
+) -> Outcome[int]:
+    """A live config transition's engine half (SD7), inside the caller's transaction.
+
+    `state` becomes `version + 1` by compare-and-set, with a `price_tick` of
+    source `config`. The outcome carries the new view, one `ConfigChanged` and
+    the tick; and the ring's new window if `history_window_minutes` changed (PD18).
+    `drink_ids` and `bar_price_cents` default to the view's: only an add changes them.
+    """
+    assert view.spec is not None and view.state is not None
+    drink_ids = view.drink_ids if drink_ids is None else drink_ids
+    candidate = dataclasses.replace(state, version=view.state.version + 1)
+    await compare_and_set(
+        conn,
+        run_id=run.run_id,
+        expected_version=view.state.version,
+        state=candidate,
+        drink_ids=drink_ids,
+        wall_ts_ms=now_ms,
+    )
+    await insert_tick(
+        conn,
+        run_id=run.run_id,
+        state=candidate,
+        spec=spec,
+        drink_ids=drink_ids,
+        source="config",
+        wall_ts_ms=now_ms,
+    )
+    window = spec.params.history_window_minutes
+    return Outcome(
+        result=revision,
+        view=dataclasses.replace(
+            view,
+            spec=spec,
+            state=candidate,
+            drink_ids=drink_ids,
+            bar_price_cents=view.bar_price_cents if bar_price_cents is None else bar_price_cents,
+            last_commit_wall_ms=now_ms,
+            candle_interval_ms=run.candle_interval_ms,
+        ),
+        events=(
+            ConfigChanged(
+                run_id=run.run_id,
+                version=candidate.version,
+                revision=revision,
+                name=run.name,
+                tick_interval_ms=run.tick_interval_ms,
+                candle_interval_ms=run.candle_interval_ms,
+                quote_grace_versions=view.quote_grace_versions,
+                drinks=tuple(
+                    (d, name, bool(on))
+                    for d, name, on in zip(drink_ids, spec.names, spec.active.tolist(), strict=True)
+                ),
+                params=spec.params,
+            ),
+        ),
+        ticks=(
+            TickEntry(candidate.version, now_ms, "config", tick_prices(spec, candidate, drink_ids)),
+        ),
+        ring_window_ms=(
+            None if window == view.spec.params.history_window_minutes else round(window * 60_000)
+        ),
+    )
+
+
 async def current_revision(engine: AsyncEngine, run_id: int) -> int:
     """An empty PATCH's answer: no lock, no write, no transition (AC2)."""
     async with engine.connect() as conn:
-        run = _readable(await get_run(conn, run_id))
+        run = readable(await get_run(conn, run_id))
         return await latest_revision(conn, run.run_id)
 
 
@@ -323,7 +409,7 @@ async def write_draft_config(
     if _is_empty(patch):
         return await current_revision(engine, run_id)
     async with engine.begin() as conn:
-        run = _readable(await get_run(conn, run_id, lock=True))
+        run = readable(await get_run(conn, run_id, lock=True))
         if run.status != "draft":
             raise RunNotDraft(f"run {run_id} is {run.status}, and not live in this process")
         merged = await _merged(conn, run, patch)
@@ -350,7 +436,7 @@ async def write_live_config(
         assert view.run_id == run_id and view.spec is not None and view.state is not None
         now_ms = clock.wall_ms()
         async with engine.begin() as conn:
-            run = _readable(await get_run(conn, run_id, lock=True))
+            run = readable(await get_run(conn, run_id, lock=True))
             merged = await _merged(conn, run, patch)
             if merged is None:
                 return Outcome(result=await latest_revision(conn, run_id), view=view)
@@ -360,66 +446,9 @@ async def write_live_config(
             if params.step_quant != view.spec.params.step_quant:
                 active = [i for i, on in enumerate(spec.active.tolist()) if on]
                 state = hold_quoted_prices(view.spec, spec, state, active)
-            candidate = dataclasses.replace(state, version=view.state.version + 1)
             revision = await _record(conn, merged, author=author)
-            await compare_and_set(
-                conn,
-                run_id=run_id,
-                expected_version=view.state.version,
-                state=candidate,
-                drink_ids=view.drink_ids,
-                wall_ts_ms=now_ms,
+            return await commit_transition(
+                conn, view, merged, spec=spec, state=state, revision=revision, now_ms=now_ms
             )
-            await insert_tick(
-                conn,
-                run_id=run_id,
-                state=candidate,
-                spec=spec,
-                drink_ids=view.drink_ids,
-                source="config",
-                wall_ts_ms=now_ms,
-            )
-        old_window = view.spec.params.history_window_minutes
-        return Outcome(
-            result=revision,
-            view=dataclasses.replace(
-                view,
-                spec=spec,
-                state=candidate,
-                last_commit_wall_ms=now_ms,
-                candle_interval_ms=merged.candle_interval_ms,
-            ),
-            events=(
-                ConfigChanged(
-                    run_id=run_id,
-                    version=candidate.version,
-                    revision=revision,
-                    name=merged.name,
-                    tick_interval_ms=merged.tick_interval_ms,
-                    candle_interval_ms=merged.candle_interval_ms,
-                    quote_grace_versions=view.quote_grace_versions,
-                    drinks=tuple(
-                        (d, name, bool(on))
-                        for d, name, on in zip(
-                            view.drink_ids, spec.names, spec.active.tolist(), strict=True
-                        )
-                    ),
-                    params=params,
-                ),
-            ),
-            ticks=(
-                TickEntry(
-                    candidate.version,
-                    now_ms,
-                    "config",
-                    tick_prices(spec, candidate, view.drink_ids),
-                ),
-            ),
-            ring_window_ms=(
-                None
-                if params.history_window_minutes == old_window
-                else round(params.history_window_minutes * 60_000)
-            ),
-        )
 
     return await holder.mutate("config", step)

@@ -34,6 +34,11 @@ DRAINING_WRITES: Final[list[tuple[str, str, dict[str, Any] | None]]] = [
     ("POST", "/api/runs", {"name": "Nieuw"}),
     ("POST", "/api/runs/999999/go-live", None),
     ("PATCH", "/api/runs/999999/config", {"params": {"eta": 0.9}}),
+    (
+        "POST",
+        "/api/runs/999999/drinks",
+        {"name": "Cola", "p_min_cents": 100, "p0_cents": 300, "p_max_cents": 600},
+    ),
 ]
 
 READS: Final = ("/api/state", "/api/news", "/api/auth/me", "/theme.css")

@@ -318,6 +318,23 @@ export interface paths {
         patch: operations["patch_config_api_runs__run_id__config_patch"];
         trace?: never;
     };
+    "/api/runs/{run_id}/drinks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Drink */
+        post: operations["post_drink_api_runs__run_id__drinks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/theme.css": {
         parameters: {
             query?: never;
@@ -383,6 +400,13 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** CreatedDrink */
+        CreatedDrink: {
+            /** Drink Id */
+            drink_id: number;
+            /** Revision */
+            revision: number;
+        };
         /** DrinkConfigData */
         DrinkConfigData: {
             /** Drink Id */
@@ -409,6 +433,30 @@ export interface components {
             s0: number;
             /** C */
             c: number;
+        };
+        /**
+         * DrinkCreate
+         * @description `POST /api/runs/{run_id}/drinks` (SD5). An optional field is absent or a value.
+         */
+        DrinkCreate: {
+            /** Name */
+            name: string;
+            /** P Min Cents */
+            p_min_cents: number;
+            /** P0 Cents */
+            p0_cents: number;
+            /** P Max Cents */
+            p_max_cents: number;
+            /** Bar Price Cents */
+            bar_price_cents?: number | null;
+            /** A */
+            a?: number | null;
+            /** D */
+            d?: number | null;
+            /** S0 */
+            s0?: number | null;
+            /** C */
+            c?: number | null;
         };
         /** DrinkInfo */
         DrinkInfo: {
@@ -1319,6 +1367,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RevisionData"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_drink_api_runs__run_id__drinks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DrinkCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedDrink"];
                 };
             };
             /** @description Validation Error */

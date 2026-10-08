@@ -248,6 +248,14 @@ async def update_run(
     )
 
 
+async def next_slot(conn: AsyncConnection, run_id: int) -> int:
+    """`max(slot) + 1` over every drink of the run, removed ones included (Phase 6 SD12)."""
+    result = await conn.execute(
+        select(func.coalesce(func.max(Drink.slot), -1) + 1).where(Drink.run_id == run_id)
+    )
+    return int(result.scalar_one())
+
+
 async def all_drinks(conn: AsyncConnection, run_id: int) -> list[DrinkRow]:
     """Every drink of the run, removed ones included, in slot order (SD15)."""
     result = await conn.execute(
