@@ -1,15 +1,15 @@
 /**
- * The price strip (`koers.html:667-682`): name, price and delta per drink, in
- * the server's order, the row twice over so the loop is seamless. A pill is
+ * The price strip (`koers.html:667-682`): name, price and delta per active
+ * drink (Phase 6 SD18), in the server's order, the row twice over so the loop is seamless. A pill is
  * tinted by the same direction as its tile (SD23).
  */
 import { Marquee, type MarqueeItem } from '../../components/ui/Marquee'
 import { deltaText, formatEuro } from '../../lib/format'
-import { pulseDirection, useExchange, type ExchangeState } from '../exchange'
+import { pulseDirection, selectActiveDrinks, useExchange, type ExchangeState } from '../exchange'
 import styles from './KoersPage.module.css'
 
 function row(state: ExchangeState, copy: number): MarqueeItem[] {
-  return state.drinks.map(({ drink_id, name }) => {
+  return selectActiveDrinks(state).map(({ drink_id, name }) => {
     const price = state.prices[drink_id]?.price_cents
     const previous = state.prevPriceCents[drink_id]
     const direction = pulseDirection(state, drink_id)

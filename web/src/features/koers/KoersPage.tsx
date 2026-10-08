@@ -1,11 +1,13 @@
 /**
- * The board (`/koers`): the price and news marquees, then a tile per drink in
- * the server's order, keyed by `drink_id`, the clock and v1's legend
- * verbatim, with any market event over the top (SD21). With no live run,
- * SD20's empty state -- inside the shell, so the header, nav and theme still
- * work, and the same page shows the board once a snapshot arrives (AC34).
+ * The board (`/koers`): the price and news marquees, then a tile per active
+ * drink (Phase 6 SD18) in the server's order, keyed by `drink_id` -- so a drink
+ * removed by `config` loses its tile and the others are not remounted -- then
+ * the clock and v1's legend verbatim, with any market event over the top
+ * (SD21). With no live run, SD20's empty state -- inside the shell, so the
+ * header, nav and theme still work, and the same page shows the board once a
+ * snapshot arrives (AC34).
  */
-import { selectEmpty, useExchange } from '../exchange'
+import { selectActiveDrinks, selectEmpty, useExchange } from '../exchange'
 import { HeaderClock } from './HeaderClock'
 import styles from './KoersPage.module.css'
 import { isAnimated, newsRate, useActiveMarketEvent } from './marketEvent'
@@ -16,7 +18,11 @@ import { Tile } from './Tile'
 
 export function KoersPage() {
   const empty = useExchange(selectEmpty)
-  const ids = useExchange((s) => s.drinks.map((d) => d.drink_id).join(','))
+  const ids = useExchange((s) =>
+    selectActiveDrinks(s)
+      .map((d) => d.drink_id)
+      .join(','),
+  )
   const event = useActiveMarketEvent()
 
   return (
