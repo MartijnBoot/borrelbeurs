@@ -116,4 +116,12 @@ describe('useEditableRecord', () => {
     rerender({ record: SERVER })
     expect(result.current.values).toEqual(SERVER)
   })
+
+  it('a refetch with the same content while dirty is not a conflict (AC5)', () => {
+    const { result, rerender } = setup()
+    act(() => result.current.set('K', 20))
+    rerender({ record: { ...SERVER, idle_targets: [1, 2] } })
+    expect(result.current.conflict).toBe(false)
+    expect(result.current.patch).toEqual({ K: 20 })
+  })
 })

@@ -10,7 +10,8 @@
  *
  * A new server record (a `config` message, a refetch) replaces `values` while
  * clean. While dirty it keeps the user's input and sets `conflict` (AC5), unless
- * it already says what the edits say; `takeServer` then discards the edits.
+ * it already says what the edits say, or says what the last one did (a refetch
+ * with the same content); `takeServer` then discards the edits.
  * Lists compare by content; everything else with `Object.is`.
  */
 import { useCallback, useState } from 'react'
@@ -58,7 +59,9 @@ export function useEditableRecord<T extends object>(server: T | null): EditableR
 
   if (server !== seen) {
     setSeen(server)
-    if (!dirty || values === null) {
+    if (server !== null && seen !== null && Object.keys(diff(seen, server)).length === 0) {
+      // a new object with the same content (a refetch, an unrelated `config`): nothing to say
+    } else if (!dirty || values === null) {
       setBase(server)
       setValues(server)
       setConflict(false)

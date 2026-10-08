@@ -4,7 +4,7 @@
  * `no_current_run`). `undefined` while loading. It refetches when the store's
  * run, snapshot or `config` changes, so a go-live or a broadcast shows here.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import { z } from 'zod'
 import { HttpError, request } from '../../lib/http'
 import { useExchange } from '../exchange'
@@ -25,14 +25,35 @@ export async function fetchCurrentRun(): Promise<CurrentRun | null> {
   }
 }
 
+/**
+ * Every section reads the current run on its own, and a draft write broadcasts
+ * nothing (SD7). So a section that changes the run, or reloads it, bumps this
+ * version and every mounted section refetches.
+ */
+let version = 0
+const listeners = new Set<() => void>()
+
+function bumpVersion() {
+  version += 1
+  for (const listener of listeners) listener()
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
+}
+
 export function useCurrentRun() {
   const [run, setRun] = useState<CurrentRun | null | undefined>(undefined)
   const [failed, setFailed] = useState(false)
   const liveRunId = useExchange((s) => s.run?.run_id ?? null)
   const snapshotGen = useExchange((s) => s.snapshotGen)
   const params = useExchange((s) => s.params)
+  const shared = useSyncExternalStore(subscribe, () => version)
 
-  const reload = useCallback(
+  const fetchRun = useCallback(
     () =>
       fetchCurrentRun().then(
         (current) => {
@@ -45,8 +66,18 @@ export function useCurrentRun() {
   )
 
   useEffect(() => {
-    void reload()
-  }, [reload, liveRunId, snapshotGen, params])
+    void fetchRun()
+  }, [fetchRun, liveRunId, snapshotGen, params, shared])
 
-  return { run, setRun, reload, failed }
+  const reload = useCallback(async () => {
+    await fetchRun()
+    bumpVersion()
+  }, [fetchRun])
+
+  const replace = useCallback((next: CurrentRun | null) => {
+    setRun(next)
+    bumpVersion()
+  }, [])
+
+  return { run, setRun: replace, reload, failed }
 }
