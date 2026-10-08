@@ -12,6 +12,9 @@ which conflicts with itself, so two creates cannot both see "no draft".
 
 The only drink write besides `add_drink` is `set_bar_price`. Renaming and
 removal are Phase 6.
+
+**Revision numbers** are allocated under a row lock on `run` (Phase 6 SD6), so
+concurrent writers of one run get consecutive revisions, never the same `max + 1`.
 """
 
 from __future__ import annotations
@@ -70,6 +73,13 @@ class LiveRunExists(AppError):
     code = "live_run_exists"
 
 
+class RunEnded(AppError):
+    """An ended run's config is history; no route reads or writes it (Phase 6 SD5)."""
+
+    status_code = 409
+    code = "run_ended"
+
+
 class DraftExists(AppError):
     """A draft already exists (Phase 6 SD2); the error carries its `run_id` (PD2)."""
 
@@ -85,6 +95,17 @@ class RunSummary:
     run_id: int
     name: str
     status: RunStatus
+
+
+@dataclass(frozen=True)
+class RunRow:
+    """The `run` columns a config read or write needs."""
+
+    run_id: int
+    name: str
+    status: RunStatus
+    params: dict[str, Any]
+    candle_interval_ms: int
 
 
 def name_key(name: str) -> str:
@@ -165,7 +186,11 @@ async def set_bar_price(conn: AsyncConnection, drink_id: int, cents: int) -> Non
 async def append_config_revision(
     conn: AsyncConnection, run_id: int, *, config: dict[str, Any], author: str
 ) -> int:
-    """Record `config` as the run's next revision, numbered from 1, and return its number."""
+    """Record `config` as the run's next revision, numbered from 1, and return its number.
+
+    Takes the `run` row lock first (SD6); a caller that already holds it loses nothing.
+    """
+    await conn.execute(select(Run.run_id).where(Run.run_id == run_id).with_for_update())
     latest = (
         select(func.coalesce(func.max(RunConfigRevision.revision), 0) + 1)
         .where(RunConfigRevision.run_id == run_id)
@@ -177,6 +202,44 @@ async def append_config_revision(
         .returning(RunConfigRevision.revision)
     )
     return int(result.scalar_one())
+
+
+async def latest_revision(conn: AsyncConnection, run_id: int) -> int:
+    """The run's newest revision number, 0 if it has none."""
+    result = await conn.execute(
+        select(func.coalesce(func.max(RunConfigRevision.revision), 0)).where(
+            RunConfigRevision.run_id == run_id
+        )
+    )
+    return int(result.scalar_one())
+
+
+async def get_run(conn: AsyncConnection, run_id: int, *, lock: bool = False) -> RunRow:
+    """The run, or `RunNotFound`; with `lock`, under `SELECT … FOR UPDATE` (SD6)."""
+    statement = select(Run.run_id, Run.name, Run.status, Run.params, Run.candle_interval_ms).where(
+        Run.run_id == run_id
+    )
+    row = (await conn.execute(statement.with_for_update() if lock else statement)).one_or_none()
+    if row is None:
+        raise RunNotFound(f"no run {run_id}")
+    return RunRow(
+        int(row.run_id), row.name, row.status, dict(row.params), int(row.candle_interval_ms)
+    )
+
+
+async def update_run(
+    conn: AsyncConnection,
+    run_id: int,
+    *,
+    name: str,
+    params: dict[str, Any],
+    candle_interval_ms: int,
+) -> None:
+    await conn.execute(
+        update(Run)
+        .where(Run.run_id == run_id)
+        .values(name=name, params=params, candle_interval_ms=candle_interval_ms)
+    )
 
 
 async def all_drinks(conn: AsyncConnection, run_id: int) -> list[DrinkRow]:

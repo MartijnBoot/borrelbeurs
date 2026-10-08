@@ -44,6 +44,9 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     ("POST", "/api/runs"): ADMIN,
     ("GET", "/api/runs/current"): ADMIN,
     ("POST", "/api/runs/{run_id}/go-live"): ADMIN,
+    # Phase 6 SD5.
+    ("GET", "/api/runs/{run_id}/config"): ADMIN,
+    ("PATCH", "/api/runs/{run_id}/config"): ADMIN,
 }
 
 ACTORS: Final = ("anonymous", "revoked", "display", "bar", "admin")
@@ -92,7 +95,7 @@ def _status(client: TestClient, method: str, path: str) -> int:
             return 101
         except WebSocketDisconnect as closed:
             return 401 if closed.code == 1008 else 101
-    body: dict[str, object] | None = {} if method in {"POST", "DELETE"} else None
+    body: dict[str, object] | None = {} if method in {"POST", "DELETE", "PATCH"} else None
     if method == "PUT":
         body = {"preset": "blauw"}  # valid, so a permitted role is not refused for its body
     response = client.request(method, url, json=body, headers={"Idempotency-Key": "k-matrix-0001"})

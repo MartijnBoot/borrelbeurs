@@ -300,6 +300,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{run_id}/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Config */
+        get: operations["get_config_api_runs__run_id__config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Config */
+        patch: operations["patch_config_api_runs__run_id__config_patch"];
+        trace?: never;
+    };
     "/theme.css": {
         parameters: {
             query?: never;
@@ -337,10 +355,60 @@ export interface components {
             /** C */
             c: number;
         };
+        /**
+         * ConfigData
+         * @description `GET /api/runs/{run_id}/config`, and what a revision stores (PD6).
+         */
+        ConfigData: {
+            /** Revision */
+            revision: number;
+            run: components["schemas"]["RunConfigData"];
+            params: components["schemas"]["ParamsData"];
+            /** Drinks */
+            drinks: components["schemas"]["DrinkConfigData"][];
+        };
+        /**
+         * ConfigPatch
+         * @description `PATCH /api/runs/{run_id}/config` (SD5).
+         */
+        ConfigPatch: {
+            /** Name */
+            name?: string | null;
+            /** Candle Interval S */
+            candle_interval_s?: number | null;
+            params?: components["schemas"]["ParamsPatch"] | null;
+        };
         /** CreateRunRequest */
         CreateRunRequest: {
             /** Name */
             name: string;
+        };
+        /** DrinkConfigData */
+        DrinkConfigData: {
+            /** Drink Id */
+            drink_id: number;
+            /** Slot */
+            slot: number;
+            /** Name */
+            name: string;
+            /** Active */
+            active: boolean;
+            /** P Min Cents */
+            p_min_cents: number;
+            /** P0 Cents */
+            p0_cents: number;
+            /** P Max Cents */
+            p_max_cents: number;
+            /** Bar Price Cents */
+            bar_price_cents: number;
+            /** A */
+            a: number;
+            /** D */
+            d: number;
+            /** S0 */
+            s0: number;
+            /** C */
+            c: number;
         };
         /** DrinkInfo */
         DrinkInfo: {
@@ -478,6 +546,83 @@ export interface components {
             /** Unit Price Cents */
             unit_price_cents: number;
         };
+        /** ParamsData */
+        ParamsData: {
+            /** Step Quant */
+            step_quant: number;
+            /** Eta */
+            eta: number;
+            /** K */
+            K: number;
+            /** Lambda Orders */
+            lambda_orders: number;
+            /** Alpha Price */
+            alpha_price: number;
+            /** Phi Persist */
+            phi_persist: number;
+            /** Decay Rho */
+            decay_rho: number;
+            /** History Window Minutes */
+            history_window_minutes: number;
+            /** Refresh Minutes */
+            refresh_minutes: number;
+            /** Idle Decay Minutes */
+            idle_decay_minutes: number;
+            /** Idle Rise Minutes */
+            idle_rise_minutes: number;
+            /** Idle Strength */
+            idle_strength: number;
+            /** Idle Rise Strength */
+            idle_rise_strength: number;
+            /** Idle Targets */
+            idle_targets: number[];
+            /** Idle Rise Targets */
+            idle_rise_targets: number[];
+            /** Demand Enabled */
+            demand_enabled: boolean;
+            /** Auto Calibrate S0 */
+            auto_calibrate_s0: boolean;
+        };
+        /**
+         * ParamsPatch
+         * @description SD8's editable params. An absent field is unchanged; `None` only means absent.
+         */
+        ParamsPatch: {
+            /** Step Quant */
+            step_quant?: number | null;
+            /** Eta */
+            eta?: number | null;
+            /** K */
+            K?: number | null;
+            /** Lambda Orders */
+            lambda_orders?: number | null;
+            /** Alpha Price */
+            alpha_price?: number | null;
+            /** Phi Persist */
+            phi_persist?: number | null;
+            /** Decay Rho */
+            decay_rho?: number | null;
+            /** History Window Minutes */
+            history_window_minutes?: number | null;
+            /** Refresh Minutes */
+            refresh_minutes?: number | null;
+            /** Idle Decay Minutes */
+            idle_decay_minutes?: number | null;
+            /** Idle Rise Minutes */
+            idle_rise_minutes?: number | null;
+            /** Idle Strength */
+            idle_strength?: number | null;
+            /** Idle Rise Strength */
+            idle_rise_strength?: number | null;
+            /** Idle Targets */
+            idle_targets?: number[] | null;
+            /** Idle Rise Targets */
+            idle_rise_targets?: number[] | null;
+            /** Demand Enabled */
+            demand_enabled?: boolean | null;
+            /** Auto Calibrate S0 */
+            auto_calibrate_s0?: boolean | null;
+        };
         /**
          * Receipt
          * @description SD19's receipt, plus `quote_version` (PD6), exactly as returned and replayed.
@@ -506,6 +651,25 @@ export interface components {
             unit_price_cents: number;
             /** Line Total Cents */
             line_total_cents: number;
+        };
+        /** RevisionData */
+        RevisionData: {
+            /** Revision */
+            revision: number;
+        };
+        /** RunConfigData */
+        RunConfigData: {
+            /** Run Id */
+            run_id: number;
+            /** Name */
+            name: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "live" | "ended";
+            /** Candle Interval S */
+            candle_interval_s: number;
         };
         /** RunInfo */
         RunInfo: {
@@ -1089,6 +1253,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunSummaryData"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_config_api_runs__run_id__config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfigData"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_config_api_runs__run_id__config_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionData"];
                 };
             };
             /** @description Validation Error */
