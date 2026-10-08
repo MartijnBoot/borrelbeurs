@@ -345,7 +345,8 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete Drink */
+        delete: operations["delete_drink_api_runs__run_id__drinks__drink_id__delete"];
         options?: never;
         head?: never;
         /** Patch Drink */
@@ -1443,6 +1444,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CreatedDrink"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_drink_api_runs__run_id__drinks__drink_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+                drink_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionData"];
                 };
             };
             /** @description Validation Error */

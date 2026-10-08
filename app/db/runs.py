@@ -24,7 +24,7 @@ import secrets
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from sqlalchemy import func, insert, select, text, update
+from sqlalchemy import delete, func, insert, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -92,6 +92,13 @@ class DrinkRemoved(AppError):
 
     status_code = 409
     code = "drink_removed"
+
+
+class LastActiveDrink(AppError):
+    """A run keeps at least one active drink (Phase 6 SD16)."""
+
+    status_code = 409
+    code = "last_active_drink"
 
 
 class DraftExists(AppError):
@@ -289,6 +296,18 @@ async def update_run(
         .where(Run.run_id == run_id)
         .values(name=name, params=params, candle_interval_ms=candle_interval_ms)
     )
+
+
+async def remove_drink(conn: AsyncConnection, drink_id: int) -> None:
+    """A soft delete: the row and its slot stay, masked inactive (Phase 6 SD13)."""
+    await conn.execute(
+        update(Drink).where(Drink.drink_id == drink_id).values(removed_at=func.now())
+    )
+
+
+async def delete_drink(conn: AsyncConnection, drink_id: int) -> None:
+    """A hard delete, for a draft's drink: there is no ledger to keep (Phase 6 SD13)."""
+    await conn.execute(delete(Drink).where(Drink.drink_id == drink_id))
 
 
 async def next_slot(conn: AsyncConnection, run_id: int) -> int:

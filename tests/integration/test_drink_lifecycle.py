@@ -23,8 +23,10 @@ from app.core.config import Settings
 from app.db.codec import tick_prices
 from app.db.engine_state import save_transition
 from app.db.mapping import cents_from_quantised
+from app.db.orders import earnings_by_drink
 from app.db.runs import (
     DuplicateDrinkName,
+    LastActiveDrink,
     add_drink,
     append_config_revision,
     create_draft_run,
@@ -32,7 +34,13 @@ from app.db.runs import (
 )
 from app.db.session import create_engine
 from app.runtime.config import ConfigPatch, write_live_config
-from app.runtime.drinks import DrinkCreate, DrinkPatch, add_live_drink, edit_live_drink
+from app.runtime.drinks import (
+    DrinkCreate,
+    DrinkPatch,
+    add_live_drink,
+    edit_live_drink,
+    remove_live_drink,
+)
 from app.runtime.grace import QuotedLine
 from app.runtime.history import TickEntry
 from app.runtime.holder import (
@@ -43,7 +51,7 @@ from app.runtime.holder import (
     Outcome,
     TickCommitted,
 )
-from app.runtime.manipulation import schedule
+from app.runtime.manipulation import schedule, start_event
 from app.runtime.orders import OrderRequest, place_order
 from app.runtime.rehydrate import RehydratedRun, rehydrate
 from exchange import EngineState, Params, advance
@@ -373,5 +381,139 @@ def test_a_live_rename_reaches_the_spec_and_idle_targets(
             assert market.holder.spec.params.idle_targets == ("Pils",)
             changed = [e for e in market.events if isinstance(e, ConfigChanged)]
             assert (bier, "Pils", True) in changed[-1].drinks
+
+    asyncio.run(scenario())
+
+
+# --- T14: remove on the live run ----------------------------------------------
+
+
+async def _remove(market: Market, drink_id: int) -> int:
+    return await remove_live_drink(
+        market.holder, market.run_id, drink_id, author="Bestuur", clock=market.clock
+    )
+
+
+async def _ledger(market: Market) -> tuple[int, list[tuple[int, int, int]]]:
+    async with market.engine.connect() as conn:
+        total: Any = (
+            await conn.execute(text("SELECT coalesce(sum(line_total_cents), 0) FROM order_line"))
+        ).scalar_one()
+        return int(total), await earnings_by_drink(conn, market.run_id)
+
+
+def _bitwise(state: EngineState) -> tuple[bytes, ...]:
+    return (
+        state.y.tobytes(),
+        state.cum_orders.tobytes(),
+        state.flow_ema.tobytes(),
+        state.last_order_ts.tobytes(),
+    )
+
+
+def test_the_scripted_borrel_adds_d4_then_removes_d2(settings: Settings, database_url: str) -> None:
+    """AC15, AC20, AC21, AC22: orders on three drinks, add D4, remove D2."""
+
+    async def scenario() -> None:
+        async with _live(settings, database_url) as market:
+            d1, d2, d3 = market.holder.drink_ids
+            for i, drink in enumerate((d1, d2, d3, d2, d1)):
+                await market.tick()
+                await market.order(f"k-borrel-{i:04d}", drink, 1 + i % 2)
+            d4 = await market.add(name="Cola")
+            await market.tick()
+            await write_live_config(
+                market.holder,
+                market.run_id,
+                ConfigPatch.model_validate({"params": {"idle_targets": [d2, d3]}}),
+                author="Bestuur",
+                clock=market.clock,
+            )
+            before = market.state
+            ledger = await _ledger(market)
+            earnings = dict(market.holder.earnings)
+            assert earnings[d2].qty > 0
+
+            await _remove(market, d2)
+
+            after = market.state
+            i2 = market.holder.drink_ids.index(d2)
+            others = [i for i in range(len(market.holder.drink_ids)) if i != i2]
+            assert after.y[others].tobytes() == before.y[others].tobytes()
+            assert after.version == before.version + 1
+            assert await _ledger(market) == ledger
+            assert dict(market.holder.earnings) == earnings
+            assert market.holder.spec is not None
+            assert market.holder.spec.active.tolist() == [True, False, True, True]
+            assert market.holder.spec.params.idle_targets == ("Fris",)
+
+            for _ in range(3):
+                await market.tick()
+            run = await rehydrate(market.engine, now_ms=market.clock.wall_ms())
+            assert isinstance(run, RehydratedRun)
+            assert run.drink_ids == market.holder.drink_ids == (d1, d2, d3, d4)
+            assert run.spec.active.tolist() == [True, False, True, True]
+            assert _bitwise(run.state) == _bitwise(market.state)
+            assert run.state.version == market.state.version
+
+            again = await market.add(name="Wijn")
+            assert again not in (d1, d2, d3, d4)
+
+    asyncio.run(scenario())
+
+
+def test_a_running_jump_on_a_removed_drink_survives_nowhere(
+    settings: Settings, database_url: str
+) -> None:
+    """AC18, PD17: its own jump and a market event's are cancelled; its `y` stays frozen."""
+
+    async def scenario() -> None:
+        async with _live(settings, database_url) as market:
+            _, wijn, _ = market.holder.drink_ids
+            i = market.holder.drink_ids.index(wijn)
+            await start_event(market.holder, "bubble", 10_000, clock=market.clock)
+            await schedule(market.holder, wijn, 450, 10_000, clock=market.clock)
+            await market.tick()
+            assert any(j.i == i for j in market.state.jumps)
+
+            await _remove(market, wijn)
+
+            frozen = market.state.y[i].tobytes()
+            assert all(j.i != i for j in market.state.jumps)
+            for _ in range(15):  # past both jumps' end
+                await market.tick()
+                assert market.state.y[i].tobytes() == frozen
+                assert all(j.i != i for j in market.state.jumps)
+
+    asyncio.run(scenario())
+
+
+def test_removing_the_last_active_live_drink_is_refused(
+    settings: Settings, database_url: str
+) -> None:
+    """AC17 on the live run: 409, and nothing changes."""
+
+    async def scenario() -> None:
+        async with _live(settings, database_url) as market:
+            d1, d2, d3 = market.holder.drink_ids
+            await _remove(market, d1)
+            await _remove(market, d2)
+            state = market.state
+
+            try:
+                await _remove(market, d3)
+            except LastActiveDrink:
+                pass
+            else:
+                raise AssertionError("the last active drink was removed")
+
+            assert market.state is state
+            async with market.engine.connect() as conn:
+                removed: Any = (
+                    await conn.execute(
+                        text("SELECT count(*) FROM drink WHERE removed_at IS NOT NULL")
+                    )
+                ).scalar_one()
+            assert removed == 2
 
     asyncio.run(scenario())

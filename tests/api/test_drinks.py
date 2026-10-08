@@ -376,3 +376,101 @@ def test_a_removed_drink_is_409_and_an_unknown_one_404(
 @pytest.mark.parametrize("role", ["display", "bar"])
 def test_other_roles_may_not_edit(draft: int, client: TestClient, login: Login, role: str) -> None:
     assert login(role).patch(f"/api/runs/{draft}/drinks/1", json={}).status_code == 403
+
+
+# --- T14: remove -------------------------------------------------------------
+
+
+def test_removing_a_draft_drink_deletes_it_and_drops_it_from_idle_targets(
+    draft: int, client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """SD13 (draft: a hard delete), AC22 (removal)."""
+    admin = login("admin")
+    bier = _bier(admin, draft)
+    wijn = admin.post(f"/api/runs/{draft}/drinks", json={**BIER, "name": "Wijn"}).json()["drink_id"]
+    admin.patch(
+        f"/api/runs/{draft}/config",
+        json={"params": {"idle_targets": [bier, wijn], "idle_rise_targets": [bier]}},
+    )
+
+    response = admin.delete(f"/api/runs/{draft}/drinks/{bier}")
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"revision": 5}
+    drinks = admin.get(f"/api/runs/{draft}/config").json()["drinks"]
+    assert [d["drink_id"] for d in drinks] == [wijn]
+    assert _sql(settings, api_env, "SELECT count(*) FROM drink WHERE drink_id = :d", d=bier) == 0
+    params = _sql(settings, api_env, "SELECT params FROM run WHERE run_id = :r", r=draft)
+    assert (params["idle_targets"], params["idle_rise_targets"]) == (["Wijn"], [])
+
+
+def test_removing_the_last_active_drink_is_409_and_changes_nothing(
+    draft: int, client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """AC17."""
+    admin = login("admin")
+    bier = _bier(admin, draft)
+
+    response = admin.delete(f"/api/runs/{draft}/drinks/{bier}")
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "last_active_drink"
+    assert len(admin.get(f"/api/runs/{draft}/config").json()["drinks"]) == 1
+    assert _revisions(settings, api_env, draft) == 2
+
+
+def test_removing_an_unknown_or_removed_drink(
+    draft: int, client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    admin = login("admin")
+    bier = _bier(admin, draft)
+    _bier_too = admin.post(f"/api/runs/{draft}/drinks", json={**BIER, "name": "Wijn"})
+    assert _bier_too.status_code == 201
+
+    missing = admin.delete(f"/api/runs/{draft}/drinks/999999")
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "drink_not_found"
+    _sql(settings, api_env, "UPDATE drink SET removed_at = now() WHERE drink_id = :d", d=bier)
+    removed = admin.delete(f"/api/runs/{draft}/drinks/{bier}")
+    assert removed.status_code == 409
+    assert removed.json()["error"]["code"] == "drink_removed"
+
+
+def test_a_live_removal_masks_the_drink_and_keeps_its_sales(
+    live_run: int, live_client: TestClient, login: Login
+) -> None:
+    """SD13 (live), AC15, AC23 (server): the snapshot lists it inactive, its earnings stay."""
+    admin = login("admin")
+    state = admin.get("/api/state").json()
+    bier = state["drinks"][0]["drink_id"]
+    order = admin.post(
+        "/api/orders",
+        json={
+            "quote_version": state["version"],
+            "lines": [
+                {
+                    "drink_id": bier,
+                    "qty": 2,
+                    "unit_price_cents": state["prices"][str(bier)]["price_cents"],
+                }
+            ],
+        },
+        headers={"Idempotency-Key": "k-remove-0001"},
+    )
+    assert order.status_code in (200, 201), order.text
+
+    response = admin.delete(f"/api/runs/{live_run}/drinks/{bier}")
+
+    assert response.status_code == 200, response.text
+    after = admin.get("/api/state").json()
+    assert (after["drinks"][0]["drink_id"], after["drinks"][0]["active"]) == (bier, False)
+    assert str(bier) not in after["prices"]
+    assert after["earnings"][str(bier)]["qty"] == 2
+    assert after["version"] > state["version"]
+
+
+@pytest.mark.parametrize("role", ["display", "bar"])
+def test_other_roles_may_not_remove(
+    draft: int, client: TestClient, login: Login, role: str
+) -> None:
+    assert login(role).delete(f"/api/runs/{draft}/drinks/1").status_code == 403

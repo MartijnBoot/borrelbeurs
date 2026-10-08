@@ -1,4 +1,4 @@
-"""Drinks of a run: add and edit (Phase 6 SD5, SD9, SD11, SD12, SD17).
+"""Drinks of a run: add, edit and remove (Phase 6 SD5, SD9, SD11-SD13, SD16, SD17).
 
 **Validation (SD8, per drink).** `DrinkCreate` forbids unknown keys and any
 explicit `null`. Money is strict integer cents: `p_min_cents ≥ 0`,
@@ -24,6 +24,13 @@ is 409 `drink_removed`. A rename rewrites the name in both idle-target lists of
 `run.params`, in the same transaction (SD11). On the live run it is one
 `mutate("config")`: a `p_min`/`p_max` change holds that slot's quoted price
 (`hold_quoted_prices`, its jump cancelled); any other change moves no `y` (SD9).
+
+**A removal (SD13)** drops the drink from both idle-target lists. On a draft it
+deletes the row: there is no ledger to keep. On the live run it is one
+`mutate("config")`: `removed_at` is set, the spec is rebuilt with that slot
+masked, and every jump on the slot -- a market event's included -- is cancelled,
+because `apply_jumps` does not read the mask (PD17). Its orders and revenue stay.
+Removing the last active drink is 409 `last_active_drink` (SD16).
 """
 
 from __future__ import annotations
@@ -38,13 +45,16 @@ from app.db.mapping import DrinkRow, spec_from_rows
 from app.db.runs import (
     DrinkNotFound,
     DrinkRemoved,
+    LastActiveDrink,
     RunNotDraft,
     RunRow,
     add_drink,
     all_drinks,
+    delete_drink,
     get_run,
     latest_revision,
     next_slot,
+    remove_drink,
     update_drink,
     update_run,
 )
@@ -57,7 +67,7 @@ from app.runtime.config import (
     readable,
 )
 from app.runtime.holder import MarketHolder, MarketView, Outcome
-from exchange import Params, append_slot, hold_quoted_prices
+from exchange import Params, append_slot, cancel_jumps, hold_quoted_prices
 
 DEFAULT_A = 10.0
 DEFAULT_D = 0.6
@@ -218,15 +228,39 @@ def _edited(row: DrinkRow, patch: DrinkPatch) -> DrinkRow | None:
     return None if edited == row else edited
 
 
-def _renamed(params: dict[str, Any], old: str, new: str) -> dict[str, Any]:
-    """`run.params` with `old` replaced by `new` in both idle-target lists (SD11)."""
+def _renamed(params: dict[str, Any], old: str, new: str | None) -> dict[str, Any]:
+    """`run.params` with `old` replaced by `new` in both idle-target lists, or dropped (SD11)."""
     return {
         **params,
         **{
-            field: [new if name == old else name for name in params.get(field, [])]
+            field: [
+                new if name == old else name
+                for name in params.get(field, [])
+                if name != old or new is not None
+            ]
             for field in ("idle_targets", "idle_rise_targets")
         },
     }
+
+
+def _active_row(drinks: list[DrinkRow], run_id: int, drink_id: int) -> DrinkRow:
+    """The drink, or 404 `drink_not_found` / 409 `drink_removed`."""
+    row = next((d for d in drinks if d.drink_id == drink_id), None)
+    if row is None:
+        raise DrinkNotFound(f"run {run_id} has no drink {drink_id}")
+    if row.removed:
+        raise DrinkRemoved(f"drink {drink_id} was removed from run {run_id}")
+    return row
+
+
+async def _write_params(conn: AsyncConnection, run: RunRow) -> None:
+    await update_run(
+        conn,
+        run.run_id,
+        name=run.name,
+        params=run.params,
+        candle_interval_ms=run.candle_interval_ms,
+    )
 
 
 async def _edit(
@@ -238,24 +272,14 @@ async def _edit(
     edit, and the revision; `None` if the edit changes nothing.
     """
     drinks = await all_drinks(conn, run.run_id)
-    row = next((d for d in drinks if d.drink_id == drink_id), None)
-    if row is None:
-        raise DrinkNotFound(f"run {run.run_id} has no drink {drink_id}")
-    if row.removed:
-        raise DrinkRemoved(f"drink {drink_id} was removed from run {run.run_id}")
+    row = _active_row(drinks, run.run_id, drink_id)
     edited = _edited(row, patch)
     if edited is None:
         return None
     await update_drink(conn, run.run_id, edited)
     if edited.name != row.name:
         run = dataclasses.replace(run, params=_renamed(run.params, row.name, edited.name))
-        await update_run(
-            conn,
-            run.run_id,
-            name=run.name,
-            params=run.params,
-            candle_interval_ms=run.candle_interval_ms,
-        )
+        await _write_params(conn, run)
     drinks = [edited if d.drink_id == drink_id else d for d in drinks]
     return run, drinks, row, await append_revision(conn, run, author=author)
 
@@ -312,6 +336,68 @@ async def edit_live_drink(
                 revision=revision,
                 now_ms=now_ms,
                 bar_price_cents={**view.bar_price_cents, drink_id: after.bar_price_cents},
+            )
+
+    return await holder.mutate("config", step)
+
+
+async def _remove(
+    conn: AsyncConnection, run: RunRow, drink_id: int, *, author: str
+) -> tuple[RunRow, list[DrinkRow], int]:
+    """Remove the drink and append the revision, under the caller's `run` row lock.
+
+    A draft's row is deleted, a live run's masked. The run and every drink row as
+    they now are, and the revision.
+    """
+    drinks = await all_drinks(conn, run.run_id)
+    row = _active_row(drinks, run.run_id, drink_id)
+    if not any(not d.removed and d.drink_id != drink_id for d in drinks):
+        raise LastActiveDrink(f"drink {drink_id} is the last active drink of run {run.run_id}")
+    if run.status == "draft":
+        await delete_drink(conn, drink_id)
+        drinks = [d for d in drinks if d.drink_id != drink_id]
+    else:
+        await remove_drink(conn, drink_id)
+        drinks = [dataclasses.replace(d, removed=True) if d is row else d for d in drinks]
+    run = dataclasses.replace(run, params=_renamed(run.params, row.name, None))
+    await _write_params(conn, run)
+    return run, drinks, await append_revision(conn, run, author=author)
+
+
+async def remove_draft_drink(
+    engine: AsyncEngine, run_id: int, drink_id: int, *, author: str
+) -> int:
+    """Delete a draft run's drink; the new revision."""
+    async with engine.begin() as conn:
+        run = readable(await get_run(conn, run_id, lock=True))
+        if run.status != "draft":
+            raise RunNotDraft(f"run {run_id} is {run.status}, and not live in this process")
+        _, _, revision = await _remove(conn, run, drink_id, author=author)
+        return revision
+
+
+async def remove_live_drink(
+    holder: MarketHolder, run_id: int, drink_id: int, *, author: str, clock: Clock
+) -> int:
+    """Remove a drink from the live run as one engine transition (SD7, SD13); the new revision."""
+    engine = holder.engine
+
+    async def step(view: MarketView) -> Outcome[int]:
+        assert view.run_id == run_id and view.spec is not None and view.state is not None
+        now_ms = clock.wall_ms()
+        async with engine.begin() as conn:
+            run = readable(await get_run(conn, run_id, lock=True))
+            run, drinks, revision = await _remove(conn, run, drink_id, author=author)
+            spec, drink_ids = spec_from_rows(drinks, Params.from_dict(run.params))
+            assert drink_ids == view.drink_ids
+            return await commit_transition(
+                conn,
+                view,
+                run,
+                spec=spec,
+                state=cancel_jumps(view.state, [drink_ids.index(drink_id)]),
+                revision=revision,
+                now_ms=now_ms,
             )
 
     return await holder.mutate("config", step)
