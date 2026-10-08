@@ -46,28 +46,31 @@ export function setOnUnauthenticated(hook: (() => void) | null): void {
   onUnauthenticated = hook
 }
 
-type Method = 'GET' | 'POST' | 'PUT' | 'DELETE'
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+
+/**
+ * A JSON `body`, or a multipart `formData` (Phase 6 PD1: an image upload), never both.
+ * With `formData` no `Content-Type` is set here: the browser adds the multipart
+ * boundary itself.
+ */
+type Payload = { body?: unknown; formData?: never } | { body?: never; formData: FormData }
 
 export async function request<T>(
   method: Method,
   path: string,
-  {
-    body,
-    schema,
-    headers,
-    signal,
-  }: {
-    body?: unknown
+  options: Payload & {
     schema: z.ZodType<T>
     headers?: Readonly<Record<string, string>>
     signal?: AbortSignal
   },
 ): Promise<T> {
-  const sent = { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...headers }
+  const { body, formData, schema, headers, signal } = options
+  const json = body !== undefined
+  const sent = { ...(json ? { 'Content-Type': 'application/json' } : {}), ...headers }
   const response = await fetch(path, {
     method,
     headers: Object.keys(sent).length === 0 ? undefined : sent,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: json ? JSON.stringify(body) : formData,
     signal,
   })
   const payload = await readJson(response)

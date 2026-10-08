@@ -49,6 +49,32 @@ describe('request', () => {
     expect(new Headers(init.headers).get('Content-Type')).toBe('application/json')
   })
 
+  it('sends a PATCH with a JSON body', async () => {
+    fetchMock.mockResolvedValue(respond(200, { role: 'admin' }))
+    await request('PATCH', '/api/runs/1/config', { body: { params: { eta: 0.9 } }, schema: Me })
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(init.method).toBe('PATCH')
+    expect(init.body).toBe('{"params":{"eta":0.9}}')
+    expect(new Headers(init.headers).get('Content-Type')).toBe('application/json')
+  })
+
+  it('sends formData as is, leaving the multipart Content-Type to the browser', async () => {
+    fetchMock.mockResolvedValue(respond(201, { role: 'admin' }))
+    const form = new FormData()
+    form.append('file', new Blob(['png']), 'logo.png')
+    await request('POST', '/api/theme/images/logo', { formData: form, schema: Me })
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(init.body).toBe(form)
+    expect(new Headers(init.headers).has('Content-Type')).toBe(false)
+  })
+
+  it('refuses body and formData together at the type level', () => {
+    const both = () =>
+      // @ts-expect-error -- `body` and `formData` are mutually exclusive.
+      request('POST', '/x', { body: {}, formData: new FormData(), schema: Me })
+    expect(typeof both).toBe('function')
+  })
+
   it('parses the error envelope into an HttpError', async () => {
     fetchMock.mockResolvedValue(
       respond(403, { error: { code: 'forbidden', message: 'not allowed', extra: 1 } }),
