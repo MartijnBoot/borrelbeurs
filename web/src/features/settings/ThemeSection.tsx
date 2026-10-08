@@ -23,12 +23,17 @@ const PRESETS = [
   ['groen', 'Groen'],
   ['paars', 'Paars'],
   ['rood', 'Rood'],
+  // The stored custom theme (Phase 6 SD28): 409 `no_custom_theme` until one is saved.
+  ['custom', 'Eigen'],
 ] as const
 
 type PresetKey = (typeof PRESETS)[number][0]
 
 // The strings already in the app: SD13's for a 403, PD17's for the rest.
 function failureText(error: unknown): string {
+  if (error instanceof HttpError && error.code === 'no_custom_theme') {
+    return 'Nog geen eigen schema. Sla er eerst een op.'
+  }
   return error instanceof HttpError && error.status === 403
     ? 'Geen toegang'
     : 'Verbindingsfout. Probeer opnieuw.'

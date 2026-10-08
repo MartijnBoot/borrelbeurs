@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { exchangeStore, type ThemeData } from '../exchange'
 import { ThemeSection } from './ThemeSection'
 
-const LABELS = ['Oud Geld', 'Blauw', 'Groen', 'Paars', 'Rood']
+const LABELS = ['Oud Geld', 'Blauw', 'Groen', 'Paars', 'Rood', 'Eigen']
 
 const held: ThemeData = {
   preset: 'paars',
@@ -84,5 +84,18 @@ describe('ThemeSection', () => {
     fetchMock.mockResolvedValue(json(200, { ...held, preset: 'blauw', revision: 4 }))
     await choose('Blauw')
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
+
+describe('ThemeSection: Eigen (Phase 6 T30)', () => {
+  it('choosing Eigen with none stored says so in Dutch', async () => {
+    fetchMock.mockResolvedValue(
+      json(409, { error: { code: 'no_custom_theme', message: 'none stored' } }),
+    )
+    await choose('Eigen')
+    expect(fetchMock.mock.calls[0][1].body).toBe('{"preset":"custom"}')
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Nog geen eigen schema. Sla er eerst een op.',
+    )
   })
 })

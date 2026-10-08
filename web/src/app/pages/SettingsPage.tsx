@@ -9,6 +9,7 @@ import {
   type SettingsSection,
   SettingsLayout,
   SystemSection,
+  ThemeEditor,
   ThemeSection,
 } from '../../features/settings'
 
@@ -21,7 +22,16 @@ const SECTIONS: readonly SettingsSection[] = [
   { id: 'borrel', label: 'Borrel', content: <BorrelSection /> },
   { id: 'systeem', label: '🧹 Systeemacties', content: <SystemSection /> },
   { id: 'globaal', label: '⚙️ Globale instellingen', content: <GlobalSection /> },
-  { id: 'kleuren', label: '🎨 Kleurenschema', content: <ThemeSection /> },
+  {
+    id: 'kleuren',
+    label: '🎨 Kleurenschema',
+    content: (
+      <>
+        <ThemeSection />
+        <ThemeEditor />
+      </>
+    ),
+  },
   { id: 'afbeeldingen', label: '🖼️ Afbeeldingen', content: <NotYet /> },
   { id: 'drankjes', label: '🥤 Drankjes beheren', content: <DrinksSection /> },
   { id: 'prijzen', label: '🔒 Min/Max/Startprijs', content: <BoundsSection /> },
