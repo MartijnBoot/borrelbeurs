@@ -17,7 +17,9 @@
  *   sends nothing.
  * - A 2xx is `accepted` with the receipt's price (AC3) and promotes. A 401
  *   leaves the entry in flight: `lib/http` sends the page to login (SD12).
- *   Any other answer -- a 422 above all -- is `failed`, never retried.
+ *   A 422 `drink_unavailable` (a drink removed from the run, Phase 6 SD13) is
+ *   `unavailable`; any other answer -- a 422 above all -- is `failed`. Neither
+ *   is retried.
  *
  * Settled entries linger `LINGER_MS`, then go; `unknown` stays until
  * "Opnieuw" or "Sluiten" (PD7). Nothing here touches the store (SD10).
@@ -32,7 +34,14 @@ export const RETRY_DELAYS_MS: readonly number[] = [1000, 2000, 4000]
 export const LINGER_MS = 3000
 
 export type EntryState =
-  'sending' | 'accepted' | 'unknown' | 'failed' | 'conflict' | 'cancelled' | 'dismissed'
+  | 'sending'
+  | 'accepted'
+  | 'unknown'
+  | 'failed'
+  | 'unavailable'
+  | 'conflict'
+  | 'cancelled'
+  | 'dismissed'
 
 export interface OrderEntry {
   readonly id: number
@@ -187,6 +196,9 @@ export function createOrderIntents<Id>(deps: OrderIntentsDeps<Id>): OrderIntents
       set(intent, { state: 'unknown' })
     } else if (error instanceof HttpError && error.status === 401) {
       return // lib/http has sent the page to login (SD12)
+    } else if (error instanceof HttpError && error.code === 'drink_unavailable') {
+      set(intent, { state: 'unavailable' })
+      linger(intent)
     } else {
       set(intent, { state: 'failed' })
       linger(intent)

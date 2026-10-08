@@ -186,6 +186,18 @@ describe('PendingOrders', () => {
   })
 })
 
+describe('a removed drink (Phase 6 T37: SD13; AC19)', () => {
+  it('a 422 drink_unavailable shows "{name} is niet meer beschikbaar" for 3 s', async () => {
+    tap(1)
+    calls[0].reject(new HttpError(422, 'drink_unavailable', 'removed'))
+    await settle()
+    expect(screen.getByText('Bier is niet meer beschikbaar')).toBeTruthy()
+    await advance(LINGER_MS)
+    expect(screen.queryByText(/niet meer beschikbaar/)).toBeNull()
+    expect(calls).toHaveLength(1)
+  })
+})
+
 describe('OrderConflict', () => {
   it("shows the 409's price; Bevestigen posts a new key at exactly that price (AC12, AC13)", async () => {
     tap(1)

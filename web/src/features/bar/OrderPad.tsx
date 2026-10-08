@@ -14,7 +14,7 @@
 import type { KeyboardEvent } from 'react'
 import { Button } from '../../components/ui/Button'
 import { formatEuro } from '../../lib/format'
-import { selectDrinks, useExchange } from '../exchange'
+import { selectActiveDrinks, useExchange } from '../exchange'
 import { ageMs, isStale, showAge } from './model/holdBuffer'
 import type { BarView } from './model/barController'
 import type { BarActions } from './useBarController'
@@ -31,7 +31,7 @@ const PRESS_KEYS = new Set(['Enter', ' '])
 const KEY_PRESS = 'key'
 
 export function OrderPad({ view, actions }: OrderPadProps) {
-  const drinks = useExchange(selectDrinks)
+  const drinks = useExchange(selectActiveDrinks)
   const now = useNow()
   const { displayed, latest, entries, headConflict } = view
   const stale = isStale(latest, now)

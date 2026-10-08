@@ -63,6 +63,8 @@ function Line({
       )
     case 'failed':
       return <>{name}: Fout bij bestellen</>
+    case 'unavailable':
+      return <>{name} is niet meer beschikbaar</>
     case 'cancelled':
       return <>{name}: Geannuleerd</>
     case 'dismissed':

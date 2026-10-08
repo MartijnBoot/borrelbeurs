@@ -5,6 +5,9 @@
  * (AC17). Pending taps never move it -- only an `order` message or a
  * snapshot does (AC16, AC18). Bar-price figures, the sales count and the
  * download are Phase 7's (D-20), so they are absent.
+ *
+ * A drink removed from the run (Phase 6 SD13) is listed only if it sold, as
+ * "{name} (verwijderd)"; the totals still sum every drink.
  */
 import { useShallow } from 'zustand/react/shallow'
 import { formatEuro } from '../../lib/format'
@@ -33,11 +36,13 @@ export function FinancialPanel() {
         </div>
       </div>
       <ul className={styles.drinks}>
-        {drinks.map(({ drink_id, name }) => {
+        {drinks.map(({ drink_id, name, active }) => {
           const line = earnings[drink_id] ?? { qty: 0, revenue_cents: 0 }
+          if (!active && line.qty === 0) return null
           return (
             <li key={drink_id}>
-              {name}: {line.qty}× — {formatEuro(line.revenue_cents)}
+              {active ? name : `${name} (verwijderd)`}: {line.qty}× —{' '}
+              {formatEuro(line.revenue_cents)}
             </li>
           )
         })}

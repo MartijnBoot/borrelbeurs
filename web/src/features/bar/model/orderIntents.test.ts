@@ -298,6 +298,16 @@ describe('other answers', () => {
     expect(intents.entries).toHaveLength(0)
   })
 
+  it('a 422 drink_unavailable is unavailable, never retried, and lingers 3 s (Phase 6 SD13)', async () => {
+    intents.create(Q, 1)
+    calls[0].reject(new HttpError(422, 'drink_unavailable', 'removed'))
+    await settle()
+    expect(intents.entries[0].state).toBe('unavailable')
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(calls).toHaveLength(1)
+    expect(intents.entries).toHaveLength(0)
+  })
+
   it('a 401 leaves the entry in flight and never retries (SD8, SD12)', async () => {
     intents.create(Q, 1)
     calls[0].reject(new HttpError(401, 'unauthenticated', ''))

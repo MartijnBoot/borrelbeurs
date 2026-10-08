@@ -121,3 +121,38 @@ describe('FinancialPanel', () => {
     expect(text()).not.toContain('Download')
   })
 })
+
+describe('removed drinks (Phase 6 T37: SD13, SD18; AC23)', () => {
+  function removeCola() {
+    seq += 1
+    dispatch(
+      'config',
+      {
+        revision: 4,
+        run: { ...RUN, name: 'Vrijmibo' },
+        drinks: [
+          { drink_id: 1, name: 'Bier', active: true },
+          { drink_id: 2, name: 'Cola', active: false },
+        ],
+        params: {},
+      },
+      null,
+    )
+  }
+
+  it('a removed drink with sales is listed as (verwijderd); totals still sum every drink', () => {
+    order(2, 3, 900)
+    removeCola()
+    expect(text()).toContain(`Cola (verwijderd): 3× — ${formatEuro(900)}`)
+    expect(text()).toContain('Bier: 2×')
+    const { earnings } = exchangeStore.getState()
+    const sum = Object.values(earnings).reduce((total, line) => total + line.revenue_cents, 0)
+    expect(sum).toBe(1420)
+    expect(testId('total-revenue')).toBe(formatEuro(1420))
+  })
+
+  it('a removed drink without sales is not listed', () => {
+    removeCola()
+    expect(text()).not.toContain('Cola')
+  })
+})

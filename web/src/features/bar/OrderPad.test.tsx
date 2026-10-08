@@ -210,3 +210,22 @@ describe('OrderPad', () => {
     expect(drinkButtons().every((b) => (b as HTMLButtonElement).disabled)).toBe(true)
   })
 })
+
+describe('removed drinks (Phase 6 T37: SD18; AC23)', () => {
+  it('a config removing a drink removes its button', () => {
+    expect(drinkButtons()).toHaveLength(2)
+    seq += 1
+    dispatch(
+      message('config', null, {
+        revision: 4,
+        run: { ...RUN, name: 'Vrijmibo' },
+        drinks: [
+          { drink_id: 1, name: 'Bier', active: true },
+          { drink_id: 2, name: 'Cola', active: false },
+        ],
+        params: {},
+      }),
+    )
+    expect(drinkButtons().map((b) => b.textContent)).toEqual([expect.stringContaining('Bier')])
+  })
+})
