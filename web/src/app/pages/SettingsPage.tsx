@@ -8,6 +8,7 @@ import {
   NotYet,
   type SettingsSection,
   SettingsLayout,
+  SystemSection,
   ThemeSection,
 } from '../../features/settings'
 
@@ -18,7 +19,7 @@ import {
  */
 const SECTIONS: readonly SettingsSection[] = [
   { id: 'borrel', label: 'Borrel', content: <BorrelSection /> },
-  { id: 'systeem', label: '🧹 Systeemacties', content: <NotYet /> },
+  { id: 'systeem', label: '🧹 Systeemacties', content: <SystemSection /> },
   { id: 'globaal', label: '⚙️ Globale instellingen', content: <GlobalSection /> },
   { id: 'kleuren', label: '🎨 Kleurenschema', content: <ThemeSection /> },
   { id: 'afbeeldingen', label: '🖼️ Afbeeldingen', content: <NotYet /> },
