@@ -1,0 +1,16 @@
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.link {
+  color: var(--text);
+  text-decoration: none;
+  padding: 0.375rem 0.5rem;
+  border-radius: 6px;
+}
+
+.link:hover {
+  background: var(--panel2);
+}

@@ -1,0 +1,44 @@
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: none;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  padding: 0.25rem 0;
+  cursor: pointer;
+}
+
+.switch:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.track {
+  position: relative;
+  width: 2.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  background: var(--input-border);
+  transition: background 120ms;
+}
+
+.thumb {
+  position: absolute;
+  top: 0.125rem;
+  left: 0.125rem;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: var(--text);
+  transition: transform 120ms;
+}
+
+.switch[aria-checked='true'] .track {
+  background: var(--primary);
+}
+
+.switch[aria-checked='true'] .thumb {
+  transform: translateX(1rem);
+}

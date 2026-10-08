@@ -31,7 +31,7 @@ import { BASE_OPTIONS, chartColors } from '../../lib/chartTheme'
 import { exchangeStore, selectTheme, selectTotals, useExchange } from '../exchange'
 import { fetchEarningsSeries } from './api/earningsSeries'
 import { appendLive, livePoint, merge, toChartData, type RevenuePoint } from './model/revenueSeries'
-import { useMediaQuery } from './useMediaQuery'
+import { useMediaQuery } from '../../lib/useMediaQuery'
 
 const NARROW = '(max-width: 640px)'
 
