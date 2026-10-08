@@ -5,7 +5,7 @@ import {
   DemandSection,
   DrinksSection,
   GlobalSection,
-  NotYet,
+  ImagesSection,
   type SettingsSection,
   SettingsLayout,
   SystemSection,
@@ -32,7 +32,7 @@ const SECTIONS: readonly SettingsSection[] = [
       </>
     ),
   },
-  { id: 'afbeeldingen', label: '🖼️ Afbeeldingen', content: <NotYet /> },
+  { id: 'afbeeldingen', label: '🖼️ Afbeeldingen', content: <ImagesSection /> },
   { id: 'drankjes', label: '🥤 Drankjes beheren', content: <DrinksSection /> },
   { id: 'prijzen', label: '🔒 Min/Max/Startprijs', content: <BoundsSection /> },
   { id: 'vraag', label: '📈 Vraag/Aanbod', content: <DemandSection /> },

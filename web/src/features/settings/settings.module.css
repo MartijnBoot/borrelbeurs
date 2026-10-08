@@ -103,6 +103,14 @@
   width: 6rem;
 }
 
+.preview {
+  max-height: 64px;
+  max-width: 160px;
+  object-fit: contain;
+  border: 1px solid var(--grid);
+  border-radius: 6px;
+}
+
 .muted {
   margin: 0;
   color: var(--muted);

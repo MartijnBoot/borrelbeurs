@@ -56,10 +56,10 @@ describe('SettingsPage', () => {
     }
   })
 
-  it('the sections not built yet say so', async () => {
+  it('every section is built: none says "Nog niet beschikbaar"', async () => {
     render(<SettingsPage />)
     await act(async () => {})
 
-    expect(screen.getAllByText('Nog niet beschikbaar')).toHaveLength(1)
+    expect(screen.queryAllByText('Nog niet beschikbaar')).toHaveLength(0)
   })
 })
