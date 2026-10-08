@@ -8,7 +8,8 @@
    included). Its refusals -- `run_not_found`, `run_not_draft`,
    `run_not_ready`, `live_run_exists` -- write nothing.
 3. **Adopt**, under the state lock: the holder loads the committed run through
-   `rehydrate`, the path boot uses. A failure here calls `on_diverged`.
+   `rehydrate`, the path boot uses, and reads its tick interval. A failure in
+   either calls `on_diverged`.
 4. **Then, with no await in between**, so no tick and no client can slip into
    the middle: the ticker re-anchors at the run's interval, the hub takes its
    replay window and clears its log, the publisher gets the run's candle book
@@ -42,15 +43,18 @@ async def go_live_in_process(state: Any, run_id: int, *, author: str) -> None:
         raise LiveRunExists(f"run {holder.run_id} is already live")
 
     await go_live(engine, run_id, now_ms=clock.wall_ms(), author=author)
-    interval_ms = await run_tick_interval_ms(engine, run_id)
+
+    intervals: list[int] = []
 
     async def load() -> RehydratedRun:
         run = await rehydrate(engine, now_ms=clock.wall_ms())
         if not isinstance(run, RehydratedRun) or run.run_id != run_id:
             raise LookupError(f"run {run_id} was committed live but did not rehydrate")
+        intervals.append(await run_tick_interval_ms(engine, run_id))
         return run
 
     await holder.adopt(load)
+    interval_ms = intervals[0]
 
     # No await from here on: the runtime switches over in one step.
     assert holder.spec is not None and holder.state is not None

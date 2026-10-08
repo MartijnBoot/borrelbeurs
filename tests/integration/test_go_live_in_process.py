@@ -254,6 +254,29 @@ def test_a_failed_adopt_after_the_commit_calls_on_diverged(
     asyncio.run(scenario())
 
 
+def test_a_failed_interval_read_after_the_commit_calls_on_diverged(
+    settings: Settings, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SD3: every read after the commit is part of the swap, so its failure is a divergence."""
+
+    async def scenario() -> None:
+        async with _runtime(settings, database_url) as rt:
+            run_id = await _draft(rt.engine)
+
+            async def failing(engine: AsyncEngine, run_id: int) -> int:
+                raise OSError("the database went away")
+
+            monkeypatch.setattr("app.runtime.golive.run_tick_interval_ms", failing)
+
+            with pytest.raises(OSError):
+                await go_live_in_process(rt.state, run_id, author="a")
+
+            assert rt.diverged == 1
+            assert rt.holder.is_empty
+
+    asyncio.run(scenario())
+
+
 def test_go_live_with_auto_calibrate_anchors_s0_and_adds_one_revision(
     settings: Settings, database_url: str
 ) -> None:
