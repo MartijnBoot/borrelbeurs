@@ -946,11 +946,8 @@ export interface components {
          * @description The active theme (PD3): `revision` 0 is "no stored row, Blauw".
          */
         ThemeData: {
-            /**
-             * Preset
-             * @enum {string}
-             */
-            preset: "oudgeld" | "blauw" | "groen" | "paars" | "rood";
+            /** Preset */
+            preset: ("oudgeld" | "blauw" | "groen" | "paars" | "rood") | "custom";
             /** Revision */
             revision: number;
             /** Tokens */
@@ -962,11 +959,14 @@ export interface components {
         };
         /** ThemeRequest */
         ThemeRequest: {
-            /**
-             * Preset
-             * @enum {string}
-             */
-            preset: "oudgeld" | "blauw" | "groen" | "paars" | "rood";
+            /** Preset */
+            preset: ("oudgeld" | "blauw" | "groen" | "paars" | "rood") | "custom";
+            /** Tokens */
+            tokens?: {
+                [key: string]: string;
+            } | null;
+            /** Font */
+            font?: ("inter" | "garamond") | null;
         };
         /** ValidationError */
         ValidationError: {

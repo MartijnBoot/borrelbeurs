@@ -15,19 +15,29 @@ the drinker, so it pulses in the "down" colour, as the board's legend says.
 **The font (PD3)** is a field rather than a token: Oud Geld is EB Garamond, as
 v1's override was, every other preset Inter. Both are self-hosted (D-13).
 
+**The custom theme (Phase 6 SD28)** is the sixth preset name, `custom`, with no
+entry in `PRESETS`: its 24 tokens and its font (`inter` or `garamond`) are
+stored, and `resolve` takes them as a `CustomTheme`. Every value, a preset's
+too, matches `HEX`, so nothing else can reach `/theme.css`.
+
 No I/O, no clock.
 """
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Final, Literal
 
-PresetName = Literal["oudgeld", "blauw", "groen", "paars", "rood"]
+BuiltinPreset = Literal["oudgeld", "blauw", "groen", "paars", "rood"]
+PresetName = BuiltinPreset | Literal["custom"]
+FontName = Literal["inter", "garamond"]
 
-DEFAULT_PRESET: Final[PresetName] = "blauw"
+DEFAULT_PRESET: Final[BuiltinPreset] = "blauw"
+
+HEX: Final = re.compile(r"^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 
 TOKEN_NAMES: Final[tuple[str, ...]] = (
     "--bg",
@@ -58,6 +68,7 @@ TOKEN_NAMES: Final[tuple[str, ...]] = (
 
 _INTER: Final = "Inter, system-ui, sans-serif"
 _GARAMOND: Final = "'EB Garamond', Georgia, serif"
+FONTS: Final[Mapping[FontName, str]] = MappingProxyType({"inter": _INTER, "garamond": _GARAMOND})
 
 
 @dataclass(frozen=True)
@@ -67,6 +78,14 @@ class Preset:
     swatches: tuple[str, str, str, str]
     tokens: Mapping[str, str]
     font_family: str
+
+
+@dataclass(frozen=True)
+class CustomTheme:
+    """The stored custom theme: every manifest token, keyed by name, and the font."""
+
+    tokens: Mapping[str, str]
+    font: FontName
 
 
 @dataclass(frozen=True)
@@ -97,7 +116,7 @@ def _preset(
     return Preset(label, swatches, tokens, font_family)
 
 
-PRESETS: Final[Mapping[PresetName, Preset]] = MappingProxyType(
+PRESETS: Final[Mapping[BuiltinPreset, Preset]] = MappingProxyType(
     {
         "oudgeld": _preset(
             "Oud Geld",
@@ -244,10 +263,18 @@ PRESETS: Final[Mapping[PresetName, Preset]] = MappingProxyType(
 )
 
 
-def resolve(preset: PresetName, revision: int) -> Theme:
-    """The theme `preset` names, at `revision`; `KeyError` for a preset not in the manifest."""
+def resolve(preset: PresetName, revision: int, *, custom: CustomTheme | None = None) -> Theme:
+    """The theme `preset` names, at `revision`; `KeyError` for a preset not in the manifest.
+
+    `custom` is the stored custom theme, which `preset == "custom"` requires.
+    """
     if revision < 0:
         raise ValueError(f"a theme revision is never negative, got {revision}")
+    if preset == "custom":
+        if custom is None:
+            raise ValueError("the custom preset needs the stored custom theme")
+        tokens = MappingProxyType({name: custom.tokens[name] for name in TOKEN_NAMES})
+        return Theme(preset, revision, tokens, FONTS[custom.font])
     entry = PRESETS[preset]
     return Theme(preset, revision, entry.tokens, entry.font_family)
 

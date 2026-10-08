@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from app.core.config import Settings
 from app.db.session import create_engine
 from app.db.theme import ThemeRow, get_theme, set_theme
+from app.runtime.theme import TOKEN_NAMES, CustomTheme
 
 T = TypeVar("T")
 
@@ -96,3 +97,18 @@ def test_a_second_row_is_refused(settings: Settings, database_url: str) -> None:
 
     with pytest.raises(IntegrityError, match="theme_id_check"):
         _transaction(settings, database_url, second)
+
+
+def test_a_custom_theme_stores_its_tokens_and_font(settings: Settings, database_url: str) -> None:
+    """Phase 6 SD28: `custom_tokens` keyed by token name, `custom_font`."""
+    tokens = {name: "#abcdef" for name in TOKEN_NAMES}
+
+    async def body(conn: AsyncConnection) -> ThemeRow | None:
+        await set_theme(conn, "custom", custom=CustomTheme(tokens=tokens, font="inter"))
+        await set_theme(conn, "rood")
+        return await get_theme(conn)
+
+    row = _transaction(settings, database_url, body)
+
+    assert row is not None and row.preset == "rood" and row.revision == 2
+    assert row.custom == CustomTheme(tokens=tokens, font="inter")

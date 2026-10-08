@@ -18,7 +18,7 @@ const IdKey = z.string().regex(/^-?\d+$/)
 const NewsLevel = z.enum(['info', 'success', 'warning', 'danger'])
 const EventKind = z.enum(['crash', 'bubble', 'correction'])
 const Role = z.enum(['display', 'bar', 'admin'])
-const PresetName = z.enum(['oudgeld', 'blauw', 'groen', 'paars', 'rood'])
+const PresetName = z.enum(['oudgeld', 'blauw', 'groen', 'paars', 'rood', 'custom'])
 
 // --- prices and candles --------------------------------------------------------
 

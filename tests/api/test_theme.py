@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings
 from app.db.session import create_engine
 from app.db.theme import ThemeRow, get_theme
-from app.runtime.theme import PRESETS, resolve
+from app.runtime.theme import PRESETS, TOKEN_NAMES, resolve
 from tests.api.conftest import Login
 
 BLAUW_BG = PRESETS["blauw"].tokens["--bg"]
@@ -201,3 +201,93 @@ def test_a_put_never_takes_the_engine_state_lock(live_client: TestClient, login:
         portal.call(holder._lock.release)
 
     assert response.status_code == 200
+
+
+# --- Phase 6 T17: the custom theme (SD28, PD8) ---------------------------------
+
+CUSTOM = {name: f"#{0x101010 + i:06x}" for i, name in enumerate(TOKEN_NAMES)}
+
+
+def test_saving_a_custom_theme_serves_every_token_and_broadcasts_once(
+    client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """AC30 (server): all 24 values and the Garamond stack; one `theme` at a higher revision."""
+    admin = login("admin")
+    admin.put("/api/theme", json={"preset": "rood"})
+    hub = client.app.state.hub  # type: ignore[attr-defined]
+    before = hub.seq
+
+    response = admin.put(
+        "/api/theme", json={"preset": "custom", "tokens": CUSTOM, "font": "garamond"}
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert (body["preset"], body["revision"], body["font_family"]) == ("custom", 2, GARAMOND)
+    assert body["tokens"] == CUSTOM
+    css = client.get("/theme.css").text
+    assert all(f"{name}:{value};" in css for name, value in CUSTOM.items())
+    assert f"font-family:{GARAMOND}" in css
+    frames = _theme_frames(client, before)
+    assert len(frames) == 1 and frames[0]["data"]["revision"] == 2
+    stored = _stored(settings, api_env)
+    assert stored is not None and stored.preset == "custom"
+
+
+def test_custom_alone_reuses_the_stored_tokens(client: TestClient, login: Login) -> None:
+    admin = login("admin")
+    admin.put("/api/theme", json={"preset": "custom", "tokens": CUSTOM, "font": "inter"})
+    admin.put("/api/theme", json={"preset": "groen"})
+
+    response = admin.put("/api/theme", json={"preset": "custom"})
+
+    assert response.status_code == 200, response.text
+    assert (response.json()["tokens"], response.json()["font_family"]) == (CUSTOM, INTER)
+
+
+def test_custom_with_none_stored_is_409(
+    client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    response = login("admin").put("/api/theme", json={"preset": "custom"})
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "no_custom_theme"
+    assert _stored(settings, api_env) is None
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"preset": "custom", "tokens": {**CUSTOM, "--bg": "red"}, "font": "inter"},
+        {"preset": "custom", "tokens": {**CUSTOM, "--bg": "#12345"}, "font": "inter"},
+        {"preset": "custom", "tokens": {**CUSTOM, "--bg": "#fff;}"}, "font": "inter"},
+        {
+            "preset": "custom",
+            "tokens": {k: v for k, v in CUSTOM.items() if k != "--bg"},
+            "font": "inter",
+        },
+        {"preset": "custom", "tokens": {**CUSTOM, "--extra": "#fff"}, "font": "inter"},
+        {"preset": "custom", "tokens": CUSTOM, "font": "comic"},
+        {"preset": "custom", "tokens": CUSTOM},
+        {"preset": "custom", "font": "inter"},
+        {"preset": "blauw", "tokens": CUSTOM, "font": "inter"},
+    ],
+    ids=[
+        "named-colour",
+        "five-digits",
+        "css-injection",
+        "missing-token",
+        "extra-token",
+        "unknown-font",
+        "tokens-without-font",
+        "font-without-tokens",
+        "tokens-on-a-preset",
+    ],
+)
+def test_an_invalid_custom_body_is_422_and_changes_nothing(
+    client: TestClient, login: Login, settings: Settings, api_env: str, body: dict[str, Any]
+) -> None:
+    response = login("admin").put("/api/theme", json=body)
+
+    assert response.status_code == 422, response.text
+    assert _stored(settings, api_env) is None

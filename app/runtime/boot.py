@@ -92,7 +92,9 @@ async def _stored_theme(engine: AsyncEngine) -> Theme:
     """The stored theme, or Blauw at revision 0 when none was ever stored (SD5)."""
     async with engine.connect() as conn:
         row = await get_theme(conn)
-    return resolve(DEFAULT_PRESET, 0) if row is None else resolve(row.preset, row.revision)
+    if row is None:
+        return resolve(DEFAULT_PRESET, 0)
+    return resolve(row.preset, row.revision, custom=row.custom)
 
 
 class _LateSink:

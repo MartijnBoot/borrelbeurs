@@ -13,8 +13,10 @@ import pytest
 
 from app.runtime.theme import (
     DEFAULT_PRESET,
+    HEX,
     PRESETS,
     TOKEN_NAMES,
+    CustomTheme,
     render_css,
     resolve,
 )
@@ -153,3 +155,30 @@ def test_blauw_at_revision_0_renders_inter_and_blauws_background() -> None:
 def test_oud_geld_renders_the_eb_garamond_stack() -> None:
     """AC10 server half."""
     assert "font-family:'EB Garamond', Georgia, serif" in render_css(resolve("oudgeld", 1))
+
+
+# --- Phase 6 T17: the custom theme (SD28) --------------------------------------
+
+
+@pytest.mark.parametrize("preset", sorted(PRESETS))
+def test_every_preset_value_matches_hex(preset: str) -> None:
+    """SD28: only a hex colour reaches `/theme.css`; the presets already are."""
+    for name, value in PRESETS[preset].tokens.items():  # type: ignore[index]
+        assert HEX.fullmatch(value), (preset, name, value)
+
+
+def test_custom_resolves_from_the_stored_tokens_and_font() -> None:
+    tokens = {name: f"#{i:06x}" for i, name in enumerate(TOKEN_NAMES)}
+
+    theme = resolve("custom", 3, custom=CustomTheme(tokens=tokens, font="garamond"))
+
+    assert (theme.preset, theme.revision) == ("custom", 3)
+    assert dict(theme.tokens) == tokens
+    assert theme.font_family == PRESETS["oudgeld"].font_family
+    css = render_css(theme)
+    assert all(f"{name}:{value};" in css for name, value in tokens.items())
+
+
+def test_custom_without_stored_tokens_is_refused() -> None:
+    with pytest.raises(ValueError, match="custom"):
+        resolve("custom", 1)
