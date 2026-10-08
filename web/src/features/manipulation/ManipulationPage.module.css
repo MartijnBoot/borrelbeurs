@@ -1,0 +1,62 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px;
+}
+
+.section {
+  padding: 18px;
+  border: 1px solid var(--grid);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.section h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--grid);
+}
+
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--pill);
+  border: 1px solid var(--pillb);
+  font-size: 13px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.error {
+  margin: 0 0 12px;
+  color: var(--danger);
+}

@@ -1,4 +1,5 @@
 import type { DrinkId, ExchangeState } from './applyMessage'
+import type { MarketEventInfo } from './schemas'
 
 export type PulseDirection = 'rising' | 'falling'
 
@@ -30,6 +31,14 @@ export const selectPrice = (state: ExchangeState, drinkId: DrinkId) => state.pri
 export const selectBars = (state: ExchangeState, drinkId: DrinkId) => state.bars[drinkId]
 export const selectNews = (state: ExchangeState) => state.news
 export const selectMarketEvents = (state: ExchangeState) => state.marketEvents
+
+/**
+ * Whole seconds left of a market event (Phase 6 SD22) at `serverNowMs`, the
+ * server's clock (`Date.now()` plus the skew offset): rounded up, never below 0.
+ */
+export function eventSecondsLeft(event: MarketEventInfo, serverNowMs: number): number {
+  return Math.max(0, Math.ceil((event.t_end_ms - serverNowMs) / 1000))
+}
 export const selectTheme = (state: ExchangeState) => state.theme
 export const selectStatus = (state: ExchangeState) => state.status
 export const selectEmpty = (state: ExchangeState) => state.empty
