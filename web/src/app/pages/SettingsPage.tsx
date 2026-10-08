@@ -1,6 +1,7 @@
 import { KeysSection } from '../../features/keys'
 import {
   BorrelSection,
+  DrinksSection,
   GlobalSection,
   NotYet,
   type SettingsSection,
@@ -19,7 +20,7 @@ const SECTIONS: readonly SettingsSection[] = [
   { id: 'globaal', label: '⚙️ Globale instellingen', content: <GlobalSection /> },
   { id: 'kleuren', label: '🎨 Kleurenschema', content: <ThemeSection /> },
   { id: 'afbeeldingen', label: '🖼️ Afbeeldingen', content: <NotYet /> },
-  { id: 'drankjes', label: '🥤 Drankjes beheren', content: <NotYet /> },
+  { id: 'drankjes', label: '🥤 Drankjes beheren', content: <DrinksSection /> },
   { id: 'prijzen', label: '🔒 Min/Max/Startprijs', content: <NotYet /> },
   { id: 'vraag', label: '📈 Vraag/Aanbod', content: <NotYet /> },
   { id: 'sleutels', label: '🔑 Toegangssleutels', content: <KeysSection /> },

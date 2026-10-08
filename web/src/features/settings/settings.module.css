@@ -66,6 +66,21 @@
   font-size: 13px;
 }
 
+.subsection {
+  padding: 12px 0;
+  border-top: 1px solid var(--grid);
+}
+
+.subsection:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.subsection h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
