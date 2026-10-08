@@ -1,6 +1,6 @@
 """The real app for Playwright (Phase 4 T23: SD28, PD14).
 
-    uv run python -m tests.integration.realapp.serve --out <file>
+    uv run python -m tests.integration.realapp.serve --out <file> [--empty]
 
 Playwright's global setup runs this; it is not a pytest module. On the server
 `DATABASE_URL` names (the compose `db` locally, the service container in CI;
@@ -22,6 +22,11 @@ use `127.0.0.1`, not `localhost`, on Windows), it:
 Closing stdin, not a signal, is the stop: on Windows a signal is
 `TerminateProcess`, which would skip step 5 and leave the app running on its
 advisory lock. A runner that dies closes the pipe too.
+
+**`--empty` (Phase 6 PD15)** seeds no run and mints only an admin key, for
+`web/e2e/admin.spec.ts`, which builds a borrel from nothing on a second server
+beside the shared one. It skips step 1's sweep: the shared server's database
+is a `borrelbeurs_e2e_*` too, and the shared launcher has already swept.
 
 Nothing here is `TestClient` or `curl`: the browser drives the real process.
 The login rate limit is raised for this server only, since the suite logs in
@@ -49,7 +54,10 @@ E2E_PREFIX = "borrelbeurs_e2e_"
 def main(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--out", type=Path, required=True)
-    out: Path = parser.parse_args(argv).out
+    parser.add_argument("--empty", action="store_true", help="no run; an admin key only")
+    args = parser.parse_args(argv)
+    out: Path = args.out
+    empty: bool = args.empty
 
     base_url = os.environ.get("DATABASE_URL")
     if not base_url:
@@ -58,11 +66,12 @@ def main(argv: Sequence[str]) -> int:
         )
         return 2
 
-    leftovers = asyncio.run(
-        _admin(base_url, f"SELECT datname FROM pg_database WHERE datname LIKE '{E2E_PREFIX}%'")
-    )
-    for leftover in leftovers:
-        _drop(base_url, leftover)
+    if not empty:
+        leftovers = asyncio.run(
+            _admin(base_url, f"SELECT datname FROM pg_database WHERE datname LIKE '{E2E_PREFIX}%'")
+        )
+        for leftover in leftovers:
+            _drop(base_url, leftover)
 
     database = f"{E2E_PREFIX}{os.getpid()}"
     url = scratch_url(base_url, database)
@@ -73,8 +82,9 @@ def main(argv: Sequence[str]) -> int:
         if migrated.returncode != 0:
             print(f"serve: alembic upgrade head failed:\n{migrated.stderr}", file=sys.stderr)
             return 1
-        seed_live_run(url)
-        keys = {role: mint_key(url, role) for role in ROLES}
+        if not empty:
+            seed_live_run(url)
+        keys = {role: mint_key(url, role) for role in (("admin",) if empty else ROLES)}
 
         os.environ["LOGIN_RATE_PER_MINUTE"] = "1000"
         log = Path(tempfile.gettempdir()) / f"{database}.log"
