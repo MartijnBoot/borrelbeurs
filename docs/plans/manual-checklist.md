@@ -232,14 +232,14 @@ Exit: an admin can configure a borrel from scratch.
 - [x] plan — `/clear` then `/plan 6`
 - [x] audit — `/clear` then `/audit 6`
 - [x] merge the plan — per-phase loop step 5 with `<N>` = 6
-- [ ] tasks (`/build 6 <T>`, `/review 6`):
-  - [ ] …
-- [ ] exit criterion — start from an empty database and configure a whole borrel through the UI
+- [x] tasks (`/build 6 <T>`, `/review 6`):
+  - [x] …
+- [x] exit criterion — start from an empty database and configure a whole borrel through the UI
 
 ## Phase 7 — Analytics + run lifecycle
 Exit: two past borrels comparable; xlsx export matches the database.
 
-- [ ] spec — read `docs/specs/phase-7-analytics.md` (`Draft`) → approve, or `/clear` then `/spec 7`
+- [x] spec — read `docs/specs/phase-7-analytics.md` (`Draft`) → approve, or `/clear` then `/spec 7`
 - [ ] branch — `git switch main` then `git pull` then `git switch -c docs/phase-7-plan`
 - [ ] plan — `/clear` then `/plan 7`
 - [ ] audit — `/clear` then `/audit 7`
