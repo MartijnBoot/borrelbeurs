@@ -24,7 +24,8 @@ diverges from server history after a reconnect.
 
 1. `candle_interval_s` becomes a server parameter. **The server buckets**, and the `tick`
    message carries a real bar. `historyToOHLC()` and `tickCandles()` are both deleted.
-2. Theme state — all 21 tokens plus image references — moves to the database and is
+2. Theme state — all 24 tokens of the server's manifest (`app/runtime/theme.py`; Phase 6
+   SD28) plus image references — moves to the database and is
    broadcast over the WebSocket. Changing it on any machine re-themes every connected
    client instantly, without reload.
 3. First paint uses a server-generated blocking stylesheet: `index.html` carries

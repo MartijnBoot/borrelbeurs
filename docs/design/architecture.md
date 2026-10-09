@@ -180,6 +180,14 @@ the maths — but only in the presence of a removal, which is impossible in v1 w
 reset, so there is no existing behaviour to preserve. Under the live config the blast radius
 is only the `N-1` denominator, because `p_mean` feeds terms that are currently zero.
 
+**The mask also covers `mean_range` (Phase 6 SD14).** The Brownian step scales each drink's
+noise by its price range over the mean range (`engine.py:308-309`). That mean is taken over
+active slots only, so a removed drink's bounds do not change any active drink's volatility.
+Every other per-slot draw keeps one value per slot, so a removal shifts no other drink's
+draw. An inactive slot's `y`, `cum_orders`, `flow_ema` and `last_order_ts` are frozen (PD17).
+With every slot active, all of this is identical to v1, and the golden fixtures replay
+unchanged.
+
 ## Authorization
 
 `auth_key` rows with argon2 hashes replace plaintext `keys.json`. Two practical consequences

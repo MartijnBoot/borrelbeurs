@@ -13,7 +13,10 @@ This phase delivers the reason a database was introduced at all.
 
 ## In scope
 
-- Run lifecycle: create, open, close a borrel. Reset semantics within a run.
+- Run lifecycle: close a borrel. Reset semantics within a run ("Reset spel"). Creating a
+  draft and making it live in-process already exist from Phase 6 (SD2, SD3:
+  `POST /api/runs`, `POST /api/runs/{run_id}/go-live`); switching between runs, a run list
+  and deleting runs stay here.
 - The xlsx export as a **generated artifact** from `order_line`, produced by the background
   worker.
 - A bucketed earnings series endpoint.

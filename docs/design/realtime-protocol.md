@@ -47,13 +47,13 @@ what makes absolute end-timestamps usable.
 | Type | Contents | When |
 |---|---|---|
 | `hello` | Server time, `boot_id`, `run_id` (`null` with no live run), `tick_interval_ms`, protocol version, your role, and the current `theme` (as below) | On connect |
-| `snapshot` | Drinks, client-relevant params, prices, the history window, recent news, earnings **aggregates only**, active market events, `version` | On connect, or on resync |
+| `snapshot` | Drinks — each `{drink_id, name, active}`, a drink removed from the live run listed with `active: false` and never priced (Phase 6 SD13, SD18) — client-relevant params, prices, the history window, recent news, earnings **aggregates only**, active market events, `version` | On connect, or on resync |
 | `tick` | `version`, `ts_ms`, prices, display prices, and a **server-bucketed bar**. ~200 bytes | 1 Hz |
 | `order` | `order_id`, lines, `total_cents`, **earnings delta**, and every drink's new `price_cents` / `chart_price_cents` (carried with the envelope's `version`). The bar adds `earnings_delta` per drink to the store's `earnings`; a `snapshot` replaces `earnings` wholesale (Phase 5 SD15) | Per accepted order |
 | `market_event` | `kind`, `drink_ids`, `t_start_ms`, **`t_end_ms`** | On start and end |
 | `news` | `{op: add\|delete, item}` | On change |
-| `config` | Params and drinks. *Deferred: defined by the phase that produces it (Phase 6)* | On admin change |
-| `theme` | `{preset, revision, tokens, font_family}`: the preset's name, a `revision` (0 = nothing stored, Blauw), all **24 tokens** of the server's manifest (`app/runtime/theme.py`), and the body's font stack. No images (Phase 6). Broadcast with `version: null`, with or without a live run; also sent as a **catch-up unicast** after every handshake replay or snapshot and every `resync_request` snapshot, so a client never misses a change across a reconnect or a gap | On theme change; after every replay or snapshot |
+| `config` | `{revision, run, drinks, params}`: a committed live config change — its config `revision`, the run (with its `name`), every drink with `active`, and the params (Phase 6 SD18). It replaces the client's `drinks`, `params` and `run`; when the active `drink_id` set or `candle_interval_ms` changed, the held prices and bars no longer fit, so the client sends one `resync_request`. A draft's writes broadcast nothing | On every live admin config write |
+| `theme` | `{preset, revision, tokens, font_family, images}`: the preset's name (`custom` for the stored custom theme, Phase 6 SD28), a `revision` (0 = nothing stored, Blauw), all **24 tokens** of the server's manifest (`app/runtime/theme.py`), the body's font stack, and `images` — `{bg, header, logo, promo}`, each `"/assets/<id>"` or `null` (Phase 6 PD9). Broadcast with `version: null`, with or without a live run; also sent as a **catch-up unicast** after every handshake replay or snapshot and every `resync_request` snapshot, so a client never misses a change across a reconnect or a gap | On theme change; after every replay or snapshot |
 | `resync` | "You are too far behind, or I restarted" | On backpressure overflow or version gap |
 
 ### Why `t_end_ms` matters
@@ -75,6 +75,10 @@ countdown and animation locally, with no polling.
 - A `hello` whose `boot_id` differs from the held one discards all live state and takes the
   hello's `seq` as the baseline; with the same `boot_id`, the held `seq` stays and the server
   replays from it.
+- **Go-live (Phase 6 PD11)** clears the server's replay log and moves its `seq` on by one, so
+  no `(boot_id, last_seq)` from before the new run can be answered with a replay: every
+  connected client is sent the new run's `snapshot` and the theme catch-up, and one
+  reconnecting later gets a `snapshot` too.
 - A `theme` is ordered by `revision`, not `seq`: it applies only when its revision is higher
   than the held one, and it never starts or waits on a resync, because with no live run there
   is no snapshot to end one. A theme broadcast does not move the server's resync metadata

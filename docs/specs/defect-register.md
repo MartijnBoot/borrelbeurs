@@ -98,6 +98,26 @@ hotfix.
 | D-47 | Upload size checked after reading the whole body | `api.py:254-256` | Any authenticated admin request can make the server buffer an unbounded body | 6 |
 | D-48 | Theme image→slot mapping kept in `localStorage['theme-images']` | `theme.js:150,215` | Uploaded logo, background and promo tile show only in the admin's own browser, never on the big screen | 6 |
 
+### Phase 6 evidence
+
+Each defect Phase 6 fixes, the acceptance criteria that pin it
+([phase-6-admin.md](phase-6-admin.md)), and the tasks whose tests are its evidence
+([plan](../plans/phase-6-admin.md)):
+
+| ID | ACs | Evidence tasks |
+|---|---|---|
+| D-02 | AC14, AC15 | T2, T3 (engine), T12 (add), T14 (remove) |
+| D-03 | AC1, AC2 | T28 (the gate, written first as a failing test); T10, T13, T21, T23, T25, T34 |
+| D-04 | AC4 | T12, T26 |
+| D-19 | AC29, AC30 | T17, T30 |
+| D-26 | AC41 | T16, T35, T38 |
+| D-29 | AC31, AC32 | T18, T31 |
+| D-44 | AC7 | T8–T18 (authorization-matrix rows), T33, T34 |
+| D-45 | AC8, AC9 | T3, T11, T13 |
+| D-46 | AC6 | T6, T33 |
+| D-47 | AC33 | T18, T31 |
+| D-48 | AC35 | T19, T38 |
+
 ## Deliberately not treated as defects
 
 Two items surfaced in the audit that, on reflection, should not be "fixed":

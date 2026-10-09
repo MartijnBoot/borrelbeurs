@@ -68,3 +68,22 @@ in `Ticker._tick_step`, and does not change the decision.
 - A dead ticker means frozen prices and a ruined event, so `/healthz` reports
   `last_tick_age_ms` and goes unhealthy past three intervals.
 - The app cannot be scaled out without revisiting this ADR. That is intended.
+
+## Addendum (Phase 6, SD3)
+
+Date: 2026-10-08
+
+The single writer can now adopt a run mid-process. Until Phase 6 the process found its live
+run once, at boot; `POST /api/runs/{run_id}/go-live` makes a draft live while the app runs,
+without a restart (`app/runtime/golive.py`).
+
+Nothing in the decision changes: there is still one process, holding the advisory lock, and
+still one writer. Go-live commits the run's status first, in the same transaction the CLI
+uses, and refuses — writing nothing — while another run is live. Only then does the holder
+load the committed run, **under the state lock**, through the same rehydrate path boot
+uses. The ticker, the hub and the publisher then switch over with no `await` in between, so
+no tick and no client can observe a half-adopted run. The hub clears its replay log, so
+every client receives the new run's snapshot.
+
+The advisory lock is held from boot and is unchanged. `app.cli.runs go-live` remains for
+when the app is down; while the app runs it is refused, because the app holds the lock.
