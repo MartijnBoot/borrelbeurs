@@ -102,6 +102,11 @@ class Settings(BaseSettings):
     # a tick inside the holder's lock, and the lock watchdog's probe, for ever.
     database_timeout_seconds: float = Field(default=5.0, gt=0)
 
+    # Optional. The same bound for export and analytics reads (Phase 7 SD11),
+    # which run on their own connections (`create_heavy_read_engine`) and may
+    # scan a whole run; the live path keeps `database_timeout_seconds`.
+    heavy_read_timeout_seconds: float = Field(default=60.0, gt=0)
+
     @field_validator("log_level", mode="before")
     @classmethod
     def _normalise_log_level(cls, value: object) -> object:

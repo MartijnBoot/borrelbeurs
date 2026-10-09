@@ -2,7 +2,8 @@
 
 Startup, in this order, and nothing is served until the end:
 
-1. the engine;
+1. the engine, and the heavy-read engine for exports and analytics (Phase 7
+   SD11: no pool, the longer timeout);
 2. **the advisory lock** on its own connection (`app/db/advisory_lock.py`), or
    `BootFailure` -- before anything is migrated, so a second instance never
    touches the schema (AC18);
@@ -18,7 +19,7 @@ Startup, in this order, and nothing is served until the end:
 8. ready.
 
 Shutdown (SD10): not ready, draining, the ticker finishes its slot, every
-socket is closed with 1012, the lock is released, the engine disposed. Nothing
+socket is closed with 1012, the lock is released, the engines disposed. Nothing
 is written on the way out.
 """
 
@@ -42,7 +43,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from app.core.config import Settings
 from app.db.advisory_lock import acquire, release, watchdog
 from app.db.models import Run
-from app.db.session import create_engine
+from app.db.session import create_engine, create_heavy_read_engine
 from app.db.theme import get_theme
 from app.realtime.hub import Hub
 from app.realtime.publish import Publisher, active_drink_ids, seeded_book
@@ -120,6 +121,9 @@ async def start_runtime(
     """Boot the runtime onto `app.state`, yield while serving, then shut it down."""
     engine = create_engine(settings)
     app.state.engine = engine
+    # Export and analytics reads (Phase 7 SD11): no pool, so nothing to open here.
+    heavy_engine = create_heavy_read_engine(settings)
+    app.state.heavy_engine = heavy_engine
     lock = None
     tasks: list[asyncio.Task[None]] = []
     ticker: Ticker | None = None
@@ -213,5 +217,6 @@ async def start_runtime(
             await hub.close_all(CLOSE_SERVICE_RESTART)
         if lock is not None:
             await release(lock)
+        await heavy_engine.dispose()
         await engine.dispose()
         logger.info("runtime_stopped")

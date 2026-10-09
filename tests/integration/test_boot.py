@@ -164,6 +164,43 @@ def test_with_no_live_run_the_app_is_ready_and_the_holder_empty(
     assert asyncio.run(scenario()) == (True, True, 1_000)
 
 
+def test_boot_builds_a_heavy_read_engine_with_its_own_connections_and_timeout(
+    on: str, settings: Settings
+) -> None:
+    """Phase 7 SD11, PD2: a distinct NullPool engine whose statements outlive the 5 s bound."""
+
+    # The live bound at its 5 s default and the heavy one at its 60 s default.
+    bounded = _settings(settings, on).model_copy(
+        update={"database_timeout_seconds": 5.0, "heavy_read_timeout_seconds": 60.0}
+    )
+
+    async def scenario() -> tuple[bool, bool, str, str]:
+        app = FastAPI()
+        async with start_runtime(app, bounded, clock=FakeClock(T0), run_migrations=False):
+            engine, heavy = app.state.engine, app.state.heavy_engine
+            async with heavy.connect() as conn:
+                slept = await conn.execute(text("SELECT pg_sleep(6)::text"))
+                heavy_result = str(slept.scalar_one())
+            try:
+                async with engine.connect() as conn:
+                    await conn.execute(text("SELECT pg_sleep(6)"))
+                live_result = "completed"
+            except Exception as error:  # the asyncpg timeout, wrapped by SQLAlchemy
+                live_result = type(error).__name__
+            return (
+                heavy is not engine,
+                isinstance(heavy.pool, pool.NullPool),
+                heavy_result,
+                live_result,
+            )
+
+    distinct, null_pool, heavy_result, live_result = asyncio.run(scenario())
+    assert distinct
+    assert null_pool
+    assert heavy_result == ""
+    assert live_result != "completed"
+
+
 def test_a_live_run_is_rehydrated_and_its_tick_interval_used(on: str, settings: Settings) -> None:
     async def scenario() -> tuple[int | None, int]:
         run_id = await _go_live(settings, on)

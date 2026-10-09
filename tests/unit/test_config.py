@@ -413,6 +413,37 @@ def test_a_bad_database_timeout_fails_naming_the_variable(
     assert "DATABASE_TIMEOUT_SECONDS" in str(excinfo.value)
 
 
+# --- the heavy-read timeout (Phase 7 SD11, PD2: export and analytics queries) ---
+
+
+def test_the_heavy_read_timeout_defaults_to_sixty_seconds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_env(monkeypatch)
+
+    assert get_settings().heavy_read_timeout_seconds == 60.0
+
+
+def test_the_heavy_read_timeout_is_read_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _set_env(monkeypatch, HEAVY_READ_TIMEOUT_SECONDS="90")
+
+    assert get_settings().heavy_read_timeout_seconds == 90.0
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "banana"])
+def test_a_bad_heavy_read_timeout_fails_naming_the_variable(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    _set_env(monkeypatch, HEAVY_READ_TIMEOUT_SECONDS=value)
+
+    with pytest.raises(ConfigError) as excinfo:
+        get_settings()
+
+    assert "HEAVY_READ_TIMEOUT_SECONDS" in str(excinfo.value)
+
+
 def test_production_refuses_an_insecure_session_cookie(monkeypatch: pytest.MonkeyPatch) -> None:
     """AC6a (boot half), SD8: `Secure` may be switched off locally, never in production."""
     _set_env(monkeypatch, APP_ENV="production", SESSION_COOKIE_SECURE="false")

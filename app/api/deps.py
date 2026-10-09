@@ -70,6 +70,12 @@ def db_engine(request: Request) -> AsyncEngine:
     return engine
 
 
+def heavy_engine(request: Request) -> AsyncEngine:
+    """The export and analytics engine: own connections, the longer timeout (Phase 7 SD11)."""
+    engine: AsyncEngine = request.app.state.heavy_engine
+    return engine
+
+
 async def authenticate(
     *, token: str | None, settings: Settings, clock: Clock, engine: AsyncEngine
 ) -> Principal:
