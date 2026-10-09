@@ -110,6 +110,11 @@ async def write_order(
                         "unit_price_cents": line.unit_price_cents,
                         "line_total_cents": line.qty * line.unit_price_cents,
                         "p_cont": line.p_cont,
+                        # The bar price in force at this sale, read in this transaction
+                        # (Phase 7 SD5, PD6, D-20): a later bar-price edit moves no line.
+                        "bar_price_cents": select(models.Drink.bar_price_cents)
+                        .where(models.Drink.drink_id == line.drink_id)
+                        .scalar_subquery(),
                     }
                     for line in lines
                 ]
