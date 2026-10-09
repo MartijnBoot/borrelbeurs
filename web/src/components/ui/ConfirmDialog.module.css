@@ -25,6 +25,18 @@
   font-size: 1.1rem;
 }
 
+/* Phase 7 PD18: the typed-name input. */
+.input {
+  width: 100%;
+  margin-bottom: 16px;
+  padding: 6px 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--input-border);
+  border-radius: 6px;
+  font: inherit;
+}
+
 .actions {
   display: flex;
   gap: 10px;
