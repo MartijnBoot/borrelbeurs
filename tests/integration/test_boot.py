@@ -218,7 +218,7 @@ def test_boot_migrates_a_database_one_revision_behind_to_head(
     empty_database: str, settings: Settings, alembic: RunAlembic, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Plan R9: the real `to_thread` migration path, against a real schema one behind."""
-    assert alembic(empty_database, "upgrade", "0008").returncode == 0
+    assert alembic(empty_database, "upgrade", "0009").returncode == 0
     monkeypatch.setenv("DATABASE_URL", empty_database)
     get_settings.cache_clear()
 
@@ -240,7 +240,7 @@ def test_boot_migrates_a_database_one_revision_behind_to_head(
             await engine.dispose()
 
     try:
-        assert asyncio.run(scenario()) == "0009"
+        assert asyncio.run(scenario()) == "0010"
     finally:
         get_settings.cache_clear()
 
