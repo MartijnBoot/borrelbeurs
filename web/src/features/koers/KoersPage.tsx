@@ -5,12 +5,13 @@
  * the clock and v1's legend verbatim, with any market event over the top
  * (SD21). With no live run, SD20's empty state -- inside the shell, so the
  * header, nav and theme still work, and the same page shows the board once a
- * snapshot arrives (AC34).
+ * snapshot arrives (AC34). Right after a close (Phase 7 PD5) the same calm
+ * screen says "Borrel afgelopen" instead, until the next snapshot.
  *
  * While the theme has a promo image (Phase 6 PD9), v1's promo tile sits beside
  * the board and the container takes v1's `has-promo` grid.
  */
-import { selectActiveDrinks, selectEmpty, useExchange } from '../exchange'
+import { selectActiveDrinks, selectClosedRun, selectEmpty, useExchange } from '../exchange'
 import { HeaderClock } from './HeaderClock'
 import styles from './KoersPage.module.css'
 import { isAnimated, newsRate, useActiveMarketEvent } from './marketEvent'
@@ -21,6 +22,7 @@ import { Tile } from './Tile'
 
 export function KoersPage() {
   const empty = useExchange(selectEmpty)
+  const closed = useExchange(selectClosedRun)
   const ids = useExchange((s) =>
     selectActiveDrinks(s)
       .map((d) => d.drink_id)
@@ -46,7 +48,9 @@ export function KoersPage() {
             <HeaderClock />
           </div>
           {empty ? (
-            <p className={styles.empty}>Geen actieve borrel</p>
+            <p className={styles.empty}>
+              {closed === null ? 'Geen actieve borrel' : 'Borrel afgelopen'}
+            </p>
           ) : (
             <div className={styles.tiles} data-market={isAnimated(event) ? event : undefined}>
               {ids === ''

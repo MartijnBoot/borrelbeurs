@@ -4,7 +4,7 @@
 import { act, cleanup, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { exchangeStore } from '../exchange'
+import { applyMessage, exchangeStore, type ServerMessage } from '../exchange'
 import { HomePage } from './HomePage'
 
 const json = (status: number, body: unknown) =>
@@ -136,5 +136,54 @@ describe('HomePage', () => {
     } finally {
       node.off('unhandledRejection', unhandled)
     }
+  })
+})
+
+describe('a closed run (Phase 7 T17: SD2, PD5)', () => {
+  it('run_closed reaches the status panel without a remount', async () => {
+    const message = (type: 'snapshot' | 'run_closed', seq: number, data: unknown) =>
+      ({ v: 1, type, seq, ts_ms: 0, run_id: 7, version: null, data }) as ServerMessage
+    act(() =>
+      exchangeStore.setState(
+        applyMessage(
+          { ...exchangeStore.getInitialState(), bootId: 'B', seq: 1 },
+          message('snapshot', 1, {
+            version: 3,
+            run: {
+              run_id: 7,
+              tick_interval_ms: 1000,
+              candle_interval_ms: 60000,
+              quote_grace_versions: 2,
+            },
+            drinks: [],
+            params: {},
+            prices: {},
+            bars: {},
+            news: [],
+            earnings: {},
+            market_events: [],
+          }),
+          0,
+        ),
+        true,
+      ),
+    )
+    await open()
+    expect(within(status()).getByText(/Vrijmibo/)).toBeTruthy()
+
+    run = () => json(404, { error: { code: 'no_current_run', message: 'none' } })
+    act(() =>
+      exchangeStore.setState(
+        (s) =>
+          applyMessage(
+            s,
+            message('run_closed', 2, { run_id: 7, name: 'Vrijmibo', ended_at_ms: 0 }),
+            0,
+          ),
+        true,
+      ),
+    )
+    await settle()
+    expect(within(status()).getByText('Geen actieve borrel')).toBeTruthy()
   })
 })

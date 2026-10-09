@@ -141,3 +141,42 @@ describe('the promo tile (Phase 6 T19: SD29, PD9; AC35)', () => {
     expect(promo()).toBeNull()
   })
 })
+
+describe('a closed run (Phase 7 T17: SD2, PD5; AC3)', () => {
+  const closeRun = () => dispatch('run_closed', { run_id: 1, name: 'Vrijmibo', ended_at_ms: 0 })
+
+  it('run_closed after a snapshot shows "Borrel afgelopen", calm: no tiles, no marquee', () => {
+    const { container } = render(<KoersPage />)
+    expect(tileNames(container)).toHaveLength(3)
+
+    closeRun()
+
+    expect(container.textContent).toContain('Borrel afgelopen')
+    expect(container.textContent).not.toContain('Geen actieve borrel')
+    expect(tileNames(container)).toHaveLength(0)
+    expect(container.querySelector(`.${styles.tickName}`)).toBeNull()
+  })
+
+  it('a later snapshot restores the board, without a remount', () => {
+    const { container } = render(<KoersPage />)
+    closeRun()
+    dispatch('snapshot', SNAPSHOT)
+
+    expect(container.textContent).not.toContain('Borrel afgelopen')
+    expect(tileNames(container).map((el) => el.textContent)).toEqual(['Bier', 'Wijn', 'Fris'])
+  })
+
+  it('with no run and nothing closed it still says "Geen actieve borrel"', () => {
+    dispatch('hello', {
+      boot_id: 'C',
+      run_id: null,
+      tick_interval_ms: 1000,
+      protocol: 1,
+      role: 'display',
+      theme: exchangeStore.getState().theme,
+    })
+    const { container } = render(<KoersPage />)
+    expect(container.textContent).toContain('Geen actieve borrel')
+    expect(container.textContent).not.toContain('Borrel afgelopen')
+  })
+})

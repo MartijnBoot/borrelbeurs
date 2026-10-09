@@ -87,3 +87,22 @@ describe('BarPage', () => {
     expect(screen.getByText('Klaar')).toBeTruthy()
   })
 })
+
+describe('a closed run (Phase 7 T17: SD2, PD5)', () => {
+  it('run_closed takes the pad away without a remount; a later snapshot brings it back', () => {
+    dispatch('hello', hello(1), null)
+    dispatch('snapshot', SNAPSHOT)
+    render(<BarPage />)
+    const header = screen.getByRole('heading', { name: '🍺 Bar — Bestellen' })
+    expect(drinkButtons()).toHaveLength(1)
+
+    dispatch('run_closed', { run_id: 1, name: 'Vrijmibo', ended_at_ms: 0 }, null)
+    expect(screen.getByText('Geen actieve borrel')).toBeTruthy()
+    expect(drinkButtons()).toHaveLength(0)
+    expect(screen.queryByText('💶 Financieel overzicht')).toBeNull()
+
+    dispatch('snapshot', SNAPSHOT)
+    expect(drinkButtons()).toHaveLength(1)
+    expect(screen.getByRole('heading', { name: '🍺 Bar — Bestellen' })).toBe(header)
+  })
+})

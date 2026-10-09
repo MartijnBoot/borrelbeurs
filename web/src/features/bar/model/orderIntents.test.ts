@@ -327,3 +327,16 @@ describe('other answers', () => {
     expect(promotes).toBe(0)
   })
 })
+
+describe('a close racing an order (Phase 7 T17, R15)', () => {
+  it('409 no_live_run is terminal: failed, never retried, then gone', async () => {
+    intents.create(Q, 1)
+    calls[0].reject(new HttpError(409, 'no_live_run', 'there is no live run'))
+    await settle()
+    expect(intents.entries[0].state).toBe('failed')
+
+    await vi.advanceTimersByTimeAsync(RETRY_DELAYS_MS.reduce((a, b) => a + b, 0) + LINGER_MS)
+    expect(calls).toHaveLength(1)
+    expect(intents.entries).toHaveLength(0)
+  })
+})
