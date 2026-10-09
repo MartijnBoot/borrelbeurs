@@ -61,6 +61,8 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     ("DELETE", "/api/theme/images/{slot}"): ADMIN,
     # Phase 7 SD2.
     ("POST", "/api/runs/{run_id}/close"): ADMIN,
+    # Phase 7 SD3.
+    ("DELETE", "/api/runs/{run_id}"): ADMIN,
 }
 
 ACTORS: Final = ("anonymous", "revoked", "display", "bar", "admin")

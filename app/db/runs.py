@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from sqlalchemy import delete, func, insert, select, text, update
+from sqlalchemy import delete, exists, func, insert, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -33,7 +33,18 @@ from app.core.errors import AppError
 from app.db.engine_state import insert_state, insert_tick
 from app.db.mapping import DrinkRow, params_to_json, spec_from_rows
 from app.db.market_events import end_open_events
-from app.db.models import Drink, Export, Run, RunConfigRevision
+from app.db.models import (
+    Drink,
+    Export,
+    MarketEvent,
+    News,
+    Order,
+    PriceTick,
+    Product,
+    Run,
+    RunConfigRevision,
+)
+from app.db.models import EngineState as EngineStateRow
 from app.db.products import resolve_product
 from exchange import EngineState, Params, anchor_s0_to_current_y, initial_state
 
@@ -109,6 +120,13 @@ class NameMismatch(AppError):
 
     status_code = 422
     code = "name_mismatch"
+
+
+class RunLive(AppError):
+    """The live run cannot be deleted; it is closed first (Phase 7 SD3)."""
+
+    status_code = 409
+    code = "run_live"
 
 
 class LastActiveDrink(AppError):
@@ -521,3 +539,35 @@ async def close_run(
             run_id=run_id, kind="final", status="queued", requested_by=requested_by
         )
     )
+
+
+async def delete_run(engine: AsyncEngine, run_id: int, *, confirm_name: str) -> None:
+    """Delete an ended or draft run and every row it owns, in one transaction (Phase 7 SD3).
+
+    Under the run's row lock: `RunNotFound`, `RunLive` for the live run, or
+    `NameMismatch` unless the trimmed `confirm_name` is the run's name (PD3),
+    each writing nothing. Rows go in foreign-key order -- order lines with their
+    orders -- and then every product no drink references any more (PD17), which
+    also sweeps products a draft's hard-deleted drink left behind.
+    """
+    async with engine.begin() as conn:
+        run = await get_run(conn, run_id, lock=True)
+        if run.status == "live":
+            raise RunLive(f"run {run_id} is live; close it first")
+        if confirm_name.strip() != run.name:
+            raise NameMismatch(f"the typed name is not run {run_id}'s name")
+        for table in (
+            Order,
+            PriceTick,
+            News,
+            MarketEvent,
+            RunConfigRevision,
+            EngineStateRow,
+            Export,
+            Drink,
+        ):
+            await conn.execute(delete(table).where(table.run_id == run_id))
+        await conn.execute(delete(Run).where(Run.run_id == run_id))
+        await conn.execute(
+            delete(Product).where(~exists().where(Drink.product_id == Product.product_id))
+        )

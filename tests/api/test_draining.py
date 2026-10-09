@@ -46,6 +46,7 @@ DRAINING_WRITES: Final[list[tuple[str, str, dict[str, Any] | None]]] = [
     ("DELETE", "/api/keys/999999", None),
     ("DELETE", "/api/theme/images/bg", None),
     ("POST", "/api/runs/999999/close", {"confirm_name": "Borrel"}),
+    ("DELETE", "/api/runs/999999", {"confirm_name": "Borrel"}),
 ]
 
 READS: Final = ("/api/state", "/api/news", "/api/auth/me", "/theme.css")

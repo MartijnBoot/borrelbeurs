@@ -17,6 +17,10 @@ the draft, else 404 `no_current_run` (PD2).
 process (`app/runtime/close.py`, Phase 7 SD2): 404 `run_not_found`, 409
 `run_not_live`, 422 `name_mismatch`, each writing nothing.
 
+`DELETE /api/runs/{run_id} {confirm_name}` removes an ended or draft run and
+everything it owns (`delete_run`, Phase 7 SD3), answering 204: 404
+`run_not_found`, 409 `run_live`, 422 `name_mismatch`, each removing nothing.
+
 Admin only. The writes refuse while draining (SD24).
 """
 
@@ -24,12 +28,12 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
 from app.api.deps import Principal, db_engine, refuse_while_draining, require_role
 from app.core.errors import AppError
-from app.db.runs import RunStatus, create_run, current_run
+from app.db.runs import RunStatus, create_run, current_run, delete_run
 from app.runtime.close import close_in_process
 from app.runtime.golive import go_live_in_process
 
@@ -47,8 +51,8 @@ class CreateRunRequest(BaseModel):
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 
 
-class CloseRunRequest(BaseModel):
-    """The run's name, typed by the admin (Phase 7 SD2, PD3)."""
+class ConfirmNameRequest(BaseModel):
+    """The run's name, typed by the admin before a close or a delete (Phase 7 PD3)."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -100,7 +104,7 @@ async def post_go_live(
 @router.post("/{run_id}/close")
 async def post_close(
     run_id: int,
-    body: CloseRunRequest,
+    body: ConfirmNameRequest,
     request: Request,
     principal: Annotated[Principal, Depends(require_role("admin"))],
     _draining: Annotated[None, Depends(refuse_while_draining)],
@@ -109,3 +113,15 @@ async def post_close(
         request.app.state, run_id, confirm_name=body.confirm_name, author=principal.label
     )
     return RunSummaryData(run_id=run.run_id, name=run.name, status=run.status)
+
+
+@router.delete("/{run_id}", status_code=204)
+async def delete_run_route(
+    run_id: int,
+    body: ConfirmNameRequest,
+    request: Request,
+    _: Annotated[Principal, Depends(require_role("admin"))],
+    _draining: Annotated[None, Depends(refuse_while_draining)],
+) -> Response:
+    await delete_run(db_engine(request), run_id, confirm_name=body.confirm_name)
+    return Response(status_code=204)
