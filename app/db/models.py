@@ -83,12 +83,28 @@ class RunConfigRevision(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class Product(Base):
+    """A drink's identity across runs and renames, the analytics key (Phase 7 SD1).
+
+    `name_key` is the key the product was created with; it is not unique.
+    """
+
+    __tablename__ = "product"
+
+    product_id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    name_key: Mapped[str] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Drink(Base):
     """A drink in a run. Identity is `drink_id`, never `slot` (D-24).
 
     `slot` is the drink's position in the engine's arrays; `name_key` is
     `name.strip().casefold()`, computed in Python (PD6) because Postgres'
-    `lower()` depends on the collation.
+    `lower()` depends on the collation. `product_id` is nullable at the
+    database only for a rolled-back image's inserts (Phase 7 SD13); the app
+    always sets it.
     """
 
     __tablename__ = "drink"
@@ -103,6 +119,13 @@ class Drink(Base):
             "drink_name_live",
             "run_id",
             "name_key",
+            unique=True,
+            postgresql_where=text("removed_at IS NULL"),
+        ),
+        Index(
+            "drink_product_live",
+            "run_id",
+            "product_id",
             unique=True,
             postgresql_where=text("removed_at IS NULL"),
         ),
@@ -123,6 +146,9 @@ class Drink(Base):
     bar_price_cents: Mapped[int] = mapped_column(Integer)
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    product_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("product.product_id", name="drink_product_id_fkey")
+    )
 
 
 class EngineState(Base):
@@ -178,7 +204,10 @@ class Order(Base):
     """
 
     __tablename__ = "order"
-    __table_args__ = (UniqueConstraint("idempotency_key", name="order_idempotency_key_key"),)
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="order_idempotency_key_key"),
+        Index("order_run_wall_ts", "run_id", "wall_ts_ms"),
+    )
 
     order_id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     run_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("run.run_id"))
@@ -191,13 +220,18 @@ class Order(Base):
 
 
 class OrderLine(Base):
-    """One drink in an order, at the price charged, in cents."""
+    """One drink in an order, at the price charged, in cents.
+
+    `bar_price_cents` is the drink's bar price when the line sold (Phase 7 SD5,
+    D-20); nullable at the database only for a rolled-back image (SD13).
+    """
 
     __tablename__ = "order_line"
     __table_args__ = (
         CheckConstraint("qty > 0", name="order_line_qty_check"),
         CheckConstraint("unit_price_cents >= 0", name="order_line_unit_price_cents_check"),
         CheckConstraint("line_total_cents = qty * unit_price_cents", name="order_line_total_check"),
+        CheckConstraint("bar_price_cents >= 0", name="order_line_bar_price_cents_check"),
         UniqueConstraint("order_id", "drink_id", name="order_line_order_id_drink_id_key"),
     )
 
@@ -210,6 +244,7 @@ class OrderLine(Base):
     unit_price_cents: Mapped[int] = mapped_column(Integer)
     line_total_cents: Mapped[int] = mapped_column(Integer)
     p_cont: Mapped[float] = mapped_column(Double)
+    bar_price_cents: Mapped[int | None] = mapped_column(Integer)
 
 
 class News(Base):
@@ -292,6 +327,43 @@ class Asset(Base):
     data: Mapped[bytes] = mapped_column(LargeBinary)
     bytes: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Export(Base):
+    """A run's xlsx export, built by the worker into `data` (Phase 7 SD6).
+
+    `total_cents` and `line_count` describe the file's contents, checked against
+    the run when it is built; revenue itself stays in `order_line`.
+    """
+
+    __tablename__ = "export"
+    __table_args__ = (
+        CheckConstraint("kind IN ('manual', 'final')", name="export_kind_check"),
+        CheckConstraint(
+            "status IN ('queued', 'running', 'done', 'failed')", name="export_status_check"
+        ),
+        CheckConstraint("data IS NULL OR bytes = octet_length(data)", name="export_bytes_check"),
+        CheckConstraint("status <> 'done' OR data IS NOT NULL", name="export_done_check"),
+    )
+
+    export_id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    run_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("run.run_id", name="export_run_id_fkey")
+    )
+    kind: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    requested_by: Mapped[str] = mapped_column(Text)
+    # `nullable` is explicit: the `bytes` column below shadows the builtin in this
+    # class body, so the annotation alone does not tell SQLAlchemy it is optional.
+    data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    sha256: Mapped[str | None] = mapped_column(Text)
+    bytes: Mapped[int | None] = mapped_column(Integer)
+    line_count: Mapped[int | None] = mapped_column(Integer)
+    total_cents: Mapped[int | None] = mapped_column(BigInteger)
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Theme(Base):

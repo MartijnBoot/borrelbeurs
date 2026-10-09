@@ -31,6 +31,7 @@ PHASE_2_TABLES = frozenset(
 PHASE_3_TABLES = frozenset({"auth_key", "market_event"})
 PHASE_4_TABLES = frozenset({"theme"})
 PHASE_6_TABLES = frozenset({"asset"})
+PHASE_7_TABLES = frozenset({"product", "export"})
 
 # PD4: SD5's three columns plus the singleton key; Phase 6 adds the custom
 # theme (SD28) and one pointer per image slot (SD29).
@@ -71,6 +72,9 @@ NON_MONEY_FLOATS = frozenset(
 
 REVENUE_PATTERN = re.compile(r"revenue|total|earn", re.IGNORECASE)
 THE_REVENUE_COLUMN = ("order_line", "line_total_cents")
+# Phase 7 SD6: an export records the total its file contains, a checksum built
+# from `order_line` in the export's snapshot. No query reads revenue from it.
+EXPORT_FILE_TOTAL = ("export", "total_cents")
 
 Column = tuple[str, str, str]  # table, column, data type
 
@@ -102,10 +106,12 @@ def money_violations(columns: Iterable[Column]) -> list[str]:
 
 
 def test_the_application_tables_are_the_ones_inspected(database_url: str) -> None:
-    """Anti-vacuity: the inspection below reaches every table, Phase 2 SD4 through Phase 6."""
+    """Anti-vacuity: the inspection below reaches every table, Phase 2 SD4 through Phase 7."""
     tables = {table for table, _, _ in asyncio.run(_columns(database_url))}
 
-    assert tables == PHASE_2_TABLES | PHASE_3_TABLES | PHASE_4_TABLES | PHASE_6_TABLES
+    assert tables == (
+        PHASE_2_TABLES | PHASE_3_TABLES | PHASE_4_TABLES | PHASE_6_TABLES | PHASE_7_TABLES
+    )
 
 
 def test_every_money_column_is_integer_cents(database_url: str) -> None:
@@ -137,7 +143,7 @@ def test_revenue_is_stored_only_as_order_line_totals(database_url: str) -> None:
     columns = asyncio.run(_columns(database_url))
     revenue_like = {(t, c) for t, c, _ in columns if REVENUE_PATTERN.search(c)}
 
-    assert revenue_like == {THE_REVENUE_COLUMN}
+    assert revenue_like == {THE_REVENUE_COLUMN, EXPORT_FILE_TOTAL}
 
 
 def _in_transaction(url: str, body: Callable[[AsyncConnection], Awaitable[None]]) -> None:
