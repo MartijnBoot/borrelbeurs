@@ -4,7 +4,13 @@ import { describe, expect, it } from 'vitest'
 import fixture from './__fixtures__/ws-messages.json'
 import { applyMessage, applyPolledState, initialState, type ExchangeState } from './applyMessage'
 import { ServerMessage } from './schemas'
-import { pulseDirection, selectActiveDrinks, selectEarnings, selectTotals } from './selectors'
+import {
+  pulseDirection,
+  selectActiveDrinks,
+  selectClosedRun,
+  selectEarnings,
+  selectTotals,
+} from './selectors'
 
 type Of<K extends ServerMessage['type']> = Extract<ServerMessage, { type: K }>
 
@@ -309,6 +315,68 @@ describe('theme (AC7)', () => {
     state = apply(state, at(theme, 6, { revision: 2, preset: 'paars' }))
     expect(state.theme?.preset).toBe('paars')
     expect(state.seq).toBe(4)
+  })
+})
+
+describe('run_closed (Phase 7 SD2, PD5)', () => {
+  const closed = frame('run_closed') as Of<'run_closed'>
+
+  it('parses the recorded frame', () => {
+    expect(closed.data.name).toBe('Borrel')
+    expect(closed.version).toBeNull()
+  })
+
+  it('empties the market and records the closed run, keeping boot and theme', () => {
+    const state = apply(live, at(closed, S + 1))
+    expect(state.empty).toBe(true)
+    expect(selectClosedRun(state)).toEqual({
+      run_id: closed.data.run_id,
+      name: 'Borrel',
+      endedAtMs: closed.data.ended_at_ms,
+    })
+    expect(state.run).toBeNull()
+    expect(state.drinks).toEqual([])
+    expect(state.prices).toEqual({})
+    expect(state.bars).toEqual({})
+    expect(state.news).toEqual([])
+    expect(state.marketEvents).toEqual([])
+    expect(state.earnings).toEqual({})
+    expect(state.quote).toBeNull()
+    expect(state.bootId).toBe(live.bootId)
+    expect(state.theme).toEqual(live.theme)
+    expect(state.seq).toBe(S + 1)
+  })
+
+  it('applies across a seq gap and clears a pending resync', () => {
+    const gapped = apply(live, at(tick, S + 3))
+    expect(gapped.awaitingResync).toBe(true)
+    const state = apply(gapped, at(closed, S + 5))
+    expect(state.awaitingResync).toBe(false)
+    expect(state.empty).toBe(true)
+    expect(state.seq).toBe(S + 5)
+    expect(selectClosedRun(state)?.name).toBe('Borrel')
+  })
+
+  it('a later same-boot hello with no live run keeps it', () => {
+    const state = run(at(hello, S), snapshot, at(closed, S + 1), at(hello, S + 1, { run_id: null }))
+    expect(state.empty).toBe(true)
+    expect(selectClosedRun(state)?.name).toBe('Borrel')
+  })
+
+  it('a hello with a new boot_id clears it', () => {
+    const state = apply(apply(live, at(closed, S + 1)), at(hello, 1, { boot_id: 'OTHER' }))
+    expect(selectClosedRun(state)).toBeNull()
+  })
+
+  it('a snapshot clears it and restores the live market', () => {
+    const state = apply(apply(live, at(closed, S + 1)), at(snapshot, S + 2))
+    expect(selectClosedRun(state)).toBeNull()
+    expect(state.empty).toBe(false)
+    expect(state.drinks).toEqual(snapshot.data.drinks)
+  })
+
+  it('is ignored before any baseline', () => {
+    expect(run(closed)).toEqual(unchanged(initialState, AT))
   })
 })
 

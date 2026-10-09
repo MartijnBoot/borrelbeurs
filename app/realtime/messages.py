@@ -30,6 +30,10 @@ snapshot carries them. A removed drink stays listed with `active: false`;
 **`theme` (Phase 4 SD9, PD3)** carries the active preset's tokens and font, so
 the client holds no preset table (SD6). It carries no prices: `version` is
 `None`, and the hub keeps its resync metadata from the last priced broadcast.
+
+**`run_closed` (Phase 7 SD2)** is broadcast once a close has committed and the
+holder is empty. It carries no prices either (`version` is `None`); the client
+applies it outside the seq rule, as it does `theme` (PD5).
 """
 
 from __future__ import annotations
@@ -230,6 +234,14 @@ def theme_data(theme: Theme) -> ThemeData:
     )
 
 
+class RunClosedData(_Closed):
+    """The live run was closed (Phase 7 SD2): no run is live until the next go-live."""
+
+    run_id: StrictInt
+    name: str
+    ended_at_ms: StrictInt
+
+
 class Hello(_Closed):
     boot_id: str
     run_id: StrictInt | None
@@ -263,6 +275,7 @@ ServerMessageType = Literal[
     "error",
     "theme",
     "config",
+    "run_closed",
 ]
 
 SERVER_MESSAGE_MODELS: Final[dict[str, type[_Closed]]] = {
@@ -277,6 +290,7 @@ SERVER_MESSAGE_MODELS: Final[dict[str, type[_Closed]]] = {
     "error": ErrorData,
     "theme": ThemeData,
     "config": ConfigData,
+    "run_closed": RunClosedData,
 }
 
 ServerData = (
@@ -291,6 +305,7 @@ ServerData = (
     | ErrorData
     | ThemeData
     | ConfigData
+    | RunClosedData
 )
 
 

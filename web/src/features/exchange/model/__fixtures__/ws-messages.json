@@ -463,5 +463,18 @@
     "run_id": 1,
     "version": 8,
     "data": {}
+  },
+  "run_closed": {
+    "v": 1,
+    "type": "run_closed",
+    "seq": 11,
+    "ts_ms": 1759312804000,
+    "run_id": 1,
+    "version": null,
+    "data": {
+      "run_id": 1,
+      "name": "Borrel",
+      "ended_at_ms": 1759312804000
+    }
   }
 }

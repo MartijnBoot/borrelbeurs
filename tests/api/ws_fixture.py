@@ -25,6 +25,10 @@ code -- at the end of the session.
 is recorded by handing a `ConfigChanged` -- the run as booted, with `Fris`
 marked removed -- to a `Publisher` on the app's own hub, on the app's loop:
 the frame the holder's sink would broadcast, built by the same code.
+
+**`run_closed`** is recorded last, after `resync` (whose resync metadata it
+clears), until Phase 7 T6's close route exists: the hub releases the run and
+broadcasts the frame, on the app's loop, as the close does after its commit.
 """
 
 from __future__ import annotations
@@ -48,6 +52,7 @@ from app.db.keys import create_key, set_secret_hash
 from app.db.runs import add_drink, create_draft_run, go_live
 from app.db.session import create_engine
 from app.main import create_app
+from app.realtime.messages import Envelope, RunClosedData
 from app.realtime.publish import Publisher, active_drink_ids, seeded_book
 from app.runtime.holder import ConfigChanged
 from exchange import Params
@@ -207,7 +212,28 @@ def _drive(client: TestClient, clock: FakeClock, key: str) -> dict[str, Frame]:
         frames["config"] = s.until("config")
 
         frames["resync"] = json.loads(client.app.state.hub.resync_frame())  # type: ignore[attr-defined]
+
+        client.portal.call(_publish_run_closed, client)  # type: ignore[union-attr]
+        frames["run_closed"] = s.until("run_closed")
     return frames
+
+
+async def _publish_run_closed(client: TestClient) -> None:
+    """One `run_closed` broadcast, as a close sends it once its commit has landed."""
+    state = client.app.state  # type: ignore[attr-defined]
+    hub = state.hub
+    run_id = state.holder.run_id
+    hub.release_run()
+    hub.broadcast(
+        Envelope(
+            type="run_closed",
+            seq=0,
+            ts_ms=hub.clock.wall_ms(),
+            run_id=run_id,
+            version=None,
+            data=RunClosedData(run_id=run_id, name="Borrel", ended_at_ms=hub.clock.wall_ms()),
+        )
+    )
 
 
 async def _publish_config(client: TestClient) -> None:

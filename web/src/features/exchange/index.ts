@@ -2,7 +2,7 @@
 // the SMA. Live state is written only by frames from the WebSocket client.
 // The reducer itself is exported for the bar's property test (Phase 5 T8),
 // which drives a store of its own through it.
-export type { DrinkId, ExchangeState, Status } from './model/applyMessage'
+export type { ClosedRun, DrinkId, ExchangeState, Status } from './model/applyMessage'
 export { applyMessage, applyPolledState, initialState } from './model/applyMessage'
 export type {
   Bar,

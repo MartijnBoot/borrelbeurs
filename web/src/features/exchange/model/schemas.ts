@@ -144,6 +144,9 @@ export const HelloData = z.strictObject({
   theme: ThemeData,
 })
 
+/** The live run was closed (Phase 7 SD2): the market is empty from here on. */
+export const RunClosedData = z.strictObject({ run_id: Int, name: z.string(), ended_at_ms: Int })
+
 const PongData = z.strictObject({ server_ts_ms: Int })
 const ResyncData = z.strictObject({})
 const ErrorData = z.strictObject({ code: z.string() })
@@ -175,6 +178,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
   envelope('error', ErrorData),
   envelope('theme', ThemeData),
   envelope('config', ConfigData),
+  envelope('run_closed', RunClosedData),
 ])
 
 export type ServerMessage = z.infer<typeof ServerMessage>

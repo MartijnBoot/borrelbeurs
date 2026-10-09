@@ -447,3 +447,69 @@ def test_the_holder_exposes_the_rehydrated_market_read_only(
             await engine.dispose()
 
     asyncio.run(scenario())
+
+
+def test_release_runs_its_step_then_empties_the_holder(
+    settings: Settings, database_url: str
+) -> None:
+    """Phase 7 T5 (AC1 unload half, PD4): the one way out of a live holder."""
+
+    async def scenario() -> None:
+        engine = _engine(settings, database_url)
+        try:
+            run = await _live(engine)
+            holder, sink = _holder(engine, run, FakeClock(T0))
+            seen: list[int | None] = []
+
+            async def close(view: MarketView) -> str:
+                assert holder.lock.locked()
+                seen.append(view.run_id)
+                async with holder.engine.begin() as conn:
+                    await conn.execute(
+                        text("UPDATE run SET status = 'ended' WHERE run_id = :r"),
+                        {"r": view.run_id},
+                    )
+                return "closed"
+
+            assert await holder.release(close) == "closed"
+
+            assert seen == [run.run_id]
+            assert holder.is_empty and holder.run_id is None and holder.state is None
+            assert holder.drink_ids == () and holder.ring == () and holder.earnings == {}
+            assert not holder.lock.locked()
+            assert sink.calls == []
+            with pytest.raises(NoLiveRunError):
+                await holder.release(close)
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_a_failing_release_step_leaves_the_holder_live(
+    settings: Settings, database_url: str
+) -> None:
+    """PD4: a failed commit changes no memory; a database error is 503."""
+
+    async def scenario() -> None:
+        engine = _engine(settings, database_url)
+        try:
+            run = await _live(engine)
+            holder, _ = _holder(engine, run, FakeClock(T0))
+            before_view, before_ring = holder.view, holder.ring
+
+            async def broken(view: MarketView) -> None:
+                async with holder.engine.begin() as conn:
+                    await conn.execute(text("SELECT * FROM no_such_table"))
+
+            with pytest.raises(PersistenceUnavailable):
+                await holder.release(broken)
+
+            assert holder.view is before_view
+            assert holder.ring == before_ring
+            assert not holder.is_empty
+            assert not holder.lock.locked()
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())

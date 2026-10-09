@@ -22,7 +22,9 @@ is never retried. The exception is a failed `gap`: the grid still re-anchors,
 but the next slot is a `gap` again rather than a `tick`, so no `advance` ever
 runs across an uncommitted gap (AC18a).
 
-**No live run (SD16):** the ticker idles on the grid, mutating nothing.
+**No live run (SD16):** the ticker idles on the grid, mutating nothing. A slot
+that was waiting on the lock while a close released the run (Phase 7 SD2) is
+idle too.
 
 **Go-live (Phase 6 SD3)** calls `adopt_interval` with the run's interval: the
 grid is re-anchored at that moment and a ticker asleep on the old grid is woken
@@ -51,6 +53,7 @@ from app.runtime.holder import (
     MarketEventEnded,
     MarketHolder,
     MarketView,
+    NoLiveRunError,
     Outcome,
     PersistenceUnavailable,
     Step,
@@ -182,6 +185,10 @@ class Ticker:
             await self._holder.mutate(op, step)
         except PersistenceUnavailable:
             logger.error("tick_commit_failed", extra={"op": op, "version": version})
+            return False
+        except NoLiveRunError:
+            # The run was closed while this slot waited on the lock (Phase 7 R3): an
+            # idle slot, as on an empty holder.
             return False
         return True
 

@@ -40,6 +40,13 @@
  * `candle_interval_ms` changed they no longer fit, so it sets `awaitingResync`
  * and the client asks for the snapshot that replaces them.
  *
+ * **Run closed (Phase 7 PD5).** A `run_closed` applies outside the seq rule,
+ * like `theme`: with no live run the server has no snapshot to end a resync.
+ * It clears live state as a new boot does (boot, theme and skew stay), takes
+ * its seq as the new baseline, ends any pending resync and records
+ * `closedRun`. A `snapshot` or a new `boot_id` clears `closedRun`; a same-boot
+ * `hello` with no run keeps it, so koers goes on saying the borrel ended.
+ *
  * **Last frame (Phase 6 PD14).** Every frame, applied or dropped, stamps
  * `lastFrameAt` with its `receivedAt`: home shows the socket's age from it.
  */
@@ -96,6 +103,14 @@ export interface ExchangeState {
   lastOrderTsMs: number | null
   /** The monotonic `receivedAt` of the last frame, applied or dropped (Phase 6 PD14). */
   lastFrameAt: number | null
+  /** The run a `run_closed` ended, until a snapshot or a new boot (Phase 7 PD5). */
+  closedRun: ClosedRun | null
+}
+
+export interface ClosedRun {
+  run_id: number
+  name: string
+  endedAtMs: number
 }
 
 export const NEWS_LIMIT = 50
@@ -121,6 +136,7 @@ export const initialState: ExchangeState = {
   earnings: {},
   lastOrderTsMs: null,
   lastFrameAt: null,
+  closedRun: null,
 }
 
 const UNICAST: ReadonlySet<ServerMessage['type']> = new Set(['hello', 'snapshot', 'pong', 'error'])
@@ -152,6 +168,7 @@ function applyFrame(
     const inLine = !state.awaitingResync && message.seq === state.seq + 1
     return inLine ? { ...next, seq: message.seq } : next
   }
+  if (message.type === 'run_closed') return applyRunClosed(state, message)
   if (state.awaitingResync) return state
   if (message.seq === state.seq) {
     return UNICAST.has(message.type) ? applyBroadcast(state, message, receivedAt) : state
@@ -193,6 +210,7 @@ function applyBroadcast(
     case 'snapshot':
     case 'resync':
     case 'theme':
+    case 'run_closed':
       return state // handled before seq, in applyMessage
     default: {
       const unreachable: never = message
@@ -215,6 +233,21 @@ function applyHello(state: ExchangeState, message: Of<'hello'>): ExchangeState {
           seq: message.seq,
         }
   return applyTheme({ ...base, awaitingResync: false, empty: run_id === null }, theme)
+}
+
+function applyRunClosed(state: ExchangeState, message: Of<'run_closed'>): ExchangeState {
+  const { run_id, name, ended_at_ms } = message.data
+  return {
+    ...initialState,
+    status: state.status,
+    bootId: state.bootId,
+    theme: state.theme,
+    skewOffsetMs: state.skewOffsetMs,
+    snapshotGen: state.snapshotGen,
+    seq: message.seq,
+    empty: true,
+    closedRun: { run_id, name, endedAtMs: ended_at_ms },
+  }
 }
 
 /**
@@ -261,6 +294,7 @@ function applySnapshot(
     quote: quoteFromSnapshot(data, receivedAt),
     earnings: keyed(data.earnings),
     lastOrderTsMs: null,
+    closedRun: null,
   }
 }
 

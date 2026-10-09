@@ -205,6 +205,11 @@ class Hub:
         self._seq += 1
         self._run_id, self._version = run_id, None
 
+    def release_run(self) -> None:
+        """The live run was closed (Phase 7 SD2): no replay reaches back into it."""
+        self._log.clear()
+        self._run_id, self._version = None, None
+
     @property
     def replay_window_ms(self) -> int:
         return self._replay_window_ms

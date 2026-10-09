@@ -31,6 +31,11 @@ run that was just committed live -- through the same `rehydrate` boot uses --
 and swaps it in. A load that fails after that commit calls `on_diverged`: the
 database has a live run this process does not hold.
 
+**Close (Phase 7 SD2)** is the one way out: `release(step)` takes the lock,
+refuses an empty holder, runs the close's one transaction through the same
+failure handling as `mutate`, and then holds no run. A mutate that was queued
+behind the lock finds the holder empty and is 409 `no_live_run`.
+
 Time comes from the injected `Clock` (SD32), never from `time`.
 """
 
@@ -266,18 +271,9 @@ class MarketHolder:
             step_timeout_s=step_timeout_s,
         )
 
-    @classmethod
-    def empty(
-        cls,
-        *,
-        engine: AsyncEngine,
-        clock: Clock,
-        sink: Sink,
-        on_diverged: Callable[[], None] | None = None,
-        step_timeout_s: float | None = None,
-    ) -> MarketHolder:
-        """No live run (SD16): readable, and every `mutate` is 409 `no_live_run`."""
-        view = MarketView(
+    @staticmethod
+    def _empty_view() -> MarketView:
+        return MarketView(
             run_id=None,
             run_seed=0,
             spec=None,
@@ -290,8 +286,20 @@ class MarketHolder:
             quote_grace_versions=0,
             candle_interval_ms=60_000,
         )
+
+    @classmethod
+    def empty(
+        cls,
+        *,
+        engine: AsyncEngine,
+        clock: Clock,
+        sink: Sink,
+        on_diverged: Callable[[], None] | None = None,
+        step_timeout_s: float | None = None,
+    ) -> MarketHolder:
+        """No live run (SD16): readable, and every `mutate` is 409 `no_live_run`."""
         return cls(
-            view,
+            cls._empty_view(),
             ring=HistoryRing(0),
             earnings=EarningsAggregate(),
             engine=engine,
@@ -380,6 +388,34 @@ class MarketHolder:
             self._view = self._view_of(run)
             self._ring = run.ring
             self._earnings = run.earnings
+
+    # --- close: the one way out (Phase 7 SD2) ----------------------------------------
+
+    async def release(self, step: Callable[[MarketView], Awaitable[T]]) -> T:
+        """Under the lock, run `step`'s one transaction, then hold no run (Phase 7 PD4).
+
+        The mirror of `adopt`. `step` is the close's transaction; it fails as a
+        `mutate` step does, leaving memory unchanged. Once it has committed the
+        holder is empty, so a mutate queued behind the lock is `no_live_run`.
+        """
+        async with self._lock:
+            if self.is_empty:
+                raise NoLiveRunError("there is no live run")
+
+            async def committed(view: MarketView) -> Outcome[T]:
+                return Outcome(result=await step(view), view=view)
+
+            outcome = await self._run("close", committed)
+            try:
+                self._view = self._empty_view()
+                self._ring = HistoryRing(0)
+                self._earnings = EarningsAggregate()
+            except Exception:
+                logger.error("release_failed", extra={"op": "close"})
+                if self._on_diverged is not None:
+                    self._on_diverged()
+                raise
+            return outcome.result
 
     # --- the one mutation path ----------------------------------------------------
 

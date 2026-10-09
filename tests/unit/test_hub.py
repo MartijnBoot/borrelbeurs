@@ -307,3 +307,23 @@ def test_a_theme_broadcast_keeps_the_resync_run_and_version() -> None:
     assert (frame["run_id"], frame["version"]) == (1, 9)
     assert seq == 2
     assert replayed == "theme"
+
+
+def test_release_run_clears_the_replay_log_and_the_resync_metadata() -> None:
+    """Phase 7 SD2: after a close no replay reaches back into the closed run."""
+
+    async def scenario() -> tuple[list[str] | None, str, int]:
+        clock = FakeClock(T0)
+        hub = Hub(clock=clock, replay_window_ms=WINDOW_MS, boot_id="b00t")
+        for k in range(1, 4):
+            clock.advance(1_000)
+            hub.broadcast(_tick(clock, k))
+        hub.release_run()
+        return hub.replay_after("b00t", 1), hub.resync_frame(), hub.seq
+
+    replay, resync, seq = asyncio.run(scenario())
+
+    assert replay is None
+    frame = json.loads(resync)
+    assert (frame["run_id"], frame["version"]) == (None, None)
+    assert seq == 3  # the seq keeps counting; the next broadcast is 4

@@ -33,6 +33,7 @@ from app.realtime.messages import (
     OrderLineData,
     Pong,
     Resync,
+    RunClosedData,
     RunInfo,
     ServerData,
     ServerMessageType,
@@ -278,6 +279,7 @@ def test_every_server_type_round_trips() -> None:
             ],
             params=params_to_json(Params()),
         ),
+        "run_closed": RunClosedData(run_id=1, name="Borrel", ended_at_ms=TS),
     }
     assert set(samples) == set(SERVER_MESSAGE_MODELS)
     for kind, data in samples.items():

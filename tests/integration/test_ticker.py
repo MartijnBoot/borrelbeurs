@@ -18,7 +18,13 @@ from app.db.market_events import active_events, insert_event
 from app.db.runs import add_drink, create_draft_run, go_live
 from app.db.session import create_engine
 from app.runtime.gap import DEFAULT_CATCH_UP_BUDGET_MS
-from app.runtime.holder import DomainEvent, MarketEventEnded, MarketHolder, TickCommitted
+from app.runtime.holder import (
+    DomainEvent,
+    MarketEventEnded,
+    MarketHolder,
+    MarketView,
+    TickCommitted,
+)
 from app.runtime.manipulation import schedule
 from app.runtime.rehydrate import RehydratedRun, rehydrate
 from app.runtime.ticker import Ticker
@@ -485,3 +491,43 @@ def test_adopt_interval_refuses_a_non_positive_interval(
                 h.ticker.adopt_interval(0)
 
     asyncio.run(scenario())
+
+
+def test_a_ticker_waiting_on_the_lock_during_a_release_idles(
+    settings: Settings, database_url: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Phase 7 T5 (R3): the slot queued behind a close finds no run, and neither
+    crashes the ticker nor logs a failed commit."""
+
+    async def scenario() -> tuple[int, int]:
+        async with _running(settings, database_url) as h:
+            await h.advance(INTERVAL)
+            assert h.holder.state is not None
+            version = h.holder.state.version
+            gate = asyncio.Event()
+
+            async def close(view: MarketView) -> None:
+                await gate.wait()
+
+            releasing = asyncio.get_running_loop().create_task(h.holder.release(close))
+            await asyncio.sleep(0.01)
+            h.clock.advance(INTERVAL)  # the slot is due; the ticker queues on the lock
+            for _ in range(200):
+                await asyncio.sleep(0.005)
+                if h.ticker.busy:
+                    break
+            assert h.ticker.busy
+            gate.set()
+            await releasing
+            # `settle` fails if the ticker's task died: it never sleeps again.
+            await h.settle()
+            for _ in range(3):
+                await h.advance(INTERVAL)
+            assert h.holder.is_empty
+            return version, len([r for r in await h.ticks() if r[0] > version])
+
+    with caplog.at_level(logging.ERROR, logger="app.runtime.ticker"):
+        version, later_ticks = asyncio.run(scenario())
+    assert version == 1
+    assert later_ticks == 0
+    assert not [r for r in caplog.records if r.getMessage() == "tick_commit_failed"]

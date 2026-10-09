@@ -44,6 +44,8 @@ export const selectStatus = (state: ExchangeState) => state.status
 export const selectEmpty = (state: ExchangeState) => state.empty
 export const selectQuote = (state: ExchangeState) => state.quote
 export const selectEarnings = (state: ExchangeState) => state.earnings
+/** The run a `run_closed` just ended, until the next snapshot (Phase 7 PD5). */
+export const selectClosedRun = (state: ExchangeState) => state.closedRun
 
 /** The panel's totals (SD15): sums of the server's per-drink numbers, nothing derived. */
 export function selectTotals(state: ExchangeState): { revenueCents: number; qty: number } {
