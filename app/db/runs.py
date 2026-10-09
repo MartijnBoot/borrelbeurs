@@ -22,6 +22,7 @@ from __future__ import annotations
 import dataclasses
 import secrets
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from sqlalchemy import delete, func, insert, select, text, update
@@ -31,7 +32,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from app.core.errors import AppError
 from app.db.engine_state import insert_state, insert_tick
 from app.db.mapping import DrinkRow, params_to_json, spec_from_rows
-from app.db.models import Drink, Run, RunConfigRevision
+from app.db.market_events import end_open_events
+from app.db.models import Drink, Export, Run, RunConfigRevision
 from app.db.products import resolve_product
 from exchange import EngineState, Params, anchor_s0_to_current_y, initial_state
 
@@ -100,6 +102,13 @@ class RunNotLive(AppError):
 
     status_code = 409
     code = "run_not_live"
+
+
+class NameMismatch(AppError):
+    """A close or delete whose typed name is not the run's (Phase 7 SD2, SD3, PD3)."""
+
+    status_code = 422
+    code = "name_mismatch"
 
 
 class LastActiveDrink(AppError):
@@ -485,3 +494,30 @@ async def go_live(
             wall_ts_ms=now_ms,
         )
     return state
+
+
+async def close_run(
+    conn: AsyncConnection, run_id: int, *, ended_at_ms: int, requested_by: str
+) -> None:
+    """End live `run_id` at `ended_at_ms`, its open events, and queue its final export.
+
+    Phase 7 SD2: `ended_at` comes from the app clock, not `now()`. Guarded by
+    `status = 'live'`, so anything else is `RunNotLive` with nothing written. The
+    caller owns the transaction (the close's one, under the holder's lock).
+    """
+    ended = (
+        await conn.execute(
+            update(Run)
+            .where(Run.run_id == run_id, Run.status == "live")
+            .values(status="ended", ended_at=datetime.fromtimestamp(ended_at_ms / 1000, UTC))
+            .returning(Run.run_id)
+        )
+    ).scalar_one_or_none()
+    if ended is None:
+        raise RunNotLive(f"run {run_id} is not live")
+    await end_open_events(conn, run_id)
+    await conn.execute(
+        insert(Export).values(
+            run_id=run_id, kind="final", status="queued", requested_by=requested_by
+        )
+    )

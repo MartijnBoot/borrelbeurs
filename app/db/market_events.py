@@ -53,6 +53,17 @@ async def end_event(conn: AsyncConnection, event_id: int, *, t_end_ms: int) -> N
         raise LookupError(f"no active market event {event_id}")
 
 
+async def end_open_events(conn: AsyncConnection, run_id: int) -> int:
+    """End every event of `run_id` still open, as a close does (Phase 7 SD2); rows ended."""
+    result = await conn.execute(
+        update(MarketEvent)
+        .where(MarketEvent.run_id == run_id, MarketEvent.ended_at.is_(None))
+        .values(ended_at=func.now())
+        .returning(MarketEvent.event_id)
+    )
+    return len(result.all())
+
+
 async def active_events(conn: AsyncConnection, run_id: int) -> tuple[ActiveEvent, ...]:
     """The run's events not yet ended, oldest first."""
     result = await conn.execute(

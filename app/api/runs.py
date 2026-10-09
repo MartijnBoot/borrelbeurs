@@ -13,6 +13,10 @@ the draft, else 404 `no_current_run` (PD2).
 (`app/runtime/golive.py`, SD3): 404 `run_not_found`, 409 `run_not_draft`,
 `run_not_ready` (no drink) or `live_run_exists`, each writing nothing.
 
+`POST /api/runs/{run_id}/close {confirm_name}` ends the live run in this
+process (`app/runtime/close.py`, Phase 7 SD2): 404 `run_not_found`, 409
+`run_not_live`, 422 `name_mismatch`, each writing nothing.
+
 Admin only. The writes refuse while draining (SD24).
 """
 
@@ -26,6 +30,7 @@ from pydantic import BaseModel, ConfigDict, StringConstraints
 from app.api.deps import Principal, db_engine, refuse_while_draining, require_role
 from app.core.errors import AppError
 from app.db.runs import RunStatus, create_run, current_run
+from app.runtime.close import close_in_process
 from app.runtime.golive import go_live_in_process
 
 router = APIRouter(prefix="/runs", tags=["runs"])
@@ -40,6 +45,14 @@ class CreateRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+
+
+class CloseRunRequest(BaseModel):
+    """The run's name, typed by the admin (Phase 7 SD2, PD3)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    confirm_name: str
 
 
 class RunSummaryData(BaseModel):
@@ -81,4 +94,18 @@ async def post_go_live(
     async with db_engine(request).connect() as conn:
         run = await current_run(conn)
     assert run is not None and run.run_id == run_id
+    return RunSummaryData(run_id=run.run_id, name=run.name, status=run.status)
+
+
+@router.post("/{run_id}/close")
+async def post_close(
+    run_id: int,
+    body: CloseRunRequest,
+    request: Request,
+    principal: Annotated[Principal, Depends(require_role("admin"))],
+    _draining: Annotated[None, Depends(refuse_while_draining)],
+) -> RunSummaryData:
+    run = await close_in_process(
+        request.app.state, run_id, confirm_name=body.confirm_name, author=principal.label
+    )
     return RunSummaryData(run_id=run.run_id, name=run.name, status=run.status)
