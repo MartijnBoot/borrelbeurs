@@ -240,8 +240,8 @@ Exit: an admin can configure a borrel from scratch.
 Exit: two past borrels comparable; xlsx export matches the database.
 
 - [x] spec — read `docs/specs/phase-7-analytics.md` (`Draft`) → approve, or `/clear` then `/spec 7`
-- [ ] branch — `git switch main` then `git pull` then `git switch -c docs/phase-7-plan`
-- [ ] plan — `/clear` then `/plan 7`
+- [x] branch — `git switch main` then `git pull` then `git switch -c docs/phase-7-plan`
+- [x] plan — `/clear` then `/plan 7`
 - [ ] audit — `/clear` then `/audit 7`
 - [ ] merge the plan — per-phase loop step 5 with `<N>` = 7
 - [ ] tasks (`/build 7 <T>`, `/review 7`):
