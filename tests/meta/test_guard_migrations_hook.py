@@ -156,14 +156,14 @@ def test_load_chain_ignores_non_migration_files(tmp_path: Path) -> None:
 
 
 def test_head_paths_on_the_real_repository_is_the_newest_revision() -> None:
-    """Anti-vacuity, against the real tree: today's only head is 0009_phase_6_admin.py.
+    """Anti-vacuity, against the real tree: today's only head is 0010_phase_7_lifecycle.py.
 
     If this ever fails because another revision landed, that is expected --
     update the assertion, it is not this guard that broke.
     """
     heads = head_paths(VERSIONS_DIR)
 
-    assert heads == {(VERSIONS_DIR / "0009_phase_6_admin.py").resolve()}
+    assert heads == {(VERSIONS_DIR / "0010_phase_7_lifecycle.py").resolve()}
 
 
 # --- decide ---------------------------------------------------------------------
@@ -232,10 +232,10 @@ def test_decide_on_the_real_repository_blocks_the_baseline_and_allows_the_head()
     """Against the real tree as it stands: the baseline has successors, so an
     edit to 0001_baseline.py is refused, naming the head, and one to the head is not."""
     blocked, message = decide(VERSIONS_DIR / "0001_baseline.py")
-    allowed, _ = decide(VERSIONS_DIR / "0009_phase_6_admin.py")
+    allowed, _ = decide(VERSIONS_DIR / "0010_phase_7_lifecycle.py")
 
     assert blocked is False
-    assert "0009_phase_6_admin.py" in message
+    assert "0010_phase_7_lifecycle.py" in message
     assert allowed is True
 
 
