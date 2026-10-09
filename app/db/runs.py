@@ -32,6 +32,7 @@ from app.core.errors import AppError
 from app.db.engine_state import insert_state, insert_tick
 from app.db.mapping import DrinkRow, params_to_json, spec_from_rows
 from app.db.models import Drink, Run, RunConfigRevision
+from app.db.products import resolve_product
 from exchange import EngineState, Params, anchor_s0_to_current_y, initial_state
 
 _NAME_INDEX = "drink_name_live"
@@ -167,15 +168,24 @@ async def add_drink(
     s0: float,
     c: float,
     bar_price_cents: int,
+    product_id: int | None = None,
 ) -> int:
-    """Insert one drink, or raise `DuplicateDrinkName` naming the clash."""
+    """Insert one drink, or raise `DuplicateDrinkName` naming the clash.
+
+    Without a `product_id` the drink's product is resolved from its name (Phase 7
+    SD1, `app/db/products.py`): every add -- import, draft, live -- comes here.
+    """
+    key = name_key(name)
+    if product_id is None:
+        product_id = await resolve_product(conn, run_id, key, name)
     statement = (
         insert(Drink)
         .values(
             run_id=run_id,
             slot=slot,
             name=name,
-            name_key=name_key(name),
+            name_key=key,
+            product_id=product_id,
             p_min_cents=p_min_cents,
             p0_cents=p0_cents,
             p_max_cents=p_max_cents,

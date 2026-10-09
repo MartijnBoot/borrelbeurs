@@ -299,3 +299,20 @@ def test_a_database_failure_after_the_drinks_exits_1_and_writes_nothing(
     assert drinks_inserted == len(_live()["names"])
     assert "database error" in capsys.readouterr().err
     assert _counts(settings, scratch) == before
+
+
+def test_an_import_gives_every_drink_a_product(
+    scratch: str, settings: Settings, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Phase 7 SD1, AC10: the import adds through `add_drink`, which resolves products."""
+    run_id = _imported_run(capsys, "--config", str(LIVE_CONFIG_PATH))
+
+    rows = _query(
+        settings,
+        scratch,
+        "SELECT drink.name, product.name FROM drink "
+        "LEFT JOIN product USING (product_id) WHERE run_id = :r ORDER BY slot",
+        r=run_id,
+    )
+    assert [drink for drink, _ in rows] == _live()["names"]
+    assert [product for _, product in rows] == [drink for drink, _ in rows]
