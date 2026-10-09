@@ -16,3 +16,26 @@ body {
   background: var(--bg);
   color: var(--text);
 }
+
+/* The bg and header images (Phase 6 PD9). /theme.css writes these rules for
+   slots set when it loaded; ThemeProvider flags a slot on <html> so one set or
+   removed live paints without a reload. Same declarations as `render_css`. */
+html[data-img-bg] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--img-bg);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 0.12;
+}
+
+html[data-img-header] header {
+  background-image: var(--img-header) !important;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}

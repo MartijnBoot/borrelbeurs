@@ -28,7 +28,7 @@ from app.runtime.holder import (
     Outcome,
     PersistenceUnavailable,
 )
-from app.runtime.manipulation import schedule, start_event
+from app.runtime.manipulation import InvalidJump, schedule, start_event
 from app.runtime.rehydrate import RehydratedRun, rehydrate
 from exchange import Params, advance
 from tests.support.clock import FakeClock
@@ -243,6 +243,40 @@ def test_an_event_skips_a_removed_drink(settings: Settings, database_url: str) -
                     await conn.execute(text("SELECT drink_ids FROM market_event"))
                 ).scalar_one()
             assert stored == [bier]
+
+    asyncio.run(scenario())
+
+
+def test_a_jump_is_checked_under_the_lock_against_the_live_spec(
+    settings: Settings, database_url: str
+) -> None:
+    """AC6: a removed drink or a target outside the bounds is refused, with nothing written."""
+
+    async def scenario() -> None:
+        async with _market(settings, database_url) as m:
+            bier, wijn = m.holder.drink_ids
+            before = await m.counts()
+            for target in (149, 501):  # Bier's bounds are 150-500, inclusive
+                with pytest.raises(InvalidJump):
+                    await schedule(m.holder, bier, target, 5_000, clock=m.clock)
+            with pytest.raises(InvalidJump):
+                await schedule(m.holder, 10_000, 300, 5_000, clock=m.clock)  # not a drink here
+            await schedule(m.holder, bier, 500, 5_000, clock=m.clock)  # the bound itself
+
+            async with m.engine.begin() as conn:
+                await conn.execute(
+                    text("UPDATE drink SET removed_at = now() WHERE drink_id = :d"), {"d": wijn}
+                )
+            run = await rehydrate(m.engine, now_ms=T0)
+            assert isinstance(run, RehydratedRun)
+            holder = MarketHolder.from_rehydrated(
+                run, engine=m.engine, clock=m.clock, sink=m.events.extend
+            )
+            mid = await m.counts()
+            with pytest.raises(InvalidJump):
+                await schedule(holder, wijn, 300, 5_000, clock=m.clock)
+            assert await m.counts() == mid
+            assert before[1:3] == mid[1:3]
 
     asyncio.run(scenario())
 

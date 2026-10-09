@@ -25,6 +25,7 @@ from __future__ import annotations
 import dataclasses
 from typing import Final, cast
 
+from app.core.errors import AppError
 from app.db.codec import tick_prices
 from app.db.engine_state import compare_and_set, insert_tick
 from app.db.market_events import end_event, insert_event
@@ -46,19 +47,39 @@ from exchange import schedule_jump
 DEFAULT_EVENT_MS: Final = 30_000
 
 
+class InvalidJump(AppError):
+    """The drink is not an active drink of the live run, or the target is outside its bounds."""
+
+    status_code = 422
+    code = "invalid_request"
+
+
 async def schedule(
     holder: MarketHolder, drink_id: int, target_cents_: int, duration_ms: int, *, clock: Clock
 ) -> int:
-    """One jump; the new version. The caller has validated the bounds (T25's route)."""
+    """One jump; the new version. `InvalidJump` for a drink that is not active or a target outside
+    its bounds -- checked under the lock, against the spec a concurrent edit or removal may have
+    just changed (AC6)."""
     engine = holder.engine
 
     async def step(view: MarketView) -> Outcome[int]:
         assert view.run_id is not None and view.spec is not None and view.state is not None
+        if drink_id not in view.drink_ids:
+            raise InvalidJump(f"drink {drink_id} is not a drink of the live run")
+        i = view.drink_ids.index(drink_id)
+        if not view.spec.active[i]:
+            raise InvalidJump(f"drink {drink_id} is removed from the live run")
+        p_min = round(float(view.spec.p_min[i]) * 100)
+        p_max = round(float(view.spec.p_max[i]) * 100)
+        if not p_min <= target_cents_ <= p_max:
+            raise InvalidJump(
+                f"target {target_cents_} is outside [{p_min}, {p_max}] for this drink"
+            )
         now_ms = clock.wall_ms()
         candidate = schedule_jump(
             view.spec,
             view.state,
-            drink=view.drink_ids.index(drink_id),
+            drink=i,
             p_target=target_cents_ / 100,
             duration_ms=duration_ms,
             now_ms=now_ms,

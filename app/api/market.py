@@ -18,18 +18,12 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import Principal, clock_of, refuse_while_draining, require_role
-from app.core.errors import AppError
 from app.realtime.messages import MarketEventInfo
 from app.runtime.holder import MarketHolder, NoLiveRunError
 from app.runtime.manipulation import DEFAULT_EVENT_MS, schedule, start_event
 from app.runtime.market_events import EventKind
 
 router = APIRouter(prefix="/market", tags=["market"])
-
-
-class InvalidManipulation(AppError):
-    status_code = 422
-    code = "invalid_request"
 
 
 class JumpRequest(BaseModel):
@@ -66,17 +60,7 @@ async def post_jump(
     holder = _holder(request)
     if holder.is_empty or holder.spec is None:
         raise NoLiveRunError("there is no live run")
-    if body.drink_id not in holder.drink_ids:
-        raise InvalidManipulation(f"drink {body.drink_id} is not a drink of the live run")
-    i = holder.drink_ids.index(body.drink_id)
-    if not holder.spec.active[i]:
-        raise InvalidManipulation(f"drink {body.drink_id} is removed from the live run")
-    p_min = round(float(holder.spec.p_min[i]) * 100)
-    p_max = round(float(holder.spec.p_max[i]) * 100)
-    if not p_min <= body.target_price_cents <= p_max:
-        raise InvalidManipulation(
-            f"target {body.target_price_cents} is outside [{p_min}, {p_max}] for this drink"
-        )
+    # The drink and bounds checks run inside `schedule`, under the lock.
     version = await schedule(
         holder, body.drink_id, body.target_price_cents, body.duration_ms, clock=clock_of(request)
     )

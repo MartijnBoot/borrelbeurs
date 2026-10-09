@@ -62,15 +62,31 @@ describe('ThemeProvider', () => {
     expect(document.body.style.fontFamily).toBe('"EB Garamond", Georgia, serif')
   })
 
-  it('sets each set image slot as --img-*, and removes it when null (Phase 6 PD9)', () => {
+  it('sets each set image slot as --img-*, and resets it when null (Phase 6 PD9)', () => {
     setTheme(theme(1, { images: { ...blauw.images, logo: '/assets/7', promo: '/assets/9' } }))
     expect(root().getPropertyValue('--img-logo')).toBe('url("/assets/7")')
     expect(root().getPropertyValue('--img-promo')).toBe('url("/assets/9")')
-    expect(root().getPropertyValue('--img-bg')).toBe('')
+    expect(root().getPropertyValue('--img-bg')).toBe('initial')
 
     setTheme(theme(2, { images: { ...blauw.images, promo: '/assets/9' } }))
-    expect(root().getPropertyValue('--img-logo')).toBe('')
+    // `initial` (not removed) beats the `:root` value `/theme.css` loaded with, so
+    // `var(--img-logo, bundled)` falls back to the bundled logo.
+    expect(root().getPropertyValue('--img-logo')).toBe('initial')
     expect(root().getPropertyValue('--img-promo')).toBe('url("/assets/9")')
+  })
+
+  it('flags the bg and header slots on <html> so the static rules paint them live', () => {
+    const html = document.documentElement
+    setTheme(theme(1, { images: { ...blauw.images, bg: '/assets/1', header: '/assets/2' } }))
+    expect(html.hasAttribute('data-img-bg')).toBe(true)
+    expect(html.hasAttribute('data-img-header')).toBe(true)
+
+    setTheme(theme(2, { images: { ...blauw.images, header: '/assets/2' } }))
+    expect(html.hasAttribute('data-img-bg')).toBe(false)
+    expect(html.hasAttribute('data-img-header')).toBe(true)
+
+    setTheme(theme(3))
+    expect(html.hasAttribute('data-img-header')).toBe(false)
   })
 
   it('leaves /theme.css in charge until a theme arrives', () => {

@@ -6,8 +6,9 @@
  * over `/theme.css`, so no reload is needed.
  *
  * The image slots (Phase 6 PD9) are `--img-<slot>` the same way: set to the
- * server's `/assets/<id>`, or removed when null, so `/theme.css`'s rules and
- * the bundled fallbacks apply.
+ * server's `/assets/<id>`, or `initial` when null, so the bundled fallbacks
+ * apply. `data-img-<slot>` on `<html>` switches on `base.css`'s bg and header
+ * rules, which `/theme.css` only writes for slots set when it loaded.
  *
  * The client holds no preset data (SD6): what is applied is exactly what the
  * server sent. A revision not higher than the last applied one is ignored
@@ -20,9 +21,12 @@ import { exchangeStore, selectTheme, type ThemeData } from '../exchange'
 function apply(theme: ThemeData): void {
   const root = document.documentElement.style
   for (const [name, value] of Object.entries(theme.tokens)) root.setProperty(name, value)
+  const html = document.documentElement
   for (const [slot, url] of Object.entries(theme.images)) {
-    if (url === null) root.removeProperty(`--img-${slot}`)
-    else root.setProperty(`--img-${slot}`, `url("${url}")`)
+    // `initial`, not removed: removing the inline value would let the `:root`
+    // value `/theme.css` loaded with apply again (a deleted asset's url).
+    root.setProperty(`--img-${slot}`, url === null ? 'initial' : `url("${url}")`)
+    html.toggleAttribute(`data-img-${slot}`, url !== null)
   }
   document.body.style.fontFamily = theme.font_family
 }
