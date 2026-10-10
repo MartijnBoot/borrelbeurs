@@ -21,6 +21,7 @@ from app.db.runs import (
     DraftExists,
     DuplicateDrinkName,
     LiveRunExists,
+    RunNotFound,
     RunSummary,
     active_drinks,
     add_drink,
@@ -397,3 +398,110 @@ def test_current_run_is_live_over_draft_else_the_newest_draft_else_none(
     assert none is None
     assert live is not None and (live.name, live.status) == ("Live", "live")
     assert draft is not None and (draft.name, draft.status) == ("Concept", "draft")
+
+
+def test_create_run_copies_a_closed_runs_active_drinks_and_params(
+    settings: Settings, database_url: str
+) -> None:
+    """Phase 7 SD4, AC9: active drinks only, new ids, compact slots, the same products."""
+
+    async def body(engine: AsyncEngine) -> tuple[Any, ...]:
+        async with engine.begin() as conn:
+            source = await create_draft_run(
+                conn, name="Vorige", params=Params(step_quant=0.3), run_seed=1
+            )
+            await _bier(conn, source, "Bier", slot=0)
+            wijn = await _bier(conn, source, "Wijn", slot=2)
+            await _bier(conn, source, "Fris", slot=3)
+            await conn.execute(
+                text("UPDATE drink SET removed_at = now() WHERE drink_id = :d"), {"d": wijn}
+            )
+            await conn.execute(
+                text(
+                    "UPDATE drink SET p_min_cents = 120, p0_cents = 210, p_max_cents = 450,"
+                    " a = 0.5, d = 0.25, s0 = 1.5, c = 0.75, bar_price_cents = 199"
+                    " WHERE run_id = :r AND name = 'Fris'"
+                ),
+                {"r": source},
+            )
+            await conn.execute(
+                text("INSERT INTO news (run_id, ts_ms, level, text) VALUES (:r, 1, 'info', 'x')"),
+                {"r": source},
+            )
+            await conn.execute(
+                text(
+                    "INSERT INTO market_event (run_id, kind, drink_ids, t_start_ms, t_end_ms)"
+                    " VALUES (:r, 'crash', '[]', 1, 2)"
+                ),
+                {"r": source},
+            )
+        await _end(engine, source)
+        async with engine.begin() as conn:
+            # The latest run's params, which a copy must not take.
+            await create_draft_run(conn, name="Nieuwer", params=Params(step_quant=0.9), run_seed=1)
+            await conn.execute(text("UPDATE run SET status = 'ended' WHERE name = 'Nieuwer'"))
+
+        run_id = await create_run(engine, name="Nieuw", author="a", copy_from_run_id=source)
+
+        columns = (
+            "slot, name, p_min_cents, p0_cents, p_max_cents, a, d, s0, c, bar_price_cents,"
+            " product_id, drink_id, removed_at IS NULL"
+        )
+        async with engine.connect() as conn:
+
+            async def drinks(run: int) -> list[tuple[Any, ...]]:
+                rows = await conn.execute(
+                    text(f"SELECT {columns} FROM drink WHERE run_id = :r ORDER BY slot"), {"r": run}
+                )
+                return [tuple(row) for row in rows]
+
+            params = {
+                int(row.run_id): row.params
+                for row in await conn.execute(text("SELECT run_id, params FROM run"))
+            }
+            counts: list[int] = []
+            for table in ("order", "price_tick", "news", "market_event", "engine_state"):
+                count = await conn.execute(
+                    text(f'SELECT count(*) FROM "{table}" WHERE run_id = :r'), {"r": run_id}
+                )
+                counts.append(int(count.scalar_one()))
+            config: dict[str, Any]
+            (config,) = (
+                await conn.execute(
+                    text("SELECT config FROM run_config_revision WHERE run_id = :r"), {"r": run_id}
+                )
+            ).scalars()
+            return (
+                await drinks(source),
+                await drinks(run_id),
+                params[source],
+                params[run_id],
+                counts,
+                config,
+            )
+
+    old, new, source_params, new_params, counts, config = _with_engine(settings, database_url, body)
+
+    active = [row for row in old if row[-1]]
+    assert [row[1] for row in new] == ["Bier", "Fris"]
+    assert [row[0] for row in new] == [0, 1]
+    # Every copied column, the product included, equals the source's; slot and id do not.
+    assert [row[1:11] for row in new] == [row[1:11] for row in active]
+    assert not {row[11] for row in new} & {row[11] for row in old}
+    assert all(row[-1] for row in new)
+    assert Params.from_dict(new_params) == Params.from_dict(source_params) == Params(step_quant=0.3)
+    assert counts == [0, 0, 0, 0, 0]
+    assert [d["name"] for d in config["drinks"]] == ["Bier", "Fris"]
+    assert [d["drink_id"] for d in config["drinks"]] == [row[11] for row in new]
+
+
+def test_create_run_from_an_unknown_source_is_run_not_found_creating_nothing(
+    settings: Settings, database_url: str
+) -> None:
+    async def body(engine: AsyncEngine) -> int:
+        with pytest.raises(RunNotFound):
+            await create_run(engine, name="Nieuw", author="a", copy_from_run_id=999)
+        async with engine.connect() as conn:
+            return int((await conn.execute(text("SELECT count(*) FROM run"))).scalar_one())
+
+    assert _with_engine(settings, database_url, body) == 0

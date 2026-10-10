@@ -98,3 +98,65 @@ def test_other_roles_are_403(login: Login, role: str) -> None:
 
     assert client.post("/api/runs", json={"name": "x"}).status_code == 403
     assert client.get("/api/runs/current").status_code == 403
+
+
+def test_create_copying_an_ended_run_holds_its_active_drinks(
+    login: Login, settings: Settings, api_env: str
+) -> None:
+    """Phase 7 SD4, AC9 over HTTP: `copy_from_run_id` reaches `create_run`."""
+    admin = login("admin")
+    source = admin.post("/api/runs", json={"name": "Vorige"}).json()["run_id"]
+    _add_drink(settings, api_env, run_id=source, name="Bier")
+    _set_status(settings, api_env, run_id=source, status="ended")
+
+    response = admin.post("/api/runs", json={"name": "Nieuw", "copy_from_run_id": source})
+
+    assert response.status_code == 201, response.text
+    assert response.json()["name"] == "Nieuw"
+    assert _drink_names(settings, api_env, run_id=response.json()["run_id"]) == ["Bier"]
+
+
+def test_create_copying_an_unknown_run_is_404_creating_nothing(login: Login) -> None:
+    admin = login("admin")
+
+    response = admin.post("/api/runs", json={"name": "Nieuw", "copy_from_run_id": 999})
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "run_not_found"
+    assert admin.get("/api/runs/current").status_code == 404
+
+
+def _run_sql(settings: Settings, url: str, sql: str, values: dict[str, object]) -> list[object]:
+    async def scenario() -> list[object]:
+        engine = create_engine(settings.model_copy(update={"database_url": url}))
+        try:
+            async with engine.begin() as conn:
+                result = await conn.execute(text(sql), values)
+                return list(result.scalars()) if result.returns_rows else []
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(scenario())
+
+
+def _add_drink(settings: Settings, url: str, *, run_id: int, name: str) -> None:
+    _run_sql(
+        settings,
+        url,
+        "INSERT INTO drink (run_id, slot, name, name_key, p_min_cents, p0_cents, p_max_cents,"
+        " a, d, s0, c, bar_price_cents) VALUES (:r, 0, :n, lower(:n), 100, 200, 300,"
+        " 0, 0, 0, 0, 200)",
+        {"r": run_id, "n": name},
+    )
+
+
+def _set_status(settings: Settings, url: str, *, run_id: int, status: str) -> None:
+    _run_sql(
+        settings, url, "UPDATE run SET status = :s WHERE run_id = :r", {"s": status, "r": run_id}
+    )
+
+
+def _drink_names(settings: Settings, url: str, *, run_id: int) -> list[object]:
+    return _run_sql(
+        settings, url, "SELECT name FROM drink WHERE run_id = :r ORDER BY slot", {"r": run_id}
+    )

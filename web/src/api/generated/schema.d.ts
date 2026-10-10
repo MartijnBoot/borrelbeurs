@@ -584,6 +584,8 @@ export interface components {
         CreateRunRequest: {
             /** Name */
             name: string;
+            /** Copy From Run Id */
+            copy_from_run_id?: number | null;
         };
         /** CreatedDrink */
         CreatedDrink: {

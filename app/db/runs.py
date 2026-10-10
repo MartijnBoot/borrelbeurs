@@ -417,8 +417,16 @@ async def latest_params(conn: AsyncConnection) -> Params | None:
     return None if params is None else Params.from_dict(params)
 
 
-async def create_run(engine: AsyncEngine, *, name: str, author: str) -> int:
-    """A new draft and its revision 1, or `LiveRunExists` / `DraftExists` (Phase 6 SD2, PD6)."""
+async def create_run(
+    engine: AsyncEngine, *, name: str, author: str, copy_from_run_id: int | None = None
+) -> int:
+    """A new draft and its revision 1, or `LiveRunExists` / `DraftExists` (Phase 6 SD2, PD6).
+
+    With `copy_from_run_id` (Phase 7 SD4) the draft takes that run's `params`
+    instead of the latest run's, and each of its active drinks in slot order --
+    every column, the same product -- under a new `drink_id` in slots 0..n-1.
+    An unknown source is `RunNotFound`, with nothing written.
+    """
     name = name.strip()
     async with engine.begin() as conn:
         # Conflicts with itself, so a concurrent create waits here until this commits.
@@ -430,14 +438,46 @@ async def create_run(engine: AsyncEngine, *, name: str, author: str) -> int:
             raise DraftExists(
                 f"run {current.run_id} is already a draft", extra={"run_id": current.run_id}
             )
-        params = await latest_params(conn) or Params()
+        drinks: list[DrinkRow] = []
+        products: dict[int, int | None] = {}
+        if copy_from_run_id is None:
+            params = await latest_params(conn) or Params()
+        else:
+            params = Params.from_dict((await get_run(conn, copy_from_run_id)).params)
+            drinks = await active_drinks(conn, copy_from_run_id)
+            products = {
+                int(row.drink_id): row.product_id
+                for row in await conn.execute(
+                    select(Drink.drink_id, Drink.product_id).where(Drink.run_id == copy_from_run_id)
+                )
+            }
         run_id = await create_draft_run(
             conn, name=name, params=params, run_seed=secrets.randbits(63)
         )
+        for slot, drink in enumerate(drinks):
+            await add_drink(
+                conn,
+                run_id,
+                name=drink.name,
+                slot=slot,
+                p_min_cents=drink.p_min_cents,
+                p0_cents=drink.p0_cents,
+                p_max_cents=drink.p_max_cents,
+                a=drink.a,
+                d=drink.d,
+                s0=drink.s0,
+                c=drink.c,
+                bar_price_cents=drink.bar_price_cents,
+                product_id=products[drink.drink_id],
+            )
         await append_config_revision(
             conn,
             run_id,
-            config={"name": name, "params": params_to_json(params), "drinks": []},
+            config={
+                "name": name,
+                "params": params_to_json(params),
+                "drinks": [dataclasses.asdict(d) for d in await all_drinks(conn, run_id)],
+            },
             author=author,
         )
     return run_id

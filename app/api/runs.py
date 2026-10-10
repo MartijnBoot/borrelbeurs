@@ -4,7 +4,9 @@
 the most recently created run (else `Params()`), a random seed, the column
 defaults, and revision 1 authored by the session's key label. It refuses with
 409 `live_run_exists`, or 409 `draft_exists` carrying the draft's `run_id`, so
-the UI can open that draft.
+the UI can open that draft. With `copy_from_run_id` the draft starts from that
+run's params and active drinks instead (Phase 7 SD4); an unknown one is 404
+`run_not_found`.
 
 `GET /api/runs/current` is what `/settings` and home edit: the live run, else
 the draft, else 404 `no_current_run` (PD2).
@@ -49,6 +51,7 @@ class CreateRunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+    copy_from_run_id: int | None = None
 
 
 class ConfirmNameRequest(BaseModel):
@@ -72,7 +75,12 @@ async def post_run(
     principal: Annotated[Principal, Depends(require_role("admin"))],
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> RunSummaryData:
-    run_id = await create_run(db_engine(request), name=body.name, author=principal.label)
+    run_id = await create_run(
+        db_engine(request),
+        name=body.name,
+        author=principal.label,
+        copy_from_run_id=body.copy_from_run_id,
+    )
     return RunSummaryData(run_id=run_id, name=body.name, status="draft")
 
 
