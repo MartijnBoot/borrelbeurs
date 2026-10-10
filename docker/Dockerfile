@@ -18,9 +18,9 @@ WORKDIR /web
 
 # Manifests only, so `pnpm install` is cached until a dependency changes.
 COPY web/package.json web/pnpm-lock.yaml ./
-# pnpm itself isn't in the base image; pin the major the committed lockfile
-# was written with (lockfileVersion 9.0).
-RUN npm install --global --no-fund --no-audit pnpm@9 \
+# pnpm itself isn't in the base image; pinned to the exact version CI uses
+# (.github/workflows/ci.yml), so the image builds what the gate tested.
+RUN npm install --global --no-fund --no-audit pnpm@9.15.9 \
     && pnpm install --frozen-lockfile
 
 COPY web/ ./
@@ -31,6 +31,12 @@ RUN pnpm build
 FROM python:3.11-slim@sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e AS runtime
 WORKDIR /app
 
+# The commit this image is built from (Phase 8 SD7): CI passes `github.sha`;
+# `/healthz` and the start log report it, so a deploy can tell which image runs.
+ARG BUILD_SHA=unknown
+ENV BUILD_SHA=$BUILD_SHA
+LABEL org.opencontainers.image.revision=$BUILD_SHA
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:${PATH}"
@@ -39,11 +45,22 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # image installs through it too rather than introducing pip-compile or a
 # hand-exported requirements.txt as a second source of truth; pinned to the
 # version this repo develops against, then removed in this same layer so it
-# never reaches the final image.
+# never reaches the final image. So is every other packaging tool the base
+# image carries -- pip, setuptools, wheel, ensurepip's bundled wheels -- and
+# every vendored `tests` directory (greenlet's, numpy's): nothing at runtime
+# installs a package or runs a library's own tests (Phase 8 T11, D-43, PD9).
+# `--no-cache` keeps uv's wheel cache out of /root; and websockets' deprecated
+# `legacy` package goes too -- uvicorn's `auto` WebSocket protocol is the
+# sans-I/O one, which never imports it (scripts/ci/check_image.py bans any
+# directory named `legacy`, so this would otherwise fail the image).
 COPY pyproject.toml uv.lock ./
 RUN pip install --no-cache-dir uv==0.11.14 \
-    && uv sync --frozen --no-dev --no-install-project \
-    && pip uninstall --yes uv
+    && uv sync --frozen --no-dev --no-install-project --no-cache \
+    && pip uninstall --yes uv \
+    && /usr/local/bin/python -m pip uninstall --yes pip setuptools wheel \
+    && rm -rf /usr/local/bin/pip* /usr/local/lib/python3.11/ensurepip/_bundled \
+    && find /usr/local/lib/python3.11 /app/.venv -depth -type d -name tests -exec rm -rf {} + \
+    && rm -rf /app/.venv/lib/python3.11/site-packages/websockets/legacy
 
 # Source, after dependencies are resolved — `exchange/` and `db/` are plain
 # packages this app imports, not separately installed.
@@ -57,8 +74,10 @@ COPY --from=web-build /web/dist ./web/dist
 RUN useradd --uid 1001 --no-create-home --shell /usr/sbin/nologin appuser
 USER 1001
 
-# `/healthz` does no work and touches nothing (app/api/health.py) — exactly
-# what a liveness probe should ask. Plain `python`, not curl: the slim base
+# `/healthz` is 200 while the ticker loop turns (and in standby), and 503 once
+# it has not turned for three intervals (app/api/health.py) -- the liveness a
+# probe should ask about; a database outage alone fails `/readyz`, not this.
+# Plain `python`, not curl: the slim base
 # doesn't carry curl, and the interpreter that already has to be here is one
 # fewer thing to install.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \

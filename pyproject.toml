@@ -18,7 +18,13 @@ requires-python = "==3.11.*"
 dependencies = [
     # Web layer. ADR 0001, ADR 0002.
     "fastapi>=0.115,<1.0",
-    "uvicorn[standard]>=0.32,<1.0",
+    # Phase 8 T11 (D-43): uvicorn's `[standard]` extra, minus what only `--reload`
+    # and `--env-file` use (watchfiles, python-dotenv, pyyaml). The server runs as
+    # `python -m app.main`, which needs neither, and the image is smaller for it.
+    "uvicorn>=0.32,<1.0",
+    "websockets>=13,<18",
+    "httptools>=0.6,<1.0",
+    "uvloop>=0.21,<1.0; sys_platform != 'win32'",
     # Validated configuration. pydantic-settings is what turns the environment
     # from unvalidated strings into a schema that can fail at boot (AC2).
     "pydantic>=2.9,<3",
