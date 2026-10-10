@@ -22,12 +22,13 @@ from app.core.config import Settings, get_settings
 from app.db.advisory_lock import ADVISORY_LOCK_KEY, acquire, release, watchdog
 from app.db.exports import interrupt_unfinished
 from app.db.runs import add_drink, create_draft_run, go_live
+from app.db.schema_compat import DbState, read_db_state
 from app.db.session import create_engine
 from app.jobs.export_xlsx import run_worker
 from app.runtime.boot import BootFailure, start_runtime
 from app.runtime.rehydrate import rehydrate
 from app.runtime.ticker import Ticker
-from tests.integration.conftest import RunAlembic
+from tests.integration.conftest import RunAlembic, head_and_previous
 from tests.support.clock import FakeClock
 
 T0 = 1_759_312_800_000
@@ -312,8 +313,10 @@ def test_a_failing_migration_fails_boot_and_releases_the_lock(
 def test_boot_migrates_a_database_one_revision_behind_to_head(
     empty_database: str, settings: Settings, alembic: RunAlembic, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Plan R9: the real `to_thread` migration path, against a real schema one behind."""
-    assert alembic(empty_database, "upgrade", "0009").returncode == 0
+    """Plan R9: the real `to_thread` migration path, against a real schema one behind.
+    Phase 8 AC8: the SD3 rule finds that revision known, and migrates as before."""
+    head, previous = head_and_previous()
+    assert alembic(empty_database, "upgrade", previous).returncode == 0
     monkeypatch.setenv("DATABASE_URL", empty_database)
     get_settings.cache_clear()
 
@@ -335,7 +338,7 @@ def test_boot_migrates_a_database_one_revision_behind_to_head(
             await engine.dispose()
 
     try:
-        assert asyncio.run(scenario()) == "0010"
+        assert asyncio.run(scenario()) == head
     finally:
         get_settings.cache_clear()
 
@@ -408,3 +411,159 @@ def test_a_diverged_state_calls_on_lock_lost(on: str, settings: Settings) -> Non
         return lost
 
     assert asyncio.run(scenario()) == ["lost"]
+
+
+# --- Phase 8 T3: the SD3 boot rule (PD2; AC8, AC9 in-process half, AC10) ---------
+#
+# Each case gets its own `empty_database` migrated to head, then made to look like a
+# schema a newer image left: `alembic_version` stamped to a revision these scripts do
+# not know. The session's scratch database is never stamped.
+
+AHEAD_FIXTURE = "ci_ahead_fixture"
+FLOOR = "0011"
+
+
+async def _execute(url: str, *statements: str) -> list[tuple[Any, ...]]:
+    """Run statements in one transaction; return the rows of the last."""
+    engine = create_async_engine(url, poolclass=pool.NullPool)
+    try:
+        async with engine.begin() as conn:
+            rows: list[tuple[Any, ...]] = []
+            for statement in statements:
+                result = await conn.execute(text(statement))
+                rows = [tuple(row) for row in result] if result.returns_rows else []
+            return rows
+    finally:
+        await engine.dispose()
+
+
+async def _row_counts(url: str) -> dict[str, int]:
+    """Every table in the schema, `alembic_version` and `schema_compat` included."""
+    tables = await _execute(
+        url,
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_type = 'BASE TABLE'",
+    )
+    counts = {}
+    for (table,) in tables:
+        ((count,),) = await _execute(url, f'SELECT count(*) FROM "{table}"')
+        counts[str(table)] = int(count)
+    return counts
+
+
+@pytest.fixture
+def at_head(
+    empty_database: str, alembic: RunAlembic, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[str]:
+    """A database of its own, migrated to head, that `get_settings()` points at."""
+    migrated = alembic(empty_database, "upgrade", "head")
+    assert migrated.returncode == 0, migrated.stderr
+    monkeypatch.setenv("DATABASE_URL", empty_database)
+    get_settings.cache_clear()
+    yield empty_database
+    get_settings.cache_clear()
+
+
+def test_read_db_state_sees_the_revision_and_the_floor(at_head: str) -> None:
+    """`0011` seeds the rollback floor; the state is read with plain SQL."""
+
+    async def scenario() -> DbState:
+        engine = create_async_engine(at_head, poolclass=pool.NullPool)
+        try:
+            async with engine.connect() as conn:
+                return await read_db_state(conn)
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(scenario()) == DbState(
+        db_revision=head_and_previous()[0], min_code_revision=FLOOR
+    )
+
+
+def test_read_db_state_on_an_empty_database_is_all_none(empty_database: str) -> None:
+    """No `alembic_version` at all: a fresh database, which boot migrates."""
+
+    async def scenario() -> DbState:
+        engine = create_async_engine(empty_database, poolclass=pool.NullPool)
+        try:
+            async with engine.connect() as conn:
+                return await read_db_state(conn)
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(scenario()) == DbState(db_revision=None, min_code_revision=None)
+
+
+def test_a_schema_ahead_but_declared_compatible_boots_without_migrating(
+    at_head: str, settings: Settings, caplog: pytest.LogCaptureFixture
+) -> None:
+    """AC9 (in-process): an unknown revision whose `min_code_revision` this image knows.
+    The real `upgrade_to_head` is left in place: called, it would fail on the unknown
+    revision, so a boot that comes up ready did not call it."""
+    asyncio.run(_execute(at_head, f"UPDATE alembic_version SET version_num = '{AHEAD_FIXTURE}'"))
+
+    async def scenario() -> bool:
+        app = FastAPI()
+        async with start_runtime(
+            app, _settings(settings, at_head), clock=FakeClock(T0), run_migrations=True
+        ):
+            return bool(app.state.ready)
+
+    with caplog.at_level(logging.WARNING, logger="app.runtime.boot"):
+        ready = asyncio.run(scenario())
+
+    assert ready
+    (ahead,) = [r for r in caplog.records if r.getMessage() == "schema_ahead"]
+    assert ahead.levelno == logging.WARNING
+    assert ahead.__dict__["db_revision"] == AHEAD_FIXTURE
+    assert ahead.__dict__["min_code_revision"] == FLOOR
+    assert asyncio.run(_execute(at_head, "SELECT version_num FROM alembic_version")) == [
+        (AHEAD_FIXTURE,)
+    ]
+
+
+@pytest.mark.parametrize(
+    "incompatible",
+    [
+        pytest.param(
+            f"UPDATE schema_compat SET min_code_revision = '{AHEAD_FIXTURE}'", id="unknown-floor"
+        ),
+        pytest.param("DELETE FROM schema_compat", id="row-missing"),
+        pytest.param("DROP TABLE schema_compat", id="table-missing"),
+    ],
+)
+def test_a_schema_ahead_and_incompatible_is_refused_having_written_nothing(
+    at_head: str, settings: Settings, caplog: pytest.LogCaptureFixture, incompatible: str
+) -> None:
+    """AC10: refused under the lock, before anything is migrated, rehydrated or ticked --
+    with a live run present, so a boot that went on would have written a tick."""
+    asyncio.run(_go_live(settings, at_head))
+    asyncio.run(
+        _execute(
+            at_head, f"UPDATE alembic_version SET version_num = '{AHEAD_FIXTURE}'", incompatible
+        )
+    )
+    before = asyncio.run(_row_counts(at_head))
+    clock = FakeClock(T0 + 60_000)
+
+    async def scenario() -> FastAPI:
+        app = FastAPI()
+        with pytest.raises(BootFailure, match="schema ahead of image"):
+            async with start_runtime(
+                app, _settings(settings, at_head), clock=clock, run_migrations=True
+            ):
+                pass  # pragma: no cover - the boot above is expected to raise
+        return app
+
+    with caplog.at_level(logging.ERROR, logger="app.runtime.boot"):
+        app = asyncio.run(scenario())
+
+    assert getattr(app.state, "ready", False) is False
+    (failed,) = [r for r in caplog.records if r.getMessage() == "boot_failed"]
+    assert failed.__dict__["reason"] == "schema ahead of image"
+    assert failed.__dict__["db_revision"] == AHEAD_FIXTURE
+    assert asyncio.run(_row_counts(at_head)) == before
+    assert before["price_tick"] >= 1  # the go-live's tick, and no other
+    assert asyncio.run(_execute(at_head, "SELECT version_num FROM alembic_version")) == [
+        (AHEAD_FIXTURE,)
+    ]

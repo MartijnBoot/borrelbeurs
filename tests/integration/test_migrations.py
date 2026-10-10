@@ -449,3 +449,26 @@ def test_a_bar_price_on_a_line_may_not_be_negative(database_url: str) -> None:
 
     with pytest.raises(IntegrityError, match="order_line_bar_price_cents_check"):
         _in_transaction(database_url, write)
+
+
+def test_0011_seeds_the_rollback_floor_and_downgrades_cleanly(
+    empty_database: str, alembic: RunAlembic
+) -> None:
+    """Phase 8 T3 (SD3, PD2): one row, `(1, '0011')`, and a singleton by constraint."""
+    assert alembic(empty_database, "upgrade", "0011").returncode == 0
+
+    async def read(connection: AsyncConnection) -> None:
+        rows = await connection.execute(text("SELECT id, min_code_revision FROM schema_compat"))
+        assert [tuple(row) for row in rows] == [(1, "0011")]
+
+    async def second_row(connection: AsyncConnection) -> None:
+        await connection.execute(
+            text("INSERT INTO schema_compat (id, min_code_revision) VALUES (2, '0011')")
+        )
+
+    _in_transaction(empty_database, read)
+    with pytest.raises(IntegrityError, match="schema_compat_id_check"):
+        _in_transaction(empty_database, second_row)
+
+    assert alembic(empty_database, "downgrade", "0010").returncode == 0
+    assert "schema_compat" not in asyncio.run(_tables(empty_database))

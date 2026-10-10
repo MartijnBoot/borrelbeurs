@@ -10,7 +10,10 @@ Startup, in this order, and nothing is served until the end:
 3. **migrate** to head, in a worker thread (plan PD3: `db/migrations/env.py`
    calls `asyncio.run`, which cannot nest in this loop). A failure fails boot.
    The Alembic config is built without a file name, so `env.py` does not call
-   `fileConfig` and reset the application's logging;
+   `fileConfig` and reset the application's logging. First, Phase 8 SD3
+   (`app/db/schema_compat.py`): a schema a newer image migrated is served as it
+   is when it declares this image compatible (`schema_ahead`), and refused with
+   `BootFailure("schema ahead of image")`, having written nothing, when not;
 4. **the theme** (Phase 4 PD5): the stored row, or Blauw at revision 0, with
    or without a live run;
 5. **rehydrate** the live run (with the gap rule), or an empty holder (SD16);
@@ -40,6 +43,7 @@ from typing import Final
 
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from fastapi import FastAPI
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -48,6 +52,7 @@ from app.core.config import Settings
 from app.db.advisory_lock import acquire, release, watchdog
 from app.db.exports import interrupt_unfinished
 from app.db.models import Run
+from app.db.schema_compat import Decision, decide, read_db_state
 from app.db.session import create_engine, create_heavy_read_engine
 from app.db.theme import get_theme
 from app.jobs.export_xlsx import run_worker
@@ -85,6 +90,32 @@ def upgrade_to_head() -> None:
     config = Config()
     config.set_main_option("script_location", str(MIGRATIONS_DIR))
     command.upgrade(config, "head")
+
+
+def known_revisions() -> frozenset[str]:
+    """Every revision this image's scripts hold (SD3); blocking, it imports them."""
+    script = ScriptDirectory(str(MIGRATIONS_DIR))
+    return frozenset(entry.revision for entry in script.walk_revisions())
+
+
+async def migrate(engine: AsyncEngine) -> None:
+    """SD3, under the lock: migrate, serve a newer schema declared compatible, or refuse."""
+    async with engine.connect() as conn:
+        state = await read_db_state(conn)
+    known = await asyncio.to_thread(known_revisions)
+    decision = decide(known, state.db_revision, state.min_code_revision)
+    revisions = {"db_revision": state.db_revision, "min_code_revision": state.min_code_revision}
+    if decision is Decision.REFUSE:
+        logger.error("boot_failed", extra={"reason": "schema ahead of image", **revisions})
+        raise BootFailure("schema ahead of image")
+    if decision is Decision.AHEAD:
+        logger.warning("schema_ahead", extra=revisions)
+        return
+    try:
+        await asyncio.to_thread(upgrade_to_head)
+    except Exception as error:
+        logger.error("boot_failed", extra={"reason": "migration failed"})
+        raise BootFailure(f"migration failed: {type(error).__name__}") from error
 
 
 async def run_tick_interval_ms(engine: AsyncEngine, run_id: int) -> int:
@@ -141,11 +172,7 @@ async def start_runtime(
             raise BootFailure("advisory lock held by another instance")
 
         if run_migrations:
-            try:
-                await asyncio.to_thread(upgrade_to_head)
-            except Exception as error:
-                logger.error("boot_failed", extra={"reason": "migration failed"})
-                raise BootFailure(f"migration failed: {type(error).__name__}") from error
+            await migrate(engine)
 
         app.state.theme = await _stored_theme(engine)
 

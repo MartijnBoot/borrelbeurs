@@ -27,7 +27,7 @@ from sqlalchemy import pool, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.db.advisory_lock import ADVISORY_LOCK_KEY
-from tests.integration.conftest import RunAlembic
+from tests.integration.conftest import RunAlembic, head_and_previous
 from tests.integration.realapp.harness import (
     Client,
     mint_key,
@@ -188,7 +188,7 @@ def test_a_second_instance_exits_fast_logs_the_lock_and_never_migrates(
         downgraded = alembic(empty_database, "downgrade", "-1")
         assert downgraded.returncode == 0, downgraded.stderr
         before = _rows(empty_database, "SELECT version_num FROM alembic_version")
-        assert before == [("0009",)]
+        assert before == [(head_and_previous()[1],)]
         started = time.monotonic()
         second = spawn_app(empty_database, tmp_path / "second.stderr")
         code = second.wait(timeout=15)

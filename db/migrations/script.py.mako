@@ -32,6 +32,12 @@ down_revision: str | None = ${literal(down_revision)}
 branch_labels: str | Sequence[str] | None = ${literal(branch_labels)}
 depends_on: str | Sequence[str] | None = ${literal(depends_on)}
 
+# Phase 8 SD3: "unchanged" if this migration is expand-only; its own revision id
+# if older code can no longer run against it, and then upgrade() must call
+# db.migrations.compat.set_min_code_revision(op, min_code_revision).
+# tests/meta/test_schema_compat_coverage.py fails until this is filled in.
+min_code_revision = ...  # "unchanged" or a revision id
+
 
 def upgrade() -> None:
     ${upgrades if upgrades else "pass"}
