@@ -9,6 +9,7 @@ summed in SQL from `order_line`; nothing here is stored.
   for an ended run only.
 - `run_detail`: one run's totals, and a row per product that sold -- removed
   drinks included -- named after the product's newest drink in the run.
+  `removed` marks a product none of whose drinks is still active in the run.
 - `compare`: two runs' per-product rows side by side, joined on the product
   (PD14, AC11) by `match_products`; a product in one run only has `None` on the
   other side. A row is named after B's drink when B has it, else A's.
@@ -61,6 +62,7 @@ class ProductTotals:
     revenue_cents: int
     bar_price_total_cents: int
     avg_price_cents: int  # round(revenue / qty), half up
+    removed: bool = False  # every drink of the product in this run is removed
 
 
 @dataclass(frozen=True)
@@ -82,6 +84,7 @@ class _Sum:
     qty: int = 0
     revenue_cents: int = 0
     bar_price_cents: int = 0
+    active: bool = False
 
 
 def _half_up(numerator: int, denominator: int) -> int:
@@ -172,7 +175,13 @@ async def run_detail(conn: AsyncConnection, run_id: int) -> RunDetail:
     order, line, drink = models.Order, models.OrderLine, models.Drink
     drinks = (
         await conn.execute(
-            select(drink.drink_id, drink.name, drink.name_key, drink.product_id)
+            select(
+                drink.drink_id,
+                drink.name,
+                drink.name_key,
+                drink.product_id,
+                drink.removed_at.is_(None).label("active"),
+            )
             .where(drink.run_id == run_id)
             .order_by(drink.drink_id)
         )
@@ -198,6 +207,7 @@ async def run_detail(conn: AsyncConnection, run_id: int) -> RunDetail:
         key = product_key(row.product_id, row.name_key)
         total = products.setdefault(key, _Sum(row.product_id, row.name))
         total.name = row.name
+        total.active = total.active or bool(row.active)
         qty, revenue, bar = sold.get(int(row.drink_id), (0, 0, 0))
         total.qty += qty
         total.revenue_cents += revenue
@@ -211,6 +221,7 @@ async def run_detail(conn: AsyncConnection, run_id: int) -> RunDetail:
             t.revenue_cents,
             t.bar_price_cents,
             _half_up(t.revenue_cents, t.qty),
+            removed=not t.active,
         )
         for key, t in products.items()
         if t.qty

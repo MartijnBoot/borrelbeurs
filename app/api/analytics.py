@@ -58,6 +58,7 @@ class AnalyticsProduct(BaseModel):
     revenue_cents: int
     bar_price_total_cents: int
     avg_price_cents: int
+    removed: bool
 
 
 class AnalyticsRunDetail(AnalyticsRun):

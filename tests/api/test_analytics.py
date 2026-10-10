@@ -91,6 +91,7 @@ def test_the_run_detail_on_the_heavy_engine(
     assert row["product_key"] == f"product:{row['product_id']}"
     assert (row["qty"], row["revenue_cents"], row["bar_price_total_cents"]) == (2, total, 520)
     assert row["avg_price_cents"] == total // 2
+    assert row["removed"] is False
     assert spy.connects == 1
 
 

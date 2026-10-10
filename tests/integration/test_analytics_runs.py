@@ -189,10 +189,32 @@ def test_the_run_detail_includes_a_removed_drink_that_sold(
         ("Wijn", 1, 310, 300),
     ]
     assert [p.avg_price_cents for p in per_product] == [247, 310]  # round(740 / 3)
+    assert [p.removed for p in per_product] == [False, True]  # Wijn was removed
     assert all(p.product_id is not None for p in per_product)
     assert [p.product_key for p in per_product] == [f"product:{p.product_id}" for p in per_product]
     assert sum(p.revenue_cents for p in per_product) == run.revenue_cents == revenue
     assert (run.run_id, run.duration_ms) == (ended, HOUR)
+
+
+def test_a_product_re_added_after_a_removal_is_not_removed(
+    settings: Settings, database_url: str
+) -> None:
+    """T20's marker: one row for both drinks, and not "verwijderd" while one is active."""
+
+    async def body(engine: AsyncEngine) -> list[ProductTotals]:
+        async with engine.begin() as conn:
+            run_id = await _run(conn, "Weer", t0_ms=T0)
+            old = await _drink(conn, run_id, "Bier", 0, bar_price_cents=250)
+            await _order(conn, run_id, 1, [(old, 1, 250, 250)])
+            await _remove(conn, old)
+            new = await _drink(conn, run_id, "Bier", 1, bar_price_cents=250)
+            await _order(conn, run_id, 2, [(new, 2, 260, 250)])
+        async with engine.connect() as conn:
+            return list((await run_detail(conn, run_id)).per_product)
+
+    (bier,) = _with_engine(settings, database_url, body)
+
+    assert (bier.name, bier.qty, bier.removed) == ("Bier", 3, False)
 
 
 def test_a_run_without_orders_is_zero_totals_and_no_rows(

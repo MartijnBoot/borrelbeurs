@@ -648,6 +648,8 @@ export interface components {
             bar_price_total_cents: number;
             /** Avg Price Cents */
             avg_price_cents: number;
+            /** Removed */
+            removed: boolean;
         };
         /** AnalyticsRun */
         AnalyticsRun: {
