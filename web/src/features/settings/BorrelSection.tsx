@@ -3,11 +3,19 @@
  * name and status, and "Live zetten" for a draft, behind `ConfirmDialog`.
  * With no run, "Geen borrel" and a "Nieuwe borrel" form; a 409
  * `draft_exists` opens the draft that already exists.
+ *
+ * Phase 7 (SD2, SD4; AC2, AC9, AC32): a live run has "Borrel afsluiten",
+ * behind `ConfirmDialog` with the run's name to type; after it the form shows
+ * again. The form's "Kopieer drankjes uit" lists the past runs and sends the
+ * choice as `copy_from_run_id`; if the list cannot be fetched, only the empty
+ * option is offered and the form still works.
  */
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+import { Select } from '../../components/ui/Select'
 import { HttpError, request } from '../../lib/http'
+import { fetchPastRuns, type PastRun } from './pastRuns'
 import styles from './settings.module.css'
 import { CurrentRun, fetchCurrentRun, useCurrentRun } from './useCurrentRun'
 
@@ -18,28 +26,47 @@ const REFUSALS: Readonly<Record<string, string>> = {
   run_not_draft: 'Deze borrel staat niet meer in concept.',
   run_not_ready: 'Voeg eerst een drankje toe.',
   run_not_found: 'Deze borrel bestaat niet meer.',
+  name_mismatch: 'Naam komt niet overeen.',
+  run_not_live: 'Deze borrel is niet live.',
   forbidden: 'Geen toegang',
 }
 
+/** The codes first: a 422 `name_mismatch` is not a bad name for a new borrel. */
 function failureText(error: unknown): string {
-  if (error instanceof HttpError && error.status === 422) return 'Vul een naam in (1–100 tekens).'
   if (error instanceof HttpError && REFUSALS[error.code] !== undefined) return REFUSALS[error.code]
+  if (error instanceof HttpError && error.status === 422) return 'Vul een naam in (1–100 tekens).'
   return 'Verbindingsfout. Probeer opnieuw.'
 }
 
 export function BorrelSection() {
   const { run, setRun, failed } = useCurrentRun()
   const [name, setName] = useState('')
-  const [asking, setAsking] = useState(false)
+  const [copyFrom, setCopyFrom] = useState('')
+  const [pastRuns, setPastRuns] = useState<PastRun[]>([])
+  const [asking, setAsking] = useState<'live' | 'close' | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const noRun = run === null
+  useEffect(() => {
+    if (!noRun) return
+    let current = true
+    fetchPastRuns().then(
+      (runs) => current && setPastRuns(runs),
+      () => current && setPastRuns([]),
+    )
+    return () => {
+      current = false
+    }
+  }, [noRun])
 
   async function create(event: FormEvent) {
     event.preventDefault()
     if (name.trim() === '') return
     setBusy(true)
+    const body = copyFrom === '' ? { name } : { name, copy_from_run_id: Number(copyFrom) }
     try {
-      setRun(await request('POST', '/api/runs', { body: { name }, schema: CurrentRun }))
+      setRun(await request('POST', '/api/runs', { body, schema: CurrentRun }))
       setError(null)
     } catch (failure) {
       if (failure instanceof HttpError && failure.code === 'draft_exists') {
@@ -53,11 +80,11 @@ export function BorrelSection() {
     }
   }
 
-  async function goLive(runId: number) {
-    setAsking(false)
+  async function act(path: string, body: object | undefined, next: (ran: CurrentRun) => void) {
+    setAsking(null)
     setBusy(true)
     try {
-      setRun(await request('POST', `/api/runs/${runId}/go-live`, { schema: CurrentRun }))
+      next(await request('POST', path, { body, schema: CurrentRun }))
       setError(null)
     } catch (failure) {
       setError(failureText(failure))
@@ -65,6 +92,11 @@ export function BorrelSection() {
       setBusy(false)
     }
   }
+
+  const copyOptions = [
+    { value: '', label: '—' },
+    ...pastRuns.map((past) => ({ value: String(past.run_id), label: past.name })),
+  ]
 
   return (
     <>
@@ -82,6 +114,12 @@ export function BorrelSection() {
               onChange={(event) => setName(event.target.value)}
             />
           </label>
+          <Select
+            label="Kopieer drankjes uit"
+            value={copyFrom}
+            options={copyOptions}
+            onChange={setCopyFrom}
+          />
           <Button type="submit" disabled={busy}>
             Nieuwe borrel
           </Button>
@@ -92,17 +130,36 @@ export function BorrelSection() {
           <strong>{run.name}</strong>
           <span className={styles.badge}>{STATUS[run.status]}</span>
           {run.status === 'draft' && (
-            <Button disabled={busy} onClick={() => setAsking(true)}>
+            <Button disabled={busy} onClick={() => setAsking('live')}>
               Live zetten
             </Button>
           )}
+          {run.status === 'live' && (
+            <Button disabled={busy} onClick={() => setAsking('close')}>
+              Borrel afsluiten
+            </Button>
+          )}
           <ConfirmDialog
-            open={asking}
+            open={asking === 'live'}
             message={`'${run.name}' live zetten?`}
             confirmLabel="Bevestigen"
             cancelLabel="Annuleren"
-            onConfirm={() => void goLive(run.run_id)}
-            onCancel={() => setAsking(false)}
+            onConfirm={() => void act(`/api/runs/${run.run_id}/go-live`, undefined, setRun)}
+            onCancel={() => setAsking(null)}
+          />
+          <ConfirmDialog
+            open={asking === 'close'}
+            message={`'${run.name}' afsluiten? De borrel stopt voor iedereen.`}
+            confirmLabel="Afsluiten"
+            cancelLabel="Annuleren"
+            confirmText={run.name}
+            onConfirm={() =>
+              void act(`/api/runs/${run.run_id}/close`, { confirm_name: run.name }, () => {
+                setCopyFrom('')
+                setRun(null)
+              })
+            }
+            onCancel={() => setAsking(null)}
           />
         </div>
       )}
