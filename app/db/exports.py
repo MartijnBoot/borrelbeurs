@@ -17,23 +17,34 @@ never) in the same transaction; `fail` records the error. Both match only a
 `running` row, so a result for a row deleted meanwhile (its run was deleted)
 matches nothing and says so. `interrupt_unfinished` is boot's: a `queued` or
 `running` row left by a stopped process becomes `failed`, `onderbroken`.
+
+`request_export` is a manual request's rule (PD8), in one transaction under
+`LOCK TABLE export IN SHARE ROW EXCLUSIVE MODE`, which conflicts with itself, so
+two requests never both see a free slot: the run's own `queued` or `running`
+export is returned as it is; else, with two other exports in flight (one
+running, one waiting), `ExportBusy`; else a new `queued` row. A final export
+never comes through here: the close inserts it, slot or no slot (SD6).
 """
 
 from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Final
+from datetime import UTC, datetime, timedelta
+from typing import Any, Final
 
-from sqlalchemy import BigInteger, delete, func, select, type_coerce, update
+from sqlalchemy import BigInteger, Row, delete, func, insert, select, text, type_coerce, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from app.core.errors import AppError
 from app.db import models
 from app.db.runs import RunNotFound
 
 INTERRUPTED: Final = "onderbroken"
 KEEP_MANUAL: Final = 3
+IN_FLIGHT: Final = ("queued", "running")
+# One running, one waiting (PD8).
+SLOTS: Final = 2
 
 
 @dataclass(frozen=True)
@@ -260,7 +271,162 @@ async def interrupt_unfinished(conn: AsyncConnection) -> int:
     export = models.Export
     result = await conn.execute(
         update(export)
-        .where(export.status.in_(("queued", "running")))
+        .where(export.status.in_(IN_FLIGHT))
         .values(status="failed", error=INTERRUPTED, finished_at=func.now())
     )
     return int(result.rowcount)
+
+
+class ExportBusy(AppError):
+    """One export runs and another waits; a third run's request is refused (PD8)."""
+
+    status_code = 409
+    code = "export_busy"
+
+
+class ExportNotFound(AppError):
+    status_code = 404
+    code = "export_not_found"
+
+
+class ExportNotReady(AppError):
+    """The file exists only once the export is `done`."""
+
+    status_code = 409
+    code = "export_not_ready"
+
+
+@dataclass(frozen=True)
+class ExportRow:
+    """An export without its bytes."""
+
+    export_id: int
+    run_id: int
+    kind: str
+    status: str
+    requested_by: str
+    sha256: str | None
+    bytes: int | None
+    line_count: int | None
+    total_cents: int | None
+    error: str | None
+    created_at_ms: int
+    started_at_ms: int | None
+    finished_at_ms: int | None
+
+
+_EPOCH: Final = datetime(1970, 1, 1, tzinfo=UTC)
+
+
+def _ms(at: datetime | None) -> int | None:
+    return None if at is None else (at - _EPOCH) // timedelta(milliseconds=1)
+
+
+_COLUMNS: Final = (
+    models.Export.export_id,
+    models.Export.run_id,
+    models.Export.kind,
+    models.Export.status,
+    models.Export.requested_by,
+    models.Export.sha256,
+    models.Export.bytes,
+    models.Export.line_count,
+    models.Export.total_cents,
+    models.Export.error,
+    models.Export.created_at,
+    models.Export.started_at,
+    models.Export.finished_at,
+)
+
+
+def _row(row: Row[*tuple[Any, ...]]) -> ExportRow:
+    r = row._mapping
+    return ExportRow(
+        export_id=int(r["export_id"]),
+        run_id=int(r["run_id"]),
+        kind=r["kind"],
+        status=r["status"],
+        requested_by=r["requested_by"],
+        sha256=r["sha256"],
+        bytes=r["bytes"],
+        line_count=r["line_count"],
+        total_cents=r["total_cents"],
+        error=r["error"],
+        created_at_ms=(r["created_at"] - _EPOCH) // timedelta(milliseconds=1),
+        started_at_ms=_ms(r["started_at"]),
+        finished_at_ms=_ms(r["finished_at"]),
+    )
+
+
+async def _require_run(conn: AsyncConnection, run_id: int) -> None:
+    run = models.Run
+    if (await conn.execute(select(run.run_id).where(run.run_id == run_id))).first() is None:
+        raise RunNotFound(f"no run {run_id}")
+
+
+async def request_export(conn: AsyncConnection, run_id: int, *, requested_by: str) -> ExportRow:
+    """A manual export of `run_id` (PD8); call inside a transaction. See the module docstring."""
+    export = models.Export
+    await conn.execute(text("LOCK TABLE export IN SHARE ROW EXCLUSIVE MODE"))
+    await _require_run(conn, run_id)
+    own = (
+        await conn.execute(
+            select(*_COLUMNS)
+            .where(export.run_id == run_id, export.status.in_(IN_FLIGHT))
+            .order_by(export.export_id)
+            .limit(1)
+        )
+    ).first()
+    if own is not None:
+        return _row(own)
+    others = (
+        await conn.execute(
+            select(func.count()).where(export.run_id != run_id, export.status.in_(IN_FLIGHT))
+        )
+    ).scalar_one()
+    if others >= SLOTS:
+        raise ExportBusy("an export is running and another is waiting; try again later")
+    created = (
+        await conn.execute(
+            insert(export)
+            .values(run_id=run_id, kind="manual", status="queued", requested_by=requested_by)
+            .returning(*_COLUMNS)
+        )
+    ).one()
+    return _row(created)
+
+
+async def list_exports(conn: AsyncConnection, run_id: int) -> list[ExportRow]:
+    """The run's exports, newest first, or `RunNotFound`."""
+    await _require_run(conn, run_id)
+    export = models.Export
+    rows = await conn.execute(
+        select(*_COLUMNS).where(export.run_id == run_id).order_by(export.export_id.desc())
+    )
+    return [_row(row) for row in rows]
+
+
+async def get_export(conn: AsyncConnection, export_id: int) -> ExportRow:
+    """The export, or `ExportNotFound`."""
+    export = models.Export
+    row = (await conn.execute(select(*_COLUMNS).where(export.export_id == export_id))).first()
+    if row is None:
+        raise ExportNotFound(f"no export {export_id}")
+    return _row(row)
+
+
+async def export_file(conn: AsyncConnection, export_id: int) -> tuple[ExportRow, str, bytes]:
+    """`(export, run name, workbook bytes)`, or `ExportNotFound` / `ExportNotReady`."""
+    export = models.Export
+    row = (
+        await conn.execute(
+            select(*_COLUMNS, export.data, models.Run.name.label("run_name"))
+            .join(models.Run, models.Run.run_id == export.run_id)
+            .where(export.export_id == export_id)
+        )
+    ).first()
+    if row is None:
+        raise ExportNotFound(f"no export {export_id}")
+    if row.status != "done" or row.data is None:
+        raise ExportNotReady(f"export {export_id} is {row.status}")
+    return _row(row), row.run_name, bytes(row.data)
