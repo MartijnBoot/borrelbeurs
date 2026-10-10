@@ -31,7 +31,7 @@ from app.realtime.hub import Hub
 from app.realtime.messages import Envelope, RunClosedData
 from app.realtime.publish import Publisher
 from app.runtime.candles import CandleBook
-from app.runtime.clock import Clock
+from app.runtime.clock import Clock, commit_stamp_ms
 from app.runtime.holder import MarketHolder, MarketView, NoLiveRunError
 
 
@@ -53,7 +53,7 @@ async def close_in_process(
         if view.run_id != run_id:
             raise RunNotLive(f"run {run_id} is no longer live in this process")
         # Never before the last commit, so every order of the run is at or before it.
-        ended_at_ms = max(clock.wall_ms(), view.last_commit_wall_ms or 0)
+        ended_at_ms = commit_stamp_ms(clock, view)
         async with holder.engine.begin() as conn:
             await close_run(conn, run_id, ended_at_ms=ended_at_ms, requested_by=author)
         return ended_at_ms

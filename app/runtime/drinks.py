@@ -58,7 +58,7 @@ from app.db.runs import (
     update_drink,
     update_run,
 )
-from app.runtime.clock import Clock
+from app.runtime.clock import Clock, commit_stamp_ms
 from app.runtime.config import (
     InvalidConfig,
     append_revision,
@@ -191,7 +191,7 @@ async def add_live_drink(
 
     async def step(view: MarketView) -> Outcome[CreatedDrink]:
         assert view.run_id == run_id and view.spec is not None and view.state is not None
-        now_ms = clock.wall_ms()
+        now_ms = commit_stamp_ms(clock, view)
         async with engine.begin() as conn:
             run = readable(await get_run(conn, run_id, lock=True))
             drink_id = await _insert(conn, run_id, body)
@@ -314,7 +314,7 @@ async def edit_live_drink(
 
     async def step(view: MarketView) -> Outcome[int]:
         assert view.run_id == run_id and view.spec is not None and view.state is not None
-        now_ms = clock.wall_ms()
+        now_ms = commit_stamp_ms(clock, view)
         async with engine.begin() as conn:
             run = readable(await get_run(conn, run_id, lock=True))
             written = await _edit(conn, run, drink_id, patch, author=author)
@@ -384,7 +384,7 @@ async def remove_live_drink(
 
     async def step(view: MarketView) -> Outcome[int]:
         assert view.run_id == run_id and view.spec is not None and view.state is not None
-        now_ms = clock.wall_ms()
+        now_ms = commit_stamp_ms(clock, view)
         async with engine.begin() as conn:
             run = readable(await get_run(conn, run_id, lock=True))
             run, drinks, revision = await _remove(conn, run, drink_id, author=author)

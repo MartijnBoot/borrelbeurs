@@ -68,7 +68,7 @@ from app.db.runs import (
     set_drink_s0,
     update_run,
 )
-from app.runtime.clock import Clock
+from app.runtime.clock import Clock, commit_stamp_ms
 from app.runtime.history import TickEntry
 from app.runtime.holder import ConfigChanged, MarketHolder, MarketView, Outcome
 from exchange import EngineState, MarketSpec, Params, anchor_s0_to_current_y, hold_quoted_prices
@@ -442,7 +442,7 @@ async def write_live_config(
 
     async def step(view: MarketView) -> Outcome[int]:
         assert view.run_id == run_id and view.spec is not None and view.state is not None
-        now_ms = clock.wall_ms()
+        now_ms = commit_stamp_ms(clock, view)
         async with engine.begin() as conn:
             run = readable(await get_run(conn, run_id, lock=True))
             merged = await _merged(conn, run, patch)
@@ -472,7 +472,7 @@ async def anchor_s0(holder: MarketHolder, run_id: int, *, author: str, clock: Cl
 
     async def step(view: MarketView) -> Outcome[int]:
         assert view.run_id == run_id and view.spec is not None and view.state is not None
-        now_ms = clock.wall_ms()
+        now_ms = commit_stamp_ms(clock, view)
         spec = anchor_s0_to_current_y(view.spec, view.state.y)
         async with engine.begin() as conn:
             run = readable(await get_run(conn, run_id, lock=True))

@@ -31,7 +31,7 @@ from app.db.engine_state import compare_and_set, insert_tick
 from app.db.market_events import end_event, insert_event
 from app.db.news import NewsItem, NewsLevel, create_news
 from app.db.runs import active_drinks
-from app.runtime.clock import Clock
+from app.runtime.clock import Clock, commit_stamp_ms
 from app.runtime.history import TickEntry
 from app.runtime.holder import (
     MarketEventEnded,
@@ -75,7 +75,7 @@ async def schedule(
             raise InvalidJump(
                 f"target {target_cents_} is outside [{p_min}, {p_max}] for this drink"
             )
-        now_ms = clock.wall_ms()
+        now_ms = commit_stamp_ms(clock, view)
         candidate = schedule_jump(
             view.spec,
             view.state,
@@ -126,7 +126,7 @@ async def start_event(
     async def step(view: MarketView) -> Outcome[ActiveEvent]:
         assert view.run_id is not None and view.spec is not None and view.state is not None
         run_id, spec = view.run_id, view.spec
-        now_ms = clock.wall_ms()
+        now_ms = commit_stamp_ms(clock, view)
         state = view.state
         # A removed drink keeps its slot but takes no jump (Phase 6 SD13).
         targets = tuple(d for d, on in zip(view.drink_ids, spec.active, strict=True) if on)

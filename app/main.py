@@ -64,7 +64,7 @@ from app.core.errors import AppError, handle_app_error, handle_validation_error
 from app.core.logging import configure_logging
 from app.realtime.ws import router as ws_router
 from app.runtime.boot import exit_process, start_runtime
-from app.runtime.clock import Clock, RealClock
+from app.runtime.clock import AppClock, Clock, RealClock
 
 logger = logging.getLogger(__name__)
 
@@ -234,7 +234,9 @@ def create_app(
         redoc_url=None,
         openapi_url=None,
     )
-    application.state.clock = clock if clock is not None else RealClock()
+    # Phase 8 SD15: one app clock for every caller, its offset raised by the ticker
+    # and at boot; a test's `FakeClock` still drives it, since it only adds.
+    application.state.clock = AppClock(clock if clock is not None else RealClock())
     application.state.run_migrations = run_migrations
     application.state.request_shutdown = request_shutdown
     application.state.runtime = runtime
