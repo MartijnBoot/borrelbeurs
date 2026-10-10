@@ -242,11 +242,11 @@ Exit: two past borrels comparable; xlsx export matches the database.
 - [x] spec — read `docs/specs/phase-7-analytics.md` (`Draft`) → approve, or `/clear` then `/spec 7`
 - [x] branch — `git switch main` then `git pull` then `git switch -c docs/phase-7-plan`
 - [x] plan — `/clear` then `/plan 7`
-- [ ] audit — `/clear` then `/audit 7`
-- [ ] merge the plan — per-phase loop step 5 with `<N>` = 7
-- [ ] tasks (`/build 7 <T>`, `/review 7`):
-  - [ ] …
-- [ ] exit criterion — run two short borrels, compare them, export the xlsx and check its totals against the database:
+- [x] audit — `/clear` then `/audit 7`
+- [x] merge the plan — per-phase loop step 5 with `<N>` = 7
+- [x] tasks (`/build 7 <T>`, `/review 7`):
+  - [x] …
+- [x] exit criterion — run two short borrels, compare them, export the xlsx and check its totals against the database:
   1. `./scripts/setup.sh`, then `uv run uvicorn app.main:app --port 8000`; log in as admin.
   2. `/settings`: "Nieuwe borrel", add two or three drinks, "Live zetten"; take a few orders at `/bar`.
   3. "Borrel afsluiten", type the name; `/koers` shows "Borrel afgelopen" without a reload.
