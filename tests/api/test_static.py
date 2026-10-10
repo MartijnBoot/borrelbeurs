@@ -97,7 +97,17 @@ def spa_client(
 
 
 @pytest.mark.parametrize(
-    "path", ["/", "/login", "/login?next=%2Fkoers", "/koers", "/bar", "/manipulation", "/settings"]
+    "path",
+    [
+        "/",
+        "/login",
+        "/login?next=%2Fkoers",
+        "/koers",
+        "/bar",
+        "/manipulation",
+        "/settings",
+        "/analytics",
+    ],
 )
 def test_a_reload_of_an_spa_route_serves_index_html(spa_client: TestClient, path: str) -> None:
     """PD8: `/login` and every route in `ROLE_ROUTES` render the app on a reload."""
@@ -108,7 +118,15 @@ def test_a_reload_of_an_spa_route_serves_index_html(spa_client: TestClient, path
 
 def test_the_spa_routes_are_login_plus_the_role_table() -> None:
     """PD8: the server's own table, not a copy."""
-    assert {"/login", "/", "/koers", "/bar", "/manipulation", "/settings"} == app.main.SPA_ROUTES
+    assert {
+        "/login",
+        "/",
+        "/koers",
+        "/bar",
+        "/manipulation",
+        "/settings",
+        "/analytics",
+    } == app.main.SPA_ROUTES
 
 
 @pytest.mark.parametrize("path", ["/probe", "/koers/x", "/login/", "/settings.json"])

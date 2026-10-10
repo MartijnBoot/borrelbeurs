@@ -41,6 +41,7 @@ from starlette.responses import Response
 from starlette.types import Scope
 
 from app.api.admin import router as admin_router
+from app.api.analytics import router as analytics_router
 from app.api.assets import router as assets_router
 from app.api.auth import router as auth_router
 from app.api.config import router as config_router
@@ -81,6 +82,7 @@ api_router.include_router(runs_router)
 api_router.include_router(config_router)
 api_router.include_router(drinks_router)
 api_router.include_router(keys_router)
+api_router.include_router(analytics_router)
 
 # `pnpm --dir web build` output (T6). Not built by every checkout -- a Python
 # test run has no reason to have run pnpm first -- so its absence only means

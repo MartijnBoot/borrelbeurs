@@ -9,7 +9,8 @@ import { expect, server, submitKey, test, type Role } from './fixtures'
 const NAV: Record<Role, string[]> = {
   display: ['Live koersbord'],
   bar: ['Bar', 'Spel mechanica'],
-  admin: ['Home', 'Live koersbord', 'Bar', 'Spel mechanica', 'Instellingen'],
+  // '/analytics' shows as its path until T19 gives it a label (NavMenu's fallback).
+  admin: ['Home', 'Live koersbord', 'Bar', 'Spel mechanica', 'Instellingen', '/analytics'],
 }
 
 const LANDING: Record<Role, string> = { display: '/koers', bar: '/bar', admin: '/' }
