@@ -223,8 +223,7 @@ async def _publish_run_closed(client: TestClient) -> None:
     state = client.app.state  # type: ignore[attr-defined]
     hub = state.hub
     run_id = state.holder.run_id
-    hub.release_run()
-    hub.broadcast(
+    hub.release_run(
         Envelope(
             type="run_closed",
             seq=0,

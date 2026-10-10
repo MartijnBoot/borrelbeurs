@@ -7,7 +7,15 @@ import inspect
 import json
 
 from app.realtime.hub import QUEUE_LIMIT, SEND_TIMEOUT_MS, Hub
-from app.realtime.messages import Envelope, Pong, Resync, TickData, TickDrink, theme_data
+from app.realtime.messages import (
+    Envelope,
+    Pong,
+    Resync,
+    RunClosedData,
+    TickData,
+    TickDrink,
+    theme_data,
+)
 from app.runtime.theme import resolve
 from tests.support.clock import FakeClock
 
@@ -309,21 +317,57 @@ def test_a_theme_broadcast_keeps_the_resync_run_and_version() -> None:
     assert replayed == "theme"
 
 
-def test_release_run_clears_the_replay_log_and_the_resync_metadata() -> None:
-    """Phase 7 SD2: after a close no replay reaches back into the closed run."""
+def _run_closed(clock: FakeClock) -> Envelope:
+    return Envelope(
+        type="run_closed",
+        seq=0,
+        ts_ms=clock.wall_ms(),
+        run_id=1,
+        version=None,
+        data=RunClosedData(run_id=1, name="Borrel", ended_at_ms=clock.wall_ms()),
+    )
 
-    async def scenario() -> tuple[list[str] | None, str, int]:
+
+def test_release_run_clears_the_replay_log_and_the_resync_metadata() -> None:
+    """Phase 7 SD2: after a close no replay reaches back into the closed run; the
+    close's `run_closed` is the one broadcast after it, and is kept for late joiners."""
+
+    async def scenario() -> tuple[list[str] | None, list[str] | None, str, int, Envelope | None]:
         clock = FakeClock(T0)
         hub = Hub(clock=clock, replay_window_ms=WINDOW_MS, boot_id="b00t")
+        socket = HealthySocket()
+        hub.connect(socket)
         for k in range(1, 4):
             clock.advance(1_000)
             hub.broadcast(_tick(clock, k))
-        hub.release_run()
-        return hub.replay_after("b00t", 1), hub.resync_frame(), hub.seq
+        closed = _run_closed(clock)
+        seq = hub.release_run(closed)
+        await _drain()
+        assert _types(socket.frames) == ["tick", "tick", "tick", "run_closed"]
+        assert hub.closed is closed
+        return (
+            hub.replay_after("b00t", 1),
+            hub.replay_after("b00t", 3),
+            hub.resync_frame(),
+            seq,
+            hub.closed,
+        )
 
-    replay, resync, seq = asyncio.run(scenario())
+    replay, last, resync, seq, kept = asyncio.run(scenario())
 
     assert replay is None
+    assert last is not None and _types(last) == ["run_closed"]
     frame = json.loads(resync)
     assert (frame["run_id"], frame["version"]) == (None, None)
-    assert seq == 3  # the seq keeps counting; the next broadcast is 4
+    assert seq == 4  # the seq keeps counting
+    assert kept is not None and kept.type == "run_closed"
+
+
+def test_adopt_run_forgets_the_last_close() -> None:
+    clock = FakeClock(T0)
+    hub = Hub(clock=clock, replay_window_ms=WINDOW_MS)
+    hub.release_run(_run_closed(clock))
+
+    hub.adopt_run(2, replay_window_ms=WINDOW_MS)
+
+    assert hub.closed is None

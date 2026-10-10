@@ -15,6 +15,12 @@ from before can be answered with a replay: every client gets the new run's
 snapshot, including one reconnecting with the very `seq` it last held.
 `unicast_all` then sends that snapshot to everyone connected.
 
+**Close (Phase 7 SD2).** `release_run` clears the replay log and the resync
+metadata, then broadcasts the close's `run_closed`, so no replay reaches back
+into the closed run. It keeps that envelope as `closed` until the next
+`adopt_run`: a client sent `hello` for the run before it closed, but connected
+after, is sent it too (AC3).
+
 **Backpressure (SD29, D-34).** Each connection has a bounded queue of
 `QUEUE_LIMIT` frames and one writer task. `broadcast` and `unicast` are plain
 functions: they serialise once and enqueue, and never await, so neither the
@@ -142,10 +148,16 @@ class Hub:
         self._connections: set[Connection] = set()
         self._run_id: int | None = None
         self._version: int | None = None
+        self._closed: Envelope | None = None
 
     @property
     def seq(self) -> int:
         return self._seq
+
+    @property
+    def closed(self) -> Envelope | None:
+        """The last close's `run_closed`, until a run goes live again."""
+        return self._closed
 
     @property
     def connections(self) -> frozenset[Connection]:
@@ -204,11 +216,14 @@ class Hub:
         self._log.clear()
         self._seq += 1
         self._run_id, self._version = run_id, None
+        self._closed = None
 
-    def release_run(self) -> None:
-        """The live run was closed (Phase 7 SD2): no replay reaches back into it."""
+    def release_run(self, closed: Envelope) -> int:
+        """The live run was closed (Phase 7 SD2): broadcast `closed`; its `seq`."""
         self._log.clear()
         self._run_id, self._version = None, None
+        self._closed = closed
+        return self.broadcast(closed)
 
     @property
     def replay_window_ms(self) -> int:
