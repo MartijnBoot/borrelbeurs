@@ -124,7 +124,10 @@ The earnings series has one point per sale and is rebroadcast in full (D-31,
   - The worker lives in `app/jobs/export_xlsx.py`. It reads on its **own connection**, never the
     pool the order path uses, in a `REPEATABLE READ` read-only transaction (one consistent
     snapshot) with a longer statement timeout (SD11). It builds the workbook in memory inside
-    `asyncio.to_thread`.
+    `asyncio.to_thread`. **Amended 2026-10-10 (R16, approved by the human):** in one spawned
+    process instead, still in memory. A thread held the GIL long enough to take AC21's p95
+    order latency from 29 ms to 933 ms on a 20 000-line build. A process that dies mid-build
+    fails that export (AC7); the next build starts a new one.
   - **Concurrency:** at most one export runs. A manual request for a run that already has a
     queued or running export returns *that* row. A manual request for another run takes the one
     queue slot. Beyond that: 409 `export_busy`. **A final export (SD2) is never refused**: its

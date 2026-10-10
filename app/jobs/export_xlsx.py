@@ -34,10 +34,11 @@ import asyncio
 import io
 import logging
 import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
-from multiprocessing.pool import Pool
 from typing import Final, Protocol
 
 import xlsxwriter
@@ -229,42 +230,37 @@ class BuildProcess:
     snapshot nor writing the workbook can hold the event loop's.
 
     The process starts on the first build, not at boot, and is kept for the
-    next. `close` terminates it, so shutdown waits for no build (SD6).
+    next. A process that dies mid-build (out of memory, say) fails that build
+    with `BrokenProcessPool`, and the next build starts a new one (AC7). `close`
+    kills it, so shutdown waits for no build (SD6).
     """
 
     def __init__(self) -> None:
-        self._pool: Pool | None = None
+        self._pool: ProcessPoolExecutor | None = None
 
     async def build(self, settings: Settings, run_id: int, generated_at_ms: int) -> BuiltExport:
         if self._pool is None:
-            self._pool = multiprocessing.get_context("spawn").Pool(processes=1)
+            self._pool = ProcessPoolExecutor(
+                max_workers=1, mp_context=multiprocessing.get_context("spawn")
+            )
         loop = asyncio.get_running_loop()
-        result: asyncio.Future[BuiltExport | str] = loop.create_future()
-
-        def settle(value: BuiltExport | str | BaseException) -> None:
-            if result.done():
-                return
-            if isinstance(value, BaseException):
-                result.set_exception(value)
-            else:
-                result.set_result(value)
-
-        # The callbacks run on the pool's result thread, so they hop back onto the loop.
-        self._pool.apply_async(
-            _build_or_error,
-            (settings, run_id, generated_at_ms),
-            callback=lambda value: loop.call_soon_threadsafe(settle, value),
-            error_callback=lambda error: loop.call_soon_threadsafe(settle, error),
-        )
-        built = await result
+        try:
+            built = await loop.run_in_executor(
+                self._pool, _build_or_error, settings, run_id, generated_at_ms
+            )
+        except BrokenProcessPool:
+            self.close()
+            raise
         if isinstance(built, str):
             raise BuildFailed(built)
         return built
 
     def close(self) -> None:
         if self._pool is not None:
-            self._pool.terminate()
-            self._pool.join()
+            # Python 3.14's `terminate_workers`; until then, the executor's own map.
+            for process in list(self._pool._processes.values()):
+                process.kill()
+            self._pool.shutdown(wait=True, cancel_futures=True)
             self._pool = None
 
 
@@ -288,16 +284,24 @@ async def build_next(
         async with engine.begin() as conn:
             recorded = await fail(conn, job.export_id, error=message)
     else:
-        async with engine.begin() as conn:
-            recorded = await finish(
-                conn,
-                job,
-                data=built.data,
-                line_count=built.line_count,
-                total_cents=built.total_cents,
-            )
-        if recorded:
-            logger.info("export_done", extra={**log, "bytes": len(built.data)})
+        try:
+            async with engine.begin() as conn:
+                recorded = await finish(
+                    conn,
+                    job,
+                    data=built.data,
+                    line_count=built.line_count,
+                    total_cents=built.total_cents,
+                )
+        except Exception as error:
+            # Left `running`, every later request of the run would coalesce onto it.
+            message = f"{type(error).__name__}: {error}"
+            logger.error("export_failed", extra={**log, "error": message})
+            async with engine.begin() as conn:
+                recorded = await fail(conn, job.export_id, error=message)
+        else:
+            if recorded:
+                logger.info("export_done", extra={**log, "bytes": len(built.data)})
     if not recorded:
         logger.warning("export_dropped", extra=log)
     return True

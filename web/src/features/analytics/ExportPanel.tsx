@@ -78,6 +78,14 @@ export function ExportPanel({ runId }: ExportPanelProps) {
           if (!current) return
           setLoaded((old) => old && { ...old, rows: withUpdates(old.rows, updates) })
           setPolls((n) => n + 1)
+          if (updates.some((row) => !inFlight(row))) {
+            // A finished build may have pruned an older export (AC24), and a close
+            // may have queued a final one meanwhile: the list itself has moved.
+            listExports(runId).then(
+              (rows) => setLoaded((old) => (old?.runId === runId ? { runId, rows } : old)),
+              () => {}, // the merged rows stand
+            )
+          }
         },
         () => current && setPolls((n) => n + 1), // try again on the next beat
       )
@@ -86,7 +94,7 @@ export function ExportPanel({ runId }: ExportPanelProps) {
       current = false
       clearTimeout(timer)
     }
-  }, [waitingKey, polls])
+  }, [runId, waitingKey, polls])
 
   async function exportNow() {
     try {

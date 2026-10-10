@@ -168,7 +168,18 @@ async def run_list(conn: AsyncConnection) -> list[RunTotals]:
 
 
 async def run_detail(conn: AsyncConnection, run_id: int) -> RunDetail:
-    """The run's totals and its per-product rows, or `RunNotFound`."""
+    """The run's totals and its per-product rows, or `RunNotFound`.
+
+    One `REPEATABLE READ` snapshot, as `read_snapshot`: on a live run an order
+    committing between the two reads is in the totals and the rows, or in neither
+    (AC27). `conn` must not be in a transaction.
+    """
+    await conn.execution_options(isolation_level="REPEATABLE READ", postgresql_readonly=True)
+    async with conn.begin():
+        return await _detail(conn, run_id)
+
+
+async def _detail(conn: AsyncConnection, run_id: int) -> RunDetail:
     runs = await _runs(conn, run_id)
     if not runs:
         raise RunNotFound(f"no run {run_id}")
