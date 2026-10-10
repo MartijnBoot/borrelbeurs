@@ -21,17 +21,19 @@ both environments.
 
 | Table | Purpose | Notes |
 |---|---|---|
-| `run` | One borrel | `name` (1–100 characters after trimming; Phase 6), `status` draft/live/ended — at most one `live` (partial unique index `run_one_live`), `run_seed`, `tick_interval_ms`, `params` jsonb, `quote_grace_versions` (default 2, ≥ 0), `candle_interval_ms` (default 60 000, > 0) |
+| `run` | One borrel | `name` (1–100 characters after trimming; Phase 6), `status` draft/live/ended — at most one `live` (partial unique index `run_one_live`), `run_seed`, `tick_interval_ms`, `params` jsonb, `quote_grace_versions` (default 2, ≥ 0), `candle_interval_ms` (default 60 000, > 0), `ended_at`. **`ended` is final (Phase 7 SD2):** a run is ended only by the explicit close, which stamps `ended_at` from the app clock — never before the run's last order — and nothing writes to it afterwards. A shutdown leaves the run `live`. A draft or an ended run may be deleted with every row it owns (SD3); the live run may not |
+| `product` | A drink's identity across runs and renames (Phase 7 SD1) | `product_id`, `name_key` (the key it was created with; not unique), `name`, `created_at`. The analytics key. A drink added to a run takes the newest product with its `name_key` that has no active drink in that run, else a new one; a rename keeps the product. Products no drink references any more are deleted with the last run that used them |
 | `run_config_revision` | Append-only parameter history | Answers "who set `eta` to 5 mid-borrel". Gives most of the value of an admin audit log for free |
-| `drink` | Drink within a run | `drink_id`, `slot`, `name`, `name_key` (`name.strip().casefold()`, unique per run among non-removed drinks), `p_min_cents`, `p_max_cents`, `p0_cents`, `a`, `d`, `s0`, `c`, `bar_price_cents`, `added_at`, `removed_at` (soft delete) |
+| `drink` | Drink within a run | `drink_id`, `slot`, `name`, `name_key` (`name.strip().casefold()`, unique per run among non-removed drinks), `p_min_cents`, `p_max_cents`, `p0_cents`, `a`, `d`, `s0`, `c`, `bar_price_cents`, `added_at`, `removed_at` (soft delete), `product_id` (FK `product`; Phase 7). `product_id` is nullable at the database only so a rolled-back image can still insert (SD13); the app always sets it, and at most one active drink per run has a given product (`drink_product_live`) |
 | `engine_state` | The live simulation | **One row per run, UPSERT per tick.** `y`, `cum_orders`, `flow_ema`, `last_order_ts`, `jumps`, `last_idle_ms`, `last_bm_ms`, `rng_counter`, `version`, `tick_index`, `t_round`, `wall_ts_ms`. Per-drink values are `json` objects keyed by `drink_id`; each jump carries its `drink_id` |
 | `price_tick` | The price history | Append-only, PK `(run_id, version)`, one row per accepted transition. `prices` jsonb `{drink_id: {"p_cont", "p_q"}}`, `source` enum |
-| `order` | One customer transaction | `idempotency_key` **UNIQUE**, `version`, `actor_key_id` (FK `auth_key`, nullable), `response` jsonb (the receipt exactly as returned, nullable; Phase 2's orders have neither) |
-| `order_line` | One drink within an order | `drink_id`, `qty`, `unit_price_cents`, `line_total_cents`, `p_cont` |
+| `order` | One customer transaction | `idempotency_key` **UNIQUE**, `version`, `wall_ts_ms` (indexed with `run_id`, `order_run_wall_ts`, for the bucketed earnings series; Phase 7), `actor_key_id` (FK `auth_key`, nullable), `response` jsonb (the receipt exactly as returned, nullable; Phase 2's orders have neither) |
+| `order_line` | One drink within an order | `drink_id`, `qty`, `unit_price_cents`, `line_total_cents`, `p_cont`, `bar_price_cents` (Phase 7 SD5, D-20): the drink's bar price **read inside the order's transaction**, so a later bar-price change never rewrites an earlier sale. Nullable at the database only for a rolled-back image's rows (SD13), which fall back to the drink's current bar price |
 | `news` | News ticker items | `run_id`, `level` stored **lowercase**, `deleted_at` for soft delete |
 | `market_event` | Crash / bubble / correction | `run_id`, `kind` crash/bubble/correction, `drink_ids` jsonb, `t_start_ms`, **`t_end_ms`** (> `t_start_ms`), `ended_at` (NULL while active; indexed per run) |
 | `auth_key` | Access keys | `key_id`, `label` (1–100 characters), `role` display/bar/admin, **argon2id `secret_hash`**, `created_at`, `revoked_at`, `last_used_at` |
 | `theme` | Server-side theming | **A single row:** `id` SMALLINT PK, default 1, `CHECK (id = 1)`; `preset` (one of `oudgeld`, `blauw`, `groen`, `paars`, `rood`, `custom`); `revision` (≥ 1, bumped by every write); `updated_at`. No row means Blauw at revision 0. A preset's tokens are not stored: each built-in preset's 24 tokens and its font live in the server's manifest, `app/runtime/theme.py`. **Phase 6:** `custom_tokens` jsonb (the 24 tokens, each `#rgb`/`#rrggbb`) and `custom_font` (`inter`/`garamond`), both required when `preset` is `custom` (SD28); and one nullable image pointer per slot — `bg_asset_id`, `header_asset_id`, `logo_asset_id`, `promo_asset_id`, each FK `asset` (SD29) |
+| `export` | A run's xlsx export (Phase 7 SD6) | `export_id`, `run_id`, `kind` manual/final, `status` queued/running/done/failed, `requested_by`, `data` **bytea**, `sha256`, `bytes` (`CHECK bytes = octet_length(data)`), `line_count`, `total_cents`, `error`, `created_at`, `started_at`, `finished_at`; `done` requires `data`. Built by one worker from a `REPEATABLE READ` snapshot. A run keeps its final exports and its three newest completed manual ones; everything goes with the run when it is deleted. Boot fails rows a stopped process left `queued` or `running` (`onderbroken`) |
 | `asset` | Uploaded images (Phase 6 SD29) | `asset_id`, `content_type` (`image/png`/`jpeg`/`webp`/`gif`, sniffed from the bytes, never the client's), `sha256`, `data` **bytea**, `bytes` (1 B–5 MB, `CHECK bytes = octet_length(data)`), `created_at`. No filename. Each asset is referenced by exactly one theme slot; replacing or removing the slot deletes it in the same transaction. Served public and immutable at `GET /assets/{asset_id}` |
 
 ### `price_tick.source`
@@ -54,7 +56,8 @@ which the event laptop will not have. The assets are a handful of files under 5 
 uploads ever grow past tens of MB, revisit.
 
 **`bytea` rather than a container volume** for the same reason: container disks are
-ephemeral, and a volume would not survive a Render redeploy.
+ephemeral, and a volume would not survive a Render redeploy. Phase 7's xlsx exports
+(`export.data`) follow the same rule: a few MB each, bounded per run by the retention above.
 
 ## What replaces the v1 files
 
@@ -87,12 +90,18 @@ v1 carries two names that lie, and they are not ported:
 
 ## Analytics
 
-Cross-event queries work because `drink` carries identity independent of array position and
-`order_line` stores the price actually charged. The intended questions:
+Cross-event queries work because `order_line` stores the price actually charged and the bar
+price in force, and because each drink belongs to a **`product`**. An earlier version of this
+section said `drink` itself carried identity across events. It does not: a `drink_id` lives
+in one run, and a drink re-added to the next borrel is a new row. `product` is the identity
+across runs and renames (Phase 7 SD1); a drink without one (a rolled-back image's row) groups
+by its `name_key`. The questions Phase 7 answers, on a heavy-read connection with its own
+timeout (SD11), bucketed in SQL:
 
-- Revenue per borrel, and per drink per borrel.
-- Which drinks sell, and at what price points.
-- Price curves for the same drink compared across events.
+- Revenue, revenue at the bar price and quantity per borrel, and per product per borrel.
+- Two borrels side by side, joined on the product.
+- One product's price curve in two borrels, in minutes since each borrel's first tick, with
+  a break where the market was down (a `gap` tick).
 
 A tenant dimension is **not** present ([SDR](../adr/0001-setup-decision-record.md) decision
 13). The repository layer is structured so one additive migration could add it.

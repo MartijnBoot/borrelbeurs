@@ -54,8 +54,9 @@ app/
   db/                     models, repositories, Alembic migrations
   realtime/               hub.py      per-connection queues, writer tasks, backpressure
                           messages.py Pydantic models — these ARE the protocol contract
-  api/                    orders, config, drinks, news, market, auth, state, theme
-  jobs/                   export_xlsx.py — the only blocking worker
+  api/                    orders, config, drinks, news, market, auth, state, theme,
+                          runs (create, go-live, close, delete), analytics, exports
+  jobs/                   export_xlsx.py — the export worker and its build process
   main.py                 boot: advisory lock, migrate, rehydrate, start ticker, ready
 
 web/                      Vite + React + TypeScript (see frontend-architecture.md)
@@ -221,8 +222,19 @@ broadcast.
 2. **Nothing on the hot path touches the filesystem.** Earnings are an in-memory aggregate
    rehydrated by one `GROUP BY` at boot; news is an in-memory list; history is the ring.
 3. **Genuinely blocking work goes to one background worker** — and that means the xlsx
-   export, and only the xlsx export. Modelled as a job with a coalescing depth-1 queue, run
-   inside `asyncio.to_thread`, so at most one runs at a time and the caller returns
-   immediately with a spinner instead of a frozen server.
-4. Static SPA assets are served with hashed filenames and `immutable` cache headers;
+   export, and only the xlsx export (Phase 7 SD6). Its queue is the `export` table: one
+   export runs and one may wait (a request for the same run gets the existing one; a third
+   run's is refused), and a close's final export is always queued. The caller gets 202
+   immediately and the page polls. **The build runs in a separate process**, not
+   `asyncio.to_thread`: Phase 7's timing test measured a 20 000-line build in a thread
+   holding the GIL long enough to take the p95 order latency from 29 ms to 933 ms, and the
+   snapshot's row decoding stalled the event loop too. The process reads the snapshot itself
+   and returns only the workbook's bytes, which the worker stores on the main engine.
+4. **Heavy reads use their own engine** (Phase 7 SD11, PD2). Exports and analytics read on a
+   second `AsyncEngine` on the **same** validated DSN — the same Postgres, built in
+   `app/db/session.py` like the first — with no pool and `HEAVY_READ_TIMEOUT_SECONDS`
+   (default 60 s) instead of the live path's 5 s. So a long read never holds one of the order
+   path's pooled connections, and the 5 s bound stays on everything an order touches. It is
+   read-only: the export's result is written on the main engine.
+5. Static SPA assets are served with hashed filenames and `immutable` cache headers;
    `index.html` is `no-store`. This removes v1's per-request `sha1` and logo `listdir`.

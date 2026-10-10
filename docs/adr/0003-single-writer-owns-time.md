@@ -87,3 +87,27 @@ every client receives the new run's snapshot.
 
 The advisory lock is held from boot and is unchanged. `app.cli.runs go-live` remains for
 when the app is down; while the app runs it is refused, because the app holds the lock.
+
+## Addendum (Phase 7, SD2, PD4)
+
+Date: 2026-10-10
+
+The single writer can now release its run mid-process: `POST /api/runs/{run_id}/close`
+ends the live run without a restart (`app/runtime/close.py`). It is go-live in reverse.
+
+Nothing in the decision changes. The close is refused, with nothing written, unless this
+process holds the run live and the admin typed its name. Then the holder takes the **state
+lock** and runs one transaction: the run becomes `ended` at the app clock (never before the
+last commit, so no order of the run is stamped after its end), its open market events end,
+and its final export is queued. Only after that commit does the holder hold no run. A failed
+commit changes no memory. An order waiting on the lock finds no run and is refused with 409
+`no_live_run`, so an order either commits before the close or not at all.
+
+With no `await` after the release, the publisher drops the run's candles and drinks, and
+the hub clears its replay log and sends every client `run_closed`. The ticker idles on its
+grid, as it does at boot with no live run. The export worker is woken for the final export;
+it builds in a separate process and writes its result on the main engine, outside the
+state lock.
+
+Shutdown is not close: "Sluit app" leaves the run `live`, and the next boot rehydrates it
+with the gap rule (SD14).

@@ -41,7 +41,7 @@ intentional and documented here.
 | D-17 | No WebSocket liveness check on any page | all pages | Half-open socket freezes the big screen silently on a stale price | 4 |
 | D-18 | `GET /state` advances the engine and rewrites globals | `api.py:278-281` | A read endpoint with write side effects; the display page's polling changes bar prices | 3 |
 | D-19 | Theme editor exposes only 13 of the theme's tokens (21 in this register's first count; 24 in v2's manifest, `app/runtime/theme.py`) | `settings.html:428-442` | Custom themes look half-applied | 6 |
-| D-20 | `p0_total` / `p0_per_drink` are computed from `BAR_PRICE`, not `p0` | `api.py:770` → `persistence.py:126` | A lie in the money reporting | 7 |
+| D-20 | `p0_total` / `p0_per_drink` are computed from `BAR_PRICE`, not `p0` | `api.py:770` → `persistence.py:126` | A lie in the money reporting | 7 — **Resolved (Phase 7 T2):** renamed `bar_price_total` / `bar_price_per_drink`, and the bar price is stored per sale; see "Phase 7 evidence" |
 | D-21 | `calibrate_s0_to_p0` anchors to current `y`, not `p0` | `engine.py:38-41` | Name lies about behaviour | 1 — **Resolved (Phase 1 T2):** renamed `anchor_s0_to_current_y`, maths unchanged, docstring says why ([exchange/spec.py](../../exchange/spec.py)) |
 | D-22 | Idle gate uses `refresh_minutes`, not `idle_decay_minutes` | `engine.py:239` | The setting labelled as the threshold is not the gate | 1 — **Resolved (Phase 1 T6):** kept as v1, documented on `apply_idle` ([exchange/steps.py](../../exchange/steps.py)) and pinned by `test_d22_idle_fires_on_the_refresh_boundary_not_the_idle_threshold` ([tests/engine/test_steps_idle_brownian.py](../../tests/engine/test_steps_idle_brownian.py)) |
 | D-23 | `flow_ema` only updates on order and never decays | `api.py:325` | Volatility amplification stays frozen after a quiet spell | 1 — **Resolved by decision (Phase 1 T10):** kept as v1, see [ADR 0012](../adr/0012-flow-ema-keeps-v1-semantics.md); moved into `apply_orders` (T4), pinned by `test_d23_flow_ema_is_unchanged_by_idle_and_brownian` (T6) |
@@ -57,7 +57,7 @@ intentional and documented here.
 | ID | Defect | Where | Consequence | Phase |
 |---|---|---|---|---|
 | D-30 | Entire earnings xlsx re-read and re-aggregated on **every broadcast** | `persistence.py:126-190` via `api.py:770` | O(rows) synchronous disk read per WebSocket broadcast | 2 |
-| D-31 | `earnings.series` — one entry per sale — rebroadcast in full every 12 s | `persistence.py:161` | Grows linearly all night; **the largest payload item by the end of an event** | 3 |
+| D-31 | `earnings.series` — one entry per sale — rebroadcast in full every 12 s | `persistence.py:161` | Grows linearly all night; **the largest payload item by the end of an event** | 3 — **Resolved (Phase 5 SD16, Phase 7 T9):** not broadcast since Phase 5; `GET /api/earnings/series` buckets in SQL, and since Phase 7 takes any run and 60, 300 or 900 s buckets, so its size is bounded by duration, not sales; see "Phase 7 evidence" |
 | D-32 | Full history window rebroadcast on every tick | `api.py:748` | Tens of kB per client per tick | 3 |
 | D-33 | Five broadcast fields no client reads | `api.py:750-774` | Dead weight (*but see note below*) | 3 |
 | D-34 | `broadcast` awaits each send serially | `api.py:254-267` | One slow client stalls every other client **and the ticker** | 3 |
@@ -117,6 +117,17 @@ Each defect Phase 6 fixes, the acceptance criteria that pin it
 | D-46 | AC6 | T6, T33 |
 | D-47 | AC33 | T18, T31 |
 | D-48 | AC35 | T19, T38 |
+
+### Phase 7 evidence
+
+Each defect Phase 7 fixes, the acceptance criteria that pin it
+([phase-7-analytics.md](phase-7-analytics.md)), and the tasks whose tests are its evidence
+([plan](../plans/phase-7-analytics.md)):
+
+| ID | ACs | Evidence tasks |
+|---|---|---|
+| D-20 | AC12, AC13, AC14 | T2 (the bar price stored per sale, written first as a failing gate test); T1 (the column and its backfill), T10 (the workbook's `bar_price`), T13 (`test_no_p0_totals`: no `p0_*` in the schema, the web source or the export) |
+| D-31 | AC15, AC16 | T9 (5 000 orders in ten minutes are at most 10 points at 60 s and 2 at 300 s); T1 (the `order_run_wall_ts` index), T15 (the series on 30 000 orders, off the live engine) |
 
 ## Deliberately not treated as defects
 

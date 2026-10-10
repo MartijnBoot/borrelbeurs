@@ -246,7 +246,16 @@ Exit: two past borrels comparable; xlsx export matches the database.
 - [ ] merge the plan — per-phase loop step 5 with `<N>` = 7
 - [ ] tasks (`/build 7 <T>`, `/review 7`):
   - [ ] …
-- [ ] exit criterion — run two short borrels, compare them, export the xlsx and check its totals against the database
+- [ ] exit criterion — run two short borrels, compare them, export the xlsx and check its totals against the database:
+  1. `./scripts/setup.sh`, then `uv run uvicorn app.main:app --port 8000`; log in as admin.
+  2. `/settings`: "Nieuwe borrel", add two or three drinks, "Live zetten"; take a few orders at `/bar`.
+  3. "Borrel afsluiten", type the name; `/koers` shows "Borrel afgelopen" without a reload.
+  4. "Nieuwe borrel" with "Kopieer drankjes uit" set to the first; go live, take orders, close it.
+  5. `/analytics`: pick the two as A and B; the comparison and a price curve show.
+  6. Open the first run's details; download its final export ("Download").
+  7. Check the workbook's `Summary.total_revenue` against
+     `SELECT sum(l.line_total_cents) FROM order_line l JOIN "order" o USING (order_id) WHERE o.run_id = <id>`
+     (cents ÷ 100), and `bar_price_total` against the same with `qty * bar_price_cents`.
 
 ## Phase 8 — Deploy + cutover
 Exit: runs on Render *and* offline; rollback rehearsed; mock borrel passed.

@@ -348,6 +348,9 @@ Settled at the spec interview (2026-10-06).
   - **"📌 Zet huidige prijs als evenwicht":** no confirmation, as in v1.
   - **"🧹 Reset spel"** is absent. Phase 7 owns reset semantics within a run
     (`docs/specs/phase-7-analytics.md:16`). That supersedes Phase 3's out-of-scope line.
+  - *Phase 7 update (SD4):* reset within a run is **gone, not deferred**. A fresh start is
+    "Borrel afsluiten", then "Nieuwe borrel" (optionally copying the closed run's drinks);
+    a price-only return to `p0` stays the "Terug naar start" market event (SD22).
 - **SD27 — Forms follow `docs/design/frontend-architecture.md` "Forms" exactly.**
   - The building blocks are `NumberField` (empty → `null`, never 0), `MoneyField`
     (euros → cents), `Field`, `Select`, `Switch`, `Toast` and `useEditableRecord`.
@@ -501,7 +504,7 @@ Settled at the spec interview (2026-10-06).
 
 - **Phase 7's lifecycle:**
   - closing or ending a run;
-  - reset within a run ("Reset spel");
+  - reset within a run ("Reset spel") — *Phase 7 SD4: removed for good, not built later*;
   - switching between runs, a run list, deleting runs;
   - copying a past run's drinks into a new one.
 - Exports and the earnings download, on shutdown or anywhere else (Phase 7).
