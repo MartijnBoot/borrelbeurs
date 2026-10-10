@@ -1,6 +1,6 @@
 # Plan: Phase 8 — Deploy and cutover
 
-Spec: [docs/specs/phase-8-deploy-cutover.md](../specs/phase-8-deploy-cutover.md) (`Status: Approved`, rewritten 2026-10-10; **uncommitted** on `docs/phase-8-plan` at planning time) · Status: Audited — PASS (2026-10-10)
+Spec: [docs/specs/phase-8-deploy-cutover.md](../specs/phase-8-deploy-cutover.md) (`Status: Approved`, rewritten 2026-10-10; **uncommitted** on `docs/phase-8-plan` at planning time) · Status: Audited — PASS (2026-10-10; amendment re-audited the same day)
 Design: [architecture.md](../design/architecture.md) ("Shape", "Durability", "Tick model"), [data-model.md](../design/data-model.md), [realtime-protocol.md](../design/realtime-protocol.md)
 ADRs honoured: 0003 (one writer; standby and the app clock are written as an addendum in T21, accepted by the human at approval of the spec), 0004 (Postgres is the persistence layer; the host export is a *copy*, never read back), 0006 (no CDN; AC7 re-checks the built assets inside the image), 0007 (the v1 hotfix's image is the v1 fallback, SD17), 0009/0010 (hard stops: ADR text, `docs/design/`, credentials and external accounts, `borrelbeurs-v1`), 0011 (migrate at boot; SD3 is the expand/contract mechanism it assumed, and its overlap paragraph is superseded in T21)
 Fixes: D-42, D-43
@@ -41,7 +41,7 @@ Nothing in `exchange/` changes. Time still enters the engine only as `now_ms`
 T18 then edits `.github/workflows/ci.yml` once. Image tests are pytest, not shell, so they reuse
 `tests/integration/realapp/harness.py`'s `Client` and order-stream helpers. They live in
 `tests/image/`, which `check.sh` never collects, because it names its test directories
-explicitly (`scripts/check.sh:104-118`). The human tasks (H1–H4) carry the criteria only a person
+explicitly (`scripts/check.sh:104-118`). The human tasks (H1–H5) carry the criteria only a person
 at a router or a Render dashboard can meet.
 
 Rejected:
@@ -78,7 +78,7 @@ confirms or overrules them. No row is a hard stop except where marked.
 | PD1 | How standby fits uvicorn's lifecycle | `start_runtime` tries `acquire` **once**, as today. **Granted:** boot runs synchronously in the lifespan, unchanged, so a migration failure still raises out and uvicorn exits 3 (AC8). **Not granted:** set `app.state.standby = True`, start a background task, and yield at once. The task retries `acquire` every 1 s on `clock.monotonic`/`sleep_until`, and logs `lock_wait` (WARNING, `waited_s`) on entry and every 30 s. Once it holds the lock it runs the same `_boot(...)` as the fast path, then clears `standby` and sets `ready`. A failure **after** standby (migration, `schema ahead of image`) logs `boot_failed` and calls `exit_process(BOOT_FAILED_EXIT)`, which is `os._exit(3)`, the same code uvicorn uses for a startup failure. `acquire` *raising* (the database is unreachable) is not standby: it fails as today, with exit 3. `exit_process` gains a `code` parameter, and `LOCK_LOST_EXIT = 70` is unchanged. Shutdown during standby cancels the task. If the task got as far as booting, the same stop path as today runs. **Confirm** | uvicorn serves nothing until the lifespan yields. Exit 3 on both paths keeps `restart: on-failure` and Render's restart identical for "boot failed" |
 | PD2 | `schema_compat` shape and the boot rule | Table `schema_compat(id smallint PRIMARY KEY CHECK (id = 1), min_code_revision text NOT NULL)`, seeded `(1, '0011')` by `0011_schema_compat`. **`'0011'` is the rollback floor (SD3).** Every later migration declares a module-level `min_code_revision` that is either the string `"unchanged"` or a revision id. When it is an id, its `upgrade()` calls `db/migrations/compat.py: set_min_code_revision(op, rev)`. Boot, under the lock and before migrating: read `alembic_version` and `schema_compat` with raw SQL (`app/db/schema_compat.py`), and look the revision up in `ScriptDirectory` (built from `MIGRATIONS_DIR`, beside `upgrade_to_head`). A pure function `decide(known, db_rev, min_code) -> Migrate \| Ahead \| Refuse` is unit-tested. `Ahead` logs `schema_ahead` at WARNING with `db_revision` and `min_code_revision`. `Refuse` logs `boot_failed` with reason `schema ahead of image` and raises `BootFailure`, having written nothing. A database with no `alembic_version` table is `Migrate` | SD3 verbatim. Raw SQL works for any image ≥ 0011, which all know the table. The pure decision is the part worth a table of cases |
 | PD3 | AC9's "previous release" and "previous image" in CI | **New image on the old schema:** the drill migrates a fresh database to `head-1` with the image's own alembic (`docker run … alembic -c db/alembic.ini upgrade <down_revision of head>`), then boots the image, which must migrate and pass smoke. **Old image on the new schema:** no SD3 image older than this one exists, since this one is the floor. So the drill makes the *database* one contract-free revision ahead: it migrates to head, then stamps `alembic_version` to the fixture id `ci_ahead_fixture`, leaving `min_code_revision='0011'`. The same image must log `schema_ahead` and pass smoke. It then sets `min_code_revision='ci_ahead_fixture'` and asserts the refusal (AC10 at image level). The drill accepts an optional `--previous-image` and boots that against head as well; CI does not pass it until a previous SHA is in GHCR (R3). **Confirm** | The spec allows "a fixture image one contract-free revision behind". A stamped database is the same situation seen from the other side, and it needs no second build |
-| PD4 | The app clock (SD15) | `AppClock(inner)` in `app/runtime/clock.py`: `wall_ms() = inner.wall_ms() + offset`; `monotonic`/`sleep_until` delegate; `raise_to(target_ms)` sets `offset = max(offset, target_ms − inner.wall_ms())`, so it never decreases; `offset_ms` is a read-only property. `create_app` stores `AppClock(clock or RealClock())` as `app.state.clock` (`main.py:205`). Tests that pass a `FakeClock` still drive it, because the wrapper delegates. `commit_stamp_ms(clock, view) = max(clock.wall_ms(), view.last_commit_wall_ms or 0)` replaces the raw read at every commit site: `orders.py:208`, `manipulation.py:78,129`, `drinks.py:194,317,387`, `runtime/config.py:445,475`; `close.py:56` already does this and switches to the helper. **Ticker (T5):** when `now_wall < last_commit − budget`, it calls `clock.raise_to(last_commit)`, writes one `gap` tick with zero shift (version + 1, same prices, no anchor shift), logs `clock_stepped_back` with `step_ms` and `offset_ms`, then re-anchors from the raised clock so the drift check sees no second step. **Rehydrate (T5):** when the wall clock is behind the stored last commit by any amount, boot calls `raise_to(run.wall_ts_ms)` and writes no gap, because no time evolved | One object already reaches every caller. A backward step within the budget keeps ADR 0003's hold through `commit_stamp_ms`. The offset is not persisted: the next boot recomputes it from the last commit |
+| PD4 | The app clock (SD15) | `AppClock(inner)` in `app/runtime/clock.py`: `wall_ms() = inner.wall_ms() + offset`; `monotonic`/`sleep_until` delegate; `raise_to(target_ms)` sets `offset = max(offset, target_ms − inner.wall_ms())`, so it never decreases; `offset_ms` is a read-only property. `create_app` stores `AppClock(clock or RealClock())` as `app.state.clock` (`main.py:205`). Tests that pass a `FakeClock` still drive it, because the wrapper delegates. `commit_stamp_ms(clock, view) = max(clock.wall_ms(), view.last_commit_wall_ms or 0)` replaces the raw read at every commit site: `orders.py:208`, `manipulation.py:78,129`, `drinks.py:194,317,387`, `runtime/config.py:445,475`, `api/news.py:68` (amended after audit); `close.py:56` already does this and switches to the helper. **Ticker (T5):** when `now_wall < last_commit − budget`, it calls `clock.raise_to(last_commit)`, writes one `gap` tick with zero shift (version + 1, same prices, no anchor shift), logs `clock_stepped_back` with `step_ms` and `offset_ms`, then re-anchors from the raised clock so the drift check sees no second step. **Rehydrate (T5):** when the wall clock is behind the stored last commit by any amount, boot calls `raise_to(run.wall_ts_ms)` and writes no gap, because no time evolved | One object already reaches every caller. A backward step within the budget keeps ADR 0003's hold through `commit_stamp_ms`. The offset is not persisted: the next boot recomputes it from the last commit |
 | PD5 | Where the host-file write lives | New module `app/hostdir.py`: `write_atomic(directory, name, data)` writes `.<name>.partial` and then `os.replace`s it, and `prune(directory, pattern, keep)` deletes the oldest matches. It is the only new file-writing code. It sits outside `test_no_file_io.py`'s roots, which stay as they are, so `app/jobs` keeps calling no `open`. **Confirm**: the spec text says "the export worker (`app/jobs/`) … keeping `test_no_file_io.py` green", and that cannot hold literally (`test_no_file_io.py:39,45`) | The meta test guards persistence paths. The host copy is deliberate file I/O and should be one small, named module, not a loophole inside a guarded root |
 | PD6 | Scheduling the auto export and the slot | `run_worker` waits for `wakeup` **or** the next auto due time (`clock.sleep_until`, whichever comes first). When an auto export is due, all of these must hold: `export_dir` is set; a `run` has `status='live'` (read from the database, so the worker needs no holder); and no `export` row is `queued` or `running`. If so, it builds the run through the same `BuildProcess` and writes it **only** to the host. Otherwise it skips the auto export. Either way the next one is due 15 minutes later (`AUTO_EXPORT_INTERVAL_MS`, a constant). A manual request arriving *during* an auto build waits for that one build. **Confirm**: the reading of "never delays a manual or final export" is "an auto export never starts ahead of a queued export". The alternative, killing the auto build when a request arrives, is possible (`BuildProcess` already survives a dead child, Phase 7 review) but more machinery | Bounded by one build, a few seconds at venue sizes (Phase 7 T11's timings). Skipped, not queued, as SD14 says |
 | PD7 | Host file names and retention | `borrel-<slug>-<yyyymmdd-hhmm>-<kind>.xlsx`, where `kind` is `manual`, `final` or `auto`. The slug and stamp rules (Phase 7 PD10) move from `app/api/exports.py:61-66` into `app/jobs/naming.py`, which `app/api/exports.py` imports. The download name is unchanged, with no `-<kind>`. The stamp is the row's `created_at` (UTC), or the build time for `auto`. A same-name collision (two manual exports in one minute) is replaced by the later one. Auto retention keeps the newest 8 `borrel-<slug>-*-auto.xlsx` files. Runs with the same slug share those 8. Manual and final copies are never pruned on the host. **Confirm** | SD14's names. One slug function, not two |
@@ -115,7 +115,7 @@ confirms or overrules them. No row is a hard stop except where marked.
 | `tests/integration/test_real_process.py` | Modify | `:191` revision literal (T3); second-instance test inverted to standby (T6) | T3, T6 |
 | `tests/unit/test_schema_compat.py`, `tests/meta/test_schema_compat_coverage.py` | Create | `decide()` table; AC11 | T3 |
 | `app/runtime/clock.py` | Modify | `AppClock`, `commit_stamp_ms` | T4 |
-| `app/runtime/{orders,manipulation,drinks,config,close}.py` | Modify | Commit sites use `commit_stamp_ms` | T4 |
+| `app/runtime/{orders,manipulation,drinks,config,close}.py`, `app/api/news.py` | Modify | Commit sites use `commit_stamp_ms` | T4 |
 | `tests/unit/test_app_clock.py`, `tests/integration/test_stamp_monotonic.py` | Create | AppClock unit; AC16 property test | T4 |
 | `app/runtime/ticker.py`, `app/runtime/gap.py` | Modify | Backward step → offset + zero-shift gap | T5 |
 | `tests/integration/test_ticker.py`, `tests/integration/test_rehydrate.py`, `tests/unit/test_gap.py` | Modify | AC14, AC15, boot offset | T5 |
@@ -145,7 +145,7 @@ confirms or overrules them. No row is a hard stop except where marked.
 | `docs/runbooks/{deploy,rollback,restore,venue,incident,v1-fallback}.md`, `docs/runbooks/rehearsals/README.md` | Create | SD16, SD19 | T19 |
 | `README.md`, `CLAUDE.md`, `docker-compose.yml` (header only), `docs/specs/defect-register.md`, `docs/plans/manual-checklist.md` | Modify | Commands, R4, Phase 8 evidence, checklist | T20 |
 | `docs/adr/0003-*.md`, `docs/adr/0011-*.md`, `docs/adr/0001-*.md`, `docs/design/architecture.md` | Modify | Addenda; deploy topology (**hard stop**) | T21 |
-| `docs/runbooks/rehearsals/<date>-*.md` | Create | Human-performed records | H1–H4 |
+| `docs/runbooks/rehearsals/<date>-*.md` | Create | Human-performed records | H1–H5 |
 
 ---
 
@@ -259,7 +259,8 @@ confirms or overrules them. No row is a hard stop except where marked.
 - **Expected output:**
   - `AppClock` and `commit_stamp_ms` in `app/runtime/clock.py`.
   - `create_app` wraps the clock (`main.py:205`).
-  - The eight call sites listed in PD4 use `commit_stamp_ms`.
+  - The nine call sites listed in PD4 use `commit_stamp_ms`, including `app/api/news.py:68`
+    (amended after audit).
   - `place_order` records the stamp it used as the last commit (`orders.py:292`), unchanged in
     shape.
   - `tests/meta/test_clock_seam.py` stays green (`AppClock` imports nothing new).
@@ -612,6 +613,13 @@ confirms or overrules them. No row is a hard stop except where marked.
     - it keeps 288 dumps;
     - it logs a failure and continues.
   - **`restore.sh`**, per PD14.
+  - **A failed restore never starts the app** (amended after audit). If `restore.sh` exits
+    non-zero (`dropdb`, `createdb` or `pg_restore` failing, or no dump found), `restore.cmd`:
+    - prints in Dutch that the restore failed and that the app was left stopped;
+    - leaves `app` and `backup` stopped, and does not run `up`;
+    - exits non-zero.
+
+    `LEESMIJ.md` and `restore.md` (T19) say what to do next: retry with the previous dump.
   - **Six `.cmd` files** that call `docker compose -f "%~dp0compose.yml" --env-file "%~dp0.env"`:
     - `start.cmd` loads `images.tar` when `docker image inspect` fails;
     - on first run, `start.cmd` writes `JWT_SECRET` into `.env` with PowerShell's RNG (the v1
@@ -674,6 +682,8 @@ confirms or overrules them. No row is a hard stop except where marked.
       - no `*.partial` file has a final name;
     - **AC22:** the newest dump is restored into a fresh volume (`down -v`, `restore.sh`), the
       stack starts, and the order count equals the count at dump time;
+    - **AC22, failure (amended after audit):** `restore.sh` on a truncated dump exits non-zero,
+      and the drill's restore sequence (the same as `restore.cmd`'s) leaves `app` not running;
     - **AC23:**
       - `POST /api/admin/shutdown` (exit 0) leaves `app` exited and not restarting after 20 s;
       - `pg_terminate_backend` on the lock connection (exit 70) gets `app` restarted and ready
@@ -750,8 +760,12 @@ confirms or overrules them. No row is a hard stop except where marked.
   exact commands, how to verify, and what to do when a step fails.
   - **`deploy.md`**: the workflow, the smoke key, the first deploy, and Render's internal URL with
     its scheme changed (SD8).
-  - **`rollback.md`**: "run the previous SHA" on Render and at the venue; the SD3 floor; ≤ 5 min.
-  - **`restore.md`**: venue dump restore, and moving data between Render and the venue with
+  - **`rollback.md`**: "run the previous SHA" on Render and at the venue; ≤ 5 min. It states
+    the SD3 floor plainly (amended after audit): once a database is at `0011` or later, no image
+    older than the one that introduced `0011` can boot against it, and there is no
+    downgrade-and-roll-back path. The fallback for anything older is v1 (`v1-fallback.md`).
+  - **`restore.md`**: venue dump restore, including what to do when it fails (T15: the app stays
+    stopped; retry with the previous dump), and moving data between Render and the venue with
     `pg_dump`/`pg_restore` (SD10).
   - **`venue.md`**: laptop preparation (Docker Desktop, the bundle from USB, power plan, lid
     settings), the router's DHCP reservation and no uplink, the QR code, during the event, and
@@ -759,7 +773,13 @@ confirms or overrules them. No row is a hard stop except where marked.
   - **`incident.md`**: stale `/healthz`, standby that never takes over, `schema ahead of image`,
     a full disk, and where the logs are.
   - **`v1-fallback.md`**:
-    - the saved `b617a56` image tar, port 8000, and fresh keys generated on the laptop;
+    - the v1 fallback folder that H5 produces, and its checksum check;
+    - the exact steps (amended after audit): stop v2's `app` (`stop.cmd`; Postgres and backup may
+      keep running), then double-click the folder's own `run.bat`. It `docker load`s
+      `bierbeurs-image.tar` when present and publishes port 8000
+      (`legacy/v1/run.bat:9,31-33,57`). Then point the phones at `http://<fixed-ip>:8000/`;
+    - the keys are the folder's `config/keys.json`, generated on the laptop in H5, never
+      committed and never copied from `borrelbeurs-v1`;
     - that live prices are lost, and where revenue so far lives;
     - ≤ 5 min.
   - **`rehearsals/README.md`**: the SD19 template.
@@ -785,7 +805,7 @@ confirms or overrules them. No row is a hard stop except where marked.
     - D-42 and D-43 rows get their Phase 8 status. Section E's table gets a `Phase` column,
       matching the other sections;
     - a `### Phase 8 evidence` table: D-42 → T9, H4; D-43 → T11, T18, with T11's measured size.
-  - **`manual-checklist.md`'s Phase 8 section**: the task list, H1–H4, and the `AC17` → `AC32`
+  - **`manual-checklist.md`'s Phase 8 section**: the task list, H1–H5, and the `AC17` → `AC32`
     reference fixed.
 - **Verification:** `./scripts/check.sh`.
 - **Depends on:** T11 (size), T16, T17, T18, T19 (links)
@@ -857,7 +877,7 @@ confirms or overrules them. No row is a hard stop except where marked.
   - `data/` copied to USB.
 - **Verification:** `docs/runbooks/rehearsals/<date>-mock-borrel.md` records what was done, the
   image SHA, the timings and what broke.
-- **Depends on:** T16, T18 (a pushed SHA), T19
+- **Depends on:** T16, T18 (a pushed SHA), T19, H5 (the v1 folder present)
 - **Autonomy note:** **human only.** Anything that broke becomes a follow-up task or a defect
   entry, never a silent fix.
 
@@ -871,7 +891,7 @@ confirms or overrules them. No row is a hard stop except where marked.
   - each against ≤ 5 min.
 - **Verification:** `docs/runbooks/rehearsals/<date>-rollback.md` and `…-v1-fallback.md`, with
   timings.
-- **Depends on:** H1, H2
+- **Depends on:** H1, H2, H5
 - **Autonomy note:** **human only.**
 
 ### H4 — Rotate v1's keys (human)
@@ -886,6 +906,31 @@ confirms or overrules them. No row is a hard stop except where marked.
 - **Depends on:** T9, T19
 - **Autonomy note:** **human only.** Touching `borrelbeurs-v1` is a hard stop (ADR 0009).
 
+### H5 — Prepare the v1 fallback folder (human; added after audit)
+
+- **Implements:** AC31 (the v1 fallback needs this to exist), AC30 ("v1 available as
+  fallback"); SD17
+- **Expected output:** a folder `borrelbeurs-v1-fallback/`, kept next to the bundle on the USB
+  stick and on the laptop, holding:
+  - `bierbeurs-image.tar`: `docker save bierbeurs:latest` of the image built in
+    `borrelbeurs-v1` at `b617a56`. Use the hotfix image already saved at the time if it still
+    exists. Otherwise `git checkout b617a56` in `borrelbeurs-v1` and `docker build` there. Never
+    build it from `legacy/v1/`, which has no `.dockerignore` (D-43);
+  - that commit's `run.bat`, `static/` and `config/exchange_config.json`;
+  - a new `config/keys.json`, generated on the laptop (one admin and one bar key at least),
+    never committed, never copied from the repo's history. This is also H4's rotation for the
+    laptop;
+  - `SHA256SUMS` covering the tar.
+
+  The image's sha256 and size go in the rehearsal record. Then a dry run on the laptop with no
+  uplink: `run.bat` loads the tar, `/healthz` is 200 on port 8000, and a bar key logs in.
+- **Verification:** a section in `docs/runbooks/rehearsals/<date>-v1-fallback.md` (H3's file),
+  or its own record, stating the image digest, the source commit and the dry-run result, with no
+  key material.
+- **Depends on:** T19 (`v1-fallback.md`)
+- **Autonomy note:** **human only.** Building from or checking out `borrelbeurs-v1` is a hard stop
+  (ADR 0009). An agent may draft the record from the human's notes.
+
 ---
 
 ## Acceptance criteria → tasks
@@ -899,8 +944,8 @@ confirms or overrules them. No row is a hard stop except where marked.
 | AC5 | T15, T17, T18 | AC16 | T4 | AC27 | T2 |
 | AC6 | T1, T10, T13 | AC17 | T14, T18 | AC28 | T10, T17, H1 |
 | AC7 | T13, T18 | AC18 | T14 | AC29 | T6, T7, H1 |
-| AC8 | T3, T6 | AC19 | T15, T16, H2 | AC30 | T19, H2 |
-| AC9 | T3, T13, T18 | AC20 | T16, H2 | AC31 | T19, H3 |
+| AC8 | T3, T6 | AC19 | T15, T16, H2 | AC30 | T19, H2, H5 |
+| AC9 | T3, T13, T18 | AC20 | T16, H2 | AC31 | T19, H3, H5 |
 | AC10 | T3, T13 | AC21 | T8, T15, T16, H2 | AC32 | T9, H4 |
 | AC11 | T3 | AC22 | T15, T16, H2 | | |
 
@@ -920,14 +965,15 @@ Beside it:      T1 ─ T8 ──────────────────
                 T1 ─ T15 ─ T16;  T10, T15 ─ T17 ─ T19, T21
                 T9 (alone) ─ H4
 Documents:      T3, T5, T6, T17 ─ T21
-Human:          T17, T18, T19 ─ H1;  T16, T18, T19 ─ H2;  H1, H2 ─ H3;  T9, T19 ─ H4
+Human:          T19 ─ H5;  T17, T18, T19 ─ H1;  T16, T18, T19, H5 ─ H2;  H1, H2, H5 ─ H3;  T9, T19 ─ H4
 ```
 
 Edges, exactly:
 `T2←T1` · `T4←T2` · `T5←T3,T4` · `T6←T1,T2,T5` · `T7←T6` · `T8←T1` · `T10←T1` · `T11←T1` ·
 `T12←T11` · `T13←T3,T10,T11` · `T14←T7,T13` · `T15←T1` · `T16←T8,T13,T14,T15` ·
 `T17←T10,T15` · `T18←T11,T12,T13,T14,T16` · `T19←T15,T16,T17,T18` · `T20←T11,T16,T17,T18,T19` ·
-`T21←T3,T5,T6,T17` · `H1←T17,T18,T19` · `H2←T16,T18,T19` · `H3←H1,H2` · `H4←T9,T19`.
+`T21←T3,T5,T6,T17` · `H1←T17,T18,T19` · `H2←T16,T18,T19,H5` · `H3←H1,H2,H5` · `H4←T9,T19` ·
+`H5←T19`.
 `T1`, `T3` and `T9` depend on nothing.
 
 **The server chain T1 → T2 → T4 → T5 → T6 → T7 is forced, not cautious.** `main.py` is written
@@ -959,7 +1005,7 @@ Shared files, ordered by dependency:
 | 9 | T18 | `.github/workflows/ci.yml` |
 | 10 | T19 | `docs/runbooks/**` |
 | 11 | T20 | `README.md`, `CLAUDE.md`, `docker-compose.yml` (header), `defect-register.md`, `manual-checklist.md` |
-| Human | H1, H2 (after T19); H3 after both; H4 after T9 and T19 | `docs/runbooks/rehearsals/*.md` |
+| Human | H5 and H1 (after T19); H2 after H5; H3 after H1, H2, H5; H4 after T9 and T19 | `docs/runbooks/rehearsals/*.md` |
 
 No two tasks in one group write the same file. In group 1, only T1 writes `main.py`, and only T3
 writes `boot.py` and the boot and process tests. In group 2, only T2 writes `main.py`; T15
@@ -971,7 +1017,7 @@ creates `test_no_latest.py` and nobody else in the group touches it. In group 3,
 - The CI run on `main` that pushed the image: the `image`, `image-drill`, `venue` and `push` jobs
   green. Paste the size line, the Trivy summary and the drill output.
 - T11's measured size, recorded in the register (T20).
-- H1–H4's rehearsal records, which together meet the spec's exit condition: the same digest on
+- H1–H5's rehearsal records, which together meet the spec's exit condition: the same digest on
   Render and the venue laptop, rollback and v1 fallback within 5 min, and a mock borrel offline
   without v1.
 
@@ -1061,24 +1107,26 @@ Everything in the spec's "Out of scope", and also:
 - [x] PD1, PD3, PD5, PD6, PD7, PD9, PD12, PD13, PD14 confirmed or overruled — all **confirmed**
 - [x] actionlint (R11) approved or declined — **approved** (local container check only, T18)
 
-**Findings raised at the audit and accepted as-is** (the human chose "accept all lines"):
-- **The v1 fallback tar has no producing task.** SD17's saved `b617a56` image, and how it runs
-  on port 8000, are assumed by T19 (`v1-fallback.md`) and H2/H3 but built by no task. Left to
-  H3 to prepare by hand.
-- **`restore.cmd`'s failure path is unspecified**: the state of the stack if `pg_restore` fails
-  after `app` and `backup` are stopped.
+**Findings raised at the audit.** Resolved by the amendment below:
+- ~~The v1 fallback tar has no producing task.~~ **H5** added; `v1-fallback.md` (T19) names the
+  steps.
+- ~~`restore.cmd`'s failure path is unspecified.~~ T15 defines it (the app stays stopped); T16
+  tests it; `restore.md` (T19) covers it.
+- ~~PD4 misses `app/api/news.py:68`.~~ Added to PD4, T4 and the Files table.
+- ~~The rollback floor is unstated.~~ `rollback.md` (T19) states it.
+
+Accepted as-is (the human chose "accept all lines"):
 - **Over the size limit on files:** T3 (~13), T6 (~11–12), T15 (~16); T1 and T4 borderline. Not
   split; the ~400 source-line stop-and-ask still applies.
 - **Weakly checkable outputs:** T19, T20, T21 (`check.sh` and review only); T18 (the PR's CI run);
   T17's deploy-hook `imgURL` form (text-checked only); the `.cmd` scripts (exercised only in H2).
-- **PD4 misses one stamp site:** `app/api/news.py:68` stamps `clock.wall_ms()` raw. T4's builder
-  may add it under "eight call sites".
 - **T11 makes `websockets`, `httptools`, `uvloop` direct dependencies**: already locked, named in
   the spec's scope; the PR still states their licence and maintenance.
-- **Rollback floor:** after Phase 8 is deployed, no pre-`0011` image can be rolled back to;
-  `rollback.md` (T19) must say so.
 - **AC9's older-image half** is proven by a stamped-ahead database, not an older binary (PD3),
   until a second SD3 image exists in GHCR (R3).
 - R1 is stale: the spec was committed (`40c2c89`) before the audit.
 
 Audited by: MartijnBoot (human, Gate B)  Date: 2026-10-10
+
+Amended after audit (2026-10-10): H5 added; T4, T15, T16, T19, H2, H3 and the graph edited to
+close the findings above. Re-audit of those sections: MartijnBoot (human), 2026-10-10 — approved
