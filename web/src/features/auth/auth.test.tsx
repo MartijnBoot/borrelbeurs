@@ -15,7 +15,7 @@ type Role = 'display' | 'bar' | 'admin'
 const ALLOWED: Record<Role, string[]> = {
   display: ['/koers'],
   bar: ['/bar', '/manipulation'],
-  admin: ['/', '/koers', '/bar', '/manipulation', '/settings'],
+  admin: ['/', '/koers', '/bar', '/manipulation', '/settings', '/analytics'],
 }
 
 const KEYS: Record<string, Role> = {
@@ -205,6 +205,14 @@ describe('routes (AC22, AC23, SD4, SD13)', () => {
     await open('/bar')
     expect(screen.getByText('Geen toegang')).toBeTruthy()
     expect(screen.queryByRole('heading', { name: '🍺 Bar — Bestellen' })).toBeNull()
+  })
+
+  it('bar on /analytics sees "Geen toegang" and no "Analyse" entry (Phase 7 AC33)', async () => {
+    session = 'bar'
+    await open('/analytics')
+    expect(screen.getByText('Geen toegang')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /Menu/ }))
+    expect(screen.queryByRole('menuitem', { name: 'Analyse' })).toBeNull()
   })
 
   it('an unknown route sees "Geen toegang" inside the shell', async () => {

@@ -6,10 +6,12 @@
  *
  * Phase 4 builds `/koers` (T20) and the theme section of `/settings` (T18);
  * Phase 5 builds `/bar` (T15); Phase 6 builds `/manipulation` (T33) and `/`
- * (T35). An unknown path is "Geen toegang" inside the shell.
+ * (T35); Phase 7 builds `/analytics` (T19). An unknown path is "Geen
+ * toegang" inside the shell.
  */
 import { useEffect, type ReactNode } from 'react'
 import { Outlet, Route, Routes, useNavigate } from 'react-router'
+import { AnalyticsPage } from '../features/analytics'
 import { LoginPage, RequireRole, SessionProvider, useGoToLogin, useSession } from '../features/auth'
 import { BarPage } from '../features/bar'
 import { HomePage } from '../features/home'
@@ -27,6 +29,7 @@ const PAGES: readonly (readonly [string, ReactNode])[] = [
   ['/bar', <BarPage />],
   ['/manipulation', <ManipulationRoute />],
   ['/settings', <SettingsPage />],
+  ['/analytics', <AnalyticsPage />],
 ]
 
 /** PD13: the Idle section is admin-only (SD20); the session's role decides it. */
