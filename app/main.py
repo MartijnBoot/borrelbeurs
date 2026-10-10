@@ -95,6 +95,10 @@ WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
 # table grants, taken from the server's own table rather than copied.
 SPA_ROUTES: Final = frozenset({"/login"} | {r for routes in ROLE_ROUTES.values() for r in routes})
 
+# SD3, Phase 8 AC25: an allowlist, so a new environment -- `venue`, the borrel's
+# LAN -- hides the docs until someone decides otherwise.
+DOCS_ENVS: Final = frozenset({"local", "ci"})
+
 
 class SpaStaticFiles(StaticFiles):
     """`StaticFiles` with a history-mode fallback for the SPA's own routes only.
@@ -135,7 +139,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.login_limiter = LoginLimiter(
         settings.login_rate_per_minute, application.state.clock
     )
-    if settings.app_env != "production":
+    if settings.app_env in DOCS_ENVS:
         _mount_docs(application)
 
     runtime: Runtime = application.state.runtime
@@ -148,14 +152,18 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     ):
         logger.info(
             "application started",
-            extra={"app_env": settings.app_env, "port": settings.port},
+            extra={
+                "app_env": settings.app_env,
+                "port": settings.port,
+                "build_sha": settings.build_sha,
+            },
         )
         yield
     logger.info("application stopped")
 
 
 def _mount_docs(application: FastAPI) -> None:
-    """SD3: `/openapi.json`, `/docs` and `/redoc`, outside production only (plan PD15).
+    """SD3: `/openapi.json`, `/docs` and `/redoc`, for `DOCS_ENVS` only (plan PD15).
 
     Put in front of the SPA mount, which would otherwise catch them.
     """
@@ -259,6 +267,11 @@ def main() -> None:
             # Our JSON formatter owns the root logger; uvicorn's default dictConfig
             # would replace it with plain text half a second later.
             log_config=None,
+            # Phase 8 SD9, AC26: said explicitly. With `proxy_headers` on, uvicorn
+            # trusts `FORWARDED_ALLOW_IPS` (loopback by default); off, it reads no
+            # `X-Forwarded-For` at all, so the login limiter keys on the real peer.
+            proxy_headers=bool(settings.trusted_proxy_ips),
+            forwarded_allow_ips=settings.trusted_proxy_ips or None,
         )
     )
     app.state.request_shutdown = lambda: setattr(server, "should_exit", True)

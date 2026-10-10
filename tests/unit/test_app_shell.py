@@ -35,6 +35,9 @@ COMPLETE_ENV = {
     "PORT": "8123",
     "LOG_LEVEL": "WARNING",
     "APP_ENV": "ci",
+    "BUILD_SHA": "0123456789abcdef0123456789abcdef01234567",
+    # Phase 8: unset unless a test sets it, whatever the developer's shell exports.
+    "TRUSTED_PROXY_IPS": "",
 }
 
 ENV_VARS = tuple(COMPLETE_ENV)
@@ -149,12 +152,57 @@ def test_healthz_reports_ok() -> None:
     response = get("/healthz")
 
     assert response.status == 200
-    assert response.json()["status"] == "ok"
+    assert response.json() == {
+        "status": "ok",
+        "build_sha": COMPLETE_ENV["BUILD_SHA"],
+        "last_tick_age_ms": None,
+        "last_commit_age_ms": None,
+    }
 
 
 def test_healthz_answers_before_the_lifespan_has_run() -> None:
-    """Liveness is not readiness: `/healthz` says "the process is up", nothing more."""
-    assert get("/healthz", booted=False).status == 200
+    """Liveness is not readiness: `/healthz` says "the process is up", nothing more.
+    Settings are not loaded yet, so the build is not known yet either (AC6)."""
+    response = get("/healthz", booted=False)
+
+    assert response.status == 200
+    assert response.json()["build_sha"] == "unknown"
+
+
+@pytest.mark.parametrize(
+    ("app_env", "served"), [("local", True), ("ci", True), ("venue", False), ("production", False)]
+)
+def test_docs_are_mounted_for_local_and_ci_only(
+    monkeypatch: pytest.MonkeyPatch, app_env: str, served: bool
+) -> None:
+    """AC25: an allowlist, so the venue -- a LAN anyone at the borrel joins -- hides them too."""
+    monkeypatch.setenv("APP_ENV", app_env)
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "true" if app_env == "production" else "false")
+    get_settings.cache_clear()
+
+    for path in ("/openapi.json", "/docs", "/redoc"):
+        assert (get(path).status == 200) is served, path
+
+
+def test_the_start_log_names_the_build(caplog: pytest.LogCaptureFixture) -> None:
+    """AC6: `"application started"` carries `build_sha`, so a log names its own image."""
+    target = shell_app()
+
+    async def scenario() -> None:
+        async with target.router.lifespan_context(target):
+            pass
+
+    # On the module's own logger: `configure_logging` replaces the root's handlers.
+    logger = logging.getLogger("app.main")
+    logger.addHandler(caplog.handler)
+    try:
+        with caplog.at_level(logging.INFO, logger="app.main"):
+            asyncio.run(scenario())
+    finally:
+        logger.removeHandler(caplog.handler)
+
+    (started,) = [r for r in caplog.records if r.getMessage() == "application started"]
+    assert started.build_sha == COMPLETE_ENV["BUILD_SHA"]  # type: ignore[attr-defined]
 
 
 def test_readyz_is_not_ready_until_the_lifespan_completes() -> None:
@@ -341,3 +389,49 @@ def test_the_entrypoint_binds_the_configured_port(monkeypatch: pytest.MonkeyPatc
     assert recorded["config"].port == 8123
     app.main.app.state.request_shutdown()
     assert recorded["server"].should_exit is True
+
+
+@pytest.mark.parametrize(
+    ("trusted", "proxy_headers", "forwarded_allow_ips"),
+    [("*", True, "*"), ("10.0.0.1,10.0.0.0/8", True, "10.0.0.1,10.0.0.0/8")],
+)
+def test_the_entrypoint_trusts_exactly_the_configured_proxies(
+    monkeypatch: pytest.MonkeyPatch, trusted: str, proxy_headers: bool, forwarded_allow_ips: str
+) -> None:
+    """AC26: uvicorn is told which peers may set `X-Forwarded-For`, explicitly."""
+    monkeypatch.setenv("TRUSTED_PROXY_IPS", trusted)
+    get_settings.cache_clear()
+
+    config = _entrypoint_config(monkeypatch)
+
+    assert config.proxy_headers is proxy_headers
+    assert config.forwarded_allow_ips == forwarded_allow_ips
+
+
+def test_with_no_trusted_proxy_the_entrypoint_reads_no_forwarded_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AC26: off means off -- uvicorn's own `FORWARDED_ALLOW_IPS` default (loopback) must not
+    switch it back on, or anyone on the venue LAN could spoof the login limiter's key."""
+    monkeypatch.setenv("FORWARDED_ALLOW_IPS", "*")
+
+    config = _entrypoint_config(monkeypatch)
+
+    assert config.proxy_headers is False
+
+
+def _entrypoint_config(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """The `uvicorn.Config` `main()` builds, captured instead of served."""
+    recorded: dict[str, Any] = {}
+
+    class FakeServer:
+        def __init__(self, config: Any) -> None:
+            recorded["config"] = config
+            self.should_exit = False
+
+        def run(self) -> None:
+            pass
+
+    monkeypatch.setattr("uvicorn.Server", FakeServer)
+    app.main.main()
+    return recorded["config"]
