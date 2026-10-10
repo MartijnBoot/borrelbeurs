@@ -143,3 +143,21 @@ def test_every_route_and_actor(
         assert status == expected, (method, path, actor, status)
     else:
         assert status not in {401, 403}, (method, path, actor, status)
+
+
+@pytest.mark.parametrize(("run_id", "expected"), [("other", 403), ("live", 200)])
+def test_the_bar_reads_only_the_live_runs_series(
+    live_client: TestClient, live_run: int, mint_key: MintKey, run_id: str, expected: int
+) -> None:
+    """Phase 7 SD9, AC16: inside the route's row, any other run is admin-only.
+
+    The other run is unknown here, so the bar learns nothing from 403 vs 404.
+    """
+    _act(live_client, mint_key, "bar")
+    target = live_run if run_id == "live" else 999_999
+
+    response = live_client.get("/api/earnings/series", params={"run_id": target})
+
+    assert response.status_code == expected, response.text
+    if expected == 403:
+        assert response.json()["error"]["code"] == "forbidden"

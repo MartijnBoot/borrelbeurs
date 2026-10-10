@@ -179,6 +179,32 @@ def test_two_thousand_orders_in_one_minute_are_one_point(
     asyncio.run(scenario())
 
 
+def test_five_thousand_orders_in_ten_minutes_are_bounded_by_the_bucket_size(
+    settings: Settings, database_url: str
+) -> None:
+    """Phase 7 AC15 (D-31): the point count is duration / bucket, whatever the order count."""
+    start = (T0 // (5 * MINUTE)) * (5 * MINUTE)  # aligned, so ten minutes are ten buckets
+
+    async def scenario() -> None:
+        engine = _engine(settings, database_url)
+        try:
+            run_id, drink_id = await _run(engine, 1)
+            await _orders(
+                engine, run_id, drink_id, [(start + i * 120, 1, 200 + i % 7) for i in range(5_000)]
+            )
+            total = await _total(engine, run_id)
+            async with engine.connect() as conn:
+                per_minute = await earnings_series(conn, run_id, bucket_ms=MINUTE)
+                per_five = await earnings_series(conn, run_id, bucket_ms=5 * MINUTE)
+            assert len(per_minute) <= 10
+            assert len(per_five) <= 2
+            assert per_minute[-1][1] == per_five[-1][1] == total
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
 def test_another_runs_orders_are_excluded(settings: Settings, database_url: str) -> None:
     async def scenario() -> None:
         engine = _engine(settings, database_url)

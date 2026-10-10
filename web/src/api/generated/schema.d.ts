@@ -1555,7 +1555,10 @@ export interface operations {
     };
     get_series_api_earnings_series_get: {
         parameters: {
-            query?: never;
+            query?: {
+                run_id?: number | null;
+                bucket_s?: 60 | 300 | 900;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1569,6 +1572,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EarningsPoint"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
