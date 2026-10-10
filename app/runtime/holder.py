@@ -391,12 +391,22 @@ class MarketHolder:
 
     # --- close: the one way out (Phase 7 SD2) ----------------------------------------
 
-    async def release(self, step: Callable[[MarketView], Awaitable[T]]) -> T:
+    async def release(
+        self,
+        step: Callable[[MarketView], Awaitable[T]],
+        *,
+        landed: Callable[[], Awaitable[bool]],
+    ) -> T:
         """Under the lock, run `step`'s one transaction, then hold no run (Phase 7 PD4).
 
         The mirror of `adopt`. `step` is the close's transaction; it fails as a
         `mutate` step does, leaving memory unchanged. Once it has committed the
         holder is empty, so a mutate queued behind the lock is `no_live_run`.
+
+        A step that fails may still have committed (a timeout in the COMMIT round
+        trip), and no version guard would catch it later: the close does not move
+        the state's version. So `landed` asks, on a fresh connection; if the
+        commit landed, or that cannot be known, this calls `on_diverged`.
         """
         async with self._lock:
             if self.is_empty:
@@ -405,7 +415,18 @@ class MarketHolder:
             async def committed(view: MarketView) -> Outcome[T]:
                 return Outcome(result=await step(view), view=view)
 
-            outcome = await self._run("close", committed)
+            try:
+                outcome = await self._run("close", committed)
+            except PersistenceUnavailable:
+                try:
+                    diverged = await landed()
+                except Exception:
+                    diverged = True
+                if diverged:
+                    logger.error("release_failed", extra={"op": "close"})
+                    if self._on_diverged is not None:
+                        self._on_diverged()
+                raise
             try:
                 self._view = self._empty_view()
                 self._ring = HistoryRing(0)

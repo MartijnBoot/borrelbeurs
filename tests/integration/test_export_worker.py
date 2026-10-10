@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import io
+import multiprocessing
 from collections.abc import Awaitable, Callable, Iterator
 from typing import Any, TypeVar
 
@@ -284,6 +285,95 @@ def test_a_failure_in_the_build_process_comes_back_as_its_error(
     assert export["status"] == "failed"
     assert export["error"].startswith("DBAPIError: "), export["error"]
     assert '"bb_no_such_database" does not exist' in export["error"]
+    assert export["data"] is None
+
+
+def test_a_build_process_killed_mid_build_fails_its_export_and_the_next_builds(
+    settings: Settings, database_url: str
+) -> None:
+    """AC7: a child killed mid-build (out of memory, say) is a recorded failure, not a
+    worker waiting forever on a result that will never come; the next build runs."""
+    url_settings = _settings(settings, database_url)
+
+    async def until_blocked(engine: AsyncEngine) -> None:
+        for _ in range(600):
+            async with engine.connect() as conn:
+                waiting: int = (
+                    await conn.execute(
+                        text(
+                            "SELECT count(*) FROM pg_stat_activity"
+                            " WHERE datname = current_database() AND wait_event_type = 'Lock'"
+                        )
+                    )
+                ).scalar_one()
+            if waiting:
+                return
+            await asyncio.sleep(0.1)
+        raise AssertionError("the build never reached the locked table")
+
+    async def body(engine: AsyncEngine) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        run_id = await _run_with_orders(engine, live=False)
+        await _queue(engine, run_id, "manual")
+        process = BuildProcess()
+        try:
+            async with engine.connect() as blocker:
+                # The build's snapshot read waits on this lock, so the kill lands mid-build.
+                await blocker.execute(text("LOCK TABLE order_line IN ACCESS EXCLUSIVE MODE"))
+                building = asyncio.create_task(
+                    build_next(
+                        engine=engine, builder=process, settings=url_settings, clock=FakeClock(T0)
+                    )
+                )
+                await until_blocked(engine)
+                for child in multiprocessing.active_children():
+                    child.kill()
+                assert await asyncio.wait_for(building, 30)
+                await blocker.rollback()
+            (killed,) = await _exports(engine, run_id)
+            await _queue(engine, run_id, "manual")
+            assert await asyncio.wait_for(
+                build_next(
+                    engine=engine, builder=process, settings=url_settings, clock=FakeClock(T0)
+                ),
+                60,
+            )
+            return killed, await _exports(engine, run_id)
+        finally:
+            process.close()
+
+    killed, after = _with_engine(settings, database_url, body)
+
+    assert killed["status"] == "failed"
+    assert killed["error"].startswith("BrokenProcessPool: "), killed["error"]
+    assert [e["status"] for e in after] == ["failed", "done"]
+
+
+def test_a_result_that_cannot_be_written_fails_its_export(
+    settings: Settings, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC7: the build succeeded but writing it did not; the export is `failed`, not left
+    `running` for every later request of the run to coalesce onto."""
+
+    async def unwritable(*args: Any, **kwargs: Any) -> bool:
+        raise OSError("injected: result too large to write")
+
+    monkeypatch.setattr(export_xlsx, "finish", unwritable)
+
+    async def body(engine: AsyncEngine) -> list[dict[str, Any]]:
+        run_id = await _run_with_orders(engine, live=False)
+        await _queue(engine, run_id, "manual")
+        assert await build_next(
+            engine=engine,
+            builder=InThread(),
+            settings=_settings(settings, database_url),
+            clock=FakeClock(T0),
+        )
+        return await _exports(engine, run_id)
+
+    (export,) = _with_engine(settings, database_url, body)
+
+    assert export["status"] == "failed"
+    assert export["error"] == "OSError: injected: result too large to write"
     assert export["data"] is None
 
 

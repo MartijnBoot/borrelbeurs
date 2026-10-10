@@ -509,7 +509,9 @@ def test_a_ticker_waiting_on_the_lock_during_a_release_idles(
             async def close(view: MarketView) -> None:
                 await gate.wait()
 
-            releasing = asyncio.get_running_loop().create_task(h.holder.release(close))
+            releasing = asyncio.get_running_loop().create_task(
+                h.holder.release(close, landed=_unasked)
+            )
             await asyncio.sleep(0.01)
             h.clock.advance(INTERVAL)  # the slot is due; the ticker queues on the lock
             for _ in range(200):
@@ -561,7 +563,7 @@ def test_a_gap_owed_to_a_closed_run_is_not_written_into_the_next(
                         conn, closing, ended_at_ms=h.clock.wall_ms(), requested_by="test"
                     )
 
-            await h.holder.release(close)
+            await h.holder.release(close, landed=_unasked)
             run = await _live(h.engine)
 
             async def load() -> RehydratedRun:
@@ -579,3 +581,7 @@ def test_a_gap_owed_to_a_closed_run_is_not_written_into_the_next(
                 return [str(r[0]) for r in rows]
 
     assert asyncio.run(scenario()) == ["reset", "tick"]
+
+
+async def _unasked() -> bool:
+    raise AssertionError("`landed` is only asked after a failed step")

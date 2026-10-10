@@ -58,8 +58,12 @@ async def close_in_process(
             await close_run(conn, run_id, ended_at_ms=ended_at_ms, requested_by=author)
         return ended_at_ms
 
+    async def landed() -> bool:
+        async with holder.engine.connect() as conn:
+            return (await get_run(conn, run_id)).status != "live"
+
     try:
-        ended_at_ms = await holder.release(step)
+        ended_at_ms = await holder.release(step, landed=landed)
     except NoLiveRunError as error:
         raise RunNotLive(f"run {run_id} is no longer live in this process") from error
 

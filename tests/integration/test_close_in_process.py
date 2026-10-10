@@ -17,7 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.config import Settings, get_settings
-from app.db.runs import add_drink, create_draft_run, go_live
+from app.db.runs import add_drink, close_run, create_draft_run, go_live
 from app.db.session import create_engine
 from app.runtime.boot import start_runtime
 from app.runtime.close import close_in_process
@@ -151,13 +151,14 @@ def test_a_shutdown_without_a_close_leaves_the_run_live_and_rehydrates_it(
 def test_a_close_whose_commit_fails_leaves_everything_live(
     on: str, settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """PD4: a failed commit changes no memory and tells no client."""
+    """PD4: a failed commit changes no memory, tells no client, and is no divergence."""
     import app.runtime.close as close_module
 
     async def broken(*args: Any, **kwargs: Any) -> None:
         raise OSError("connection reset")
 
     monkeypatch.setattr(close_module, "close_run", broken)
+    lost: list[str] = []
 
     async def scenario() -> tuple[bool, int, str]:
         engine = create_engine(_settings(settings, on))
@@ -166,23 +167,68 @@ def test_a_close_whose_commit_fails_leaves_everything_live(
             app = FastAPI()
             app.state.clock = clock = FakeClock(T0 + 1_000)  # `create_app` sets it in production
             async with start_runtime(
-                app, _settings(settings, on), clock=clock, run_migrations=False
+                app,
+                _settings(settings, on),
+                clock=clock,
+                run_migrations=False,
+                on_lock_lost=lambda: lost.append("lost"),
             ):
                 seq = app.state.hub.seq
                 with pytest.raises(PersistenceUnavailable):
                     await close_in_process(app.state, run_id, confirm_name="Vrijmibo", author="t")
                 held = app.state.holder.run_id == run_id
                 moved = app.state.hub.seq - seq
-            async with engine.connect() as conn:
-                status = str(
-                    (
-                        await conn.execute(
-                            text("SELECT status FROM run WHERE run_id = :r"), {"r": run_id}
-                        )
-                    ).scalar_one()
-                )
-            return held, moved, status
+            return held, moved, await _status(engine, run_id)
         finally:
             await engine.dispose()
 
     assert asyncio.run(scenario()) == (True, 0, "live")
+    assert lost == []
+
+
+def test_a_close_whose_commit_lands_unacknowledged_diverges(
+    on: str, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PD4, AC4: the run is ended in the database but the close raised, as a timeout in
+    the COMMIT round trip does. Holding the run on would let orders commit after the
+    close, so the process diverges and the next boot holds no run."""
+    import app.runtime.close as close_module
+
+    async def landed_then_lost(conn: Any, run_id: int, **kwargs: Any) -> None:
+        async with conn.engine.begin() as other:
+            await close_run(other, run_id, **kwargs)
+        raise OSError("connection reset")
+
+    monkeypatch.setattr(close_module, "close_run", landed_then_lost)
+    lost: list[str] = []
+
+    async def scenario() -> str:
+        engine = create_engine(_settings(settings, on))
+        try:
+            run_id = await _live(engine)
+            app = FastAPI()
+            app.state.clock = clock = FakeClock(T0 + 1_000)  # `create_app` sets it in production
+            async with start_runtime(
+                app,
+                _settings(settings, on),
+                clock=clock,
+                run_migrations=False,
+                on_lock_lost=lambda: lost.append("lost"),
+            ):
+                with pytest.raises(PersistenceUnavailable):
+                    await close_in_process(app.state, run_id, confirm_name="Vrijmibo", author="t")
+            return await _status(engine, run_id)
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(scenario()) == "ended"
+    assert lost == ["lost"]
+
+
+async def _status(engine: AsyncEngine, run_id: int) -> str:
+    async with engine.connect() as conn:
+        return str(
+            (
+                await conn.execute(text("SELECT status FROM run WHERE run_id = :r"), {"r": run_id})
+            ).scalar_one()
+        )

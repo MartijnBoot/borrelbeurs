@@ -82,6 +82,7 @@ describe('ExportPanel', () => {
     expect(screen.getByText('Bezig')).toBeTruthy()
 
     polled = () => exportRow(1, 'done')
+    listed = [exportRow(1, 'done')]
     await wait(2_000)
     expect(polls()).toBe(3)
     await wait(10_000)
@@ -99,6 +100,30 @@ describe('ExportPanel', () => {
     expect(screen.getByText('51 kB')).toBeTruthy()
     await wait(10_000)
     expect(polls()).toBe(0)
+  })
+
+  it('reloads the list once an export finishes, so a pruned one leaves it (AC24)', async () => {
+    listed = [
+      exportRow(4, 'running'),
+      exportRow(3, 'done'),
+      exportRow(2, 'done'),
+      exportRow(1, 'done'),
+    ]
+    render(<ExportPanel runId={4} />)
+    await settle()
+    expect(screen.getAllByRole('link', { name: 'Download' })).toHaveLength(3)
+
+    // The fourth manual export is done; the server pruned the oldest (export 1).
+    listed = [exportRow(4, 'done'), exportRow(3, 'done'), exportRow(2, 'done')]
+    polled = () => exportRow(4, 'done')
+    await wait(2_000)
+
+    const links = screen.getAllByRole('link', { name: 'Download' })
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      '/api/exports/4/file',
+      '/api/exports/3/file',
+      '/api/exports/2/file',
+    ])
   })
 
   it('"Exporteer (xlsx)" requests an export and shows it queued', async () => {

@@ -471,7 +471,7 @@ def test_release_runs_its_step_then_empties_the_holder(
                     )
                 return "closed"
 
-            assert await holder.release(close) == "closed"
+            assert await holder.release(close, landed=_unasked) == "closed"
 
             assert seen == [run.run_id]
             assert holder.is_empty and holder.run_id is None and holder.state is None
@@ -479,7 +479,7 @@ def test_release_runs_its_step_then_empties_the_holder(
             assert not holder.lock.locked()
             assert sink.calls == []
             with pytest.raises(NoLiveRunError):
-                await holder.release(close)
+                await holder.release(close, landed=_unasked)
         finally:
             await engine.dispose()
 
@@ -489,27 +489,81 @@ def test_release_runs_its_step_then_empties_the_holder(
 def test_a_failing_release_step_leaves_the_holder_live(
     settings: Settings, database_url: str
 ) -> None:
-    """PD4: a failed commit changes no memory; a database error is 503."""
+    """PD4: a failed commit changes no memory; a database error is 503, and a commit
+    that did not land is no divergence."""
 
     async def scenario() -> None:
         engine = _engine(settings, database_url)
+        diverged: list[str] = []
         try:
             run = await _live(engine)
-            holder, _ = _holder(engine, run, FakeClock(T0))
+            holder = MarketHolder.from_rehydrated(
+                run,
+                engine=engine,
+                clock=FakeClock(T0),
+                sink=lambda events: None,
+                on_diverged=lambda: diverged.append("diverged"),
+            )
             before_view, before_ring = holder.view, holder.ring
 
             async def broken(view: MarketView) -> None:
                 async with holder.engine.begin() as conn:
                     await conn.execute(text("SELECT * FROM no_such_table"))
 
+            async def did_not_land() -> bool:
+                return False
+
             with pytest.raises(PersistenceUnavailable):
-                await holder.release(broken)
+                await holder.release(broken, landed=did_not_land)
 
             assert holder.view is before_view
             assert holder.ring == before_ring
             assert not holder.is_empty
             assert not holder.lock.locked()
+            assert diverged == []
         finally:
             await engine.dispose()
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("answer", ["landed", "unknown"])
+def test_a_failed_release_step_that_may_have_committed_calls_on_diverged(
+    settings: Settings, database_url: str, answer: str
+) -> None:
+    """PD4: a close that raised but whose commit landed -- or might have -- leaves memory
+    holding a run the database ended; the process must give up (AC4)."""
+
+    async def scenario() -> list[str]:
+        engine = _engine(settings, database_url)
+        diverged: list[str] = []
+        try:
+            run = await _live(engine)
+            holder = MarketHolder.from_rehydrated(
+                run,
+                engine=engine,
+                clock=FakeClock(T0),
+                sink=lambda events: None,
+                on_diverged=lambda: diverged.append("diverged"),
+            )
+
+            async def lost(view: MarketView) -> None:
+                raise OSError("injected: acknowledgement lost")
+
+            async def landed() -> bool:
+                if answer == "unknown":
+                    raise OSError("injected: database unreachable")
+                return True
+
+            with pytest.raises(PersistenceUnavailable):
+                await holder.release(lost, landed=landed)
+            assert not holder.lock.locked()
+            return diverged
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(scenario()) == ["diverged"]
+
+
+async def _unasked() -> bool:
+    raise AssertionError("`landed` is only asked after a failed step")

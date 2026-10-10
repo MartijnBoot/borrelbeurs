@@ -217,6 +217,38 @@ def test_a_product_re_added_after_a_removal_is_not_removed(
     assert (bier.name, bier.qty, bier.removed) == ("Bier", 3, False)
 
 
+def test_an_order_committing_mid_read_cannot_split_the_run_detail(
+    settings: Settings, database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC27 on a live run: the totals and the per-product rows come from one snapshot, so
+    an order committing between their reads is in both or in neither."""
+    import app.db.analytics as analytics
+
+    real = analytics._runs
+
+    async def body(engine: AsyncEngine) -> tuple[RunTotals, list[ProductTotals]]:
+        async with engine.begin() as conn:
+            run_id = await _run(conn, "Live", t0_ms=T0)
+            bier = await _drink(conn, run_id, "Bier", 0, bar_price_cents=250)
+            await _order(conn, run_id, 1, [(bier, 1, 250, 250)])
+
+        async def then_an_order(conn: AsyncConnection, run: int | None = None) -> list[RunTotals]:
+            totals = await real(conn, run)
+            async with engine.begin() as other:
+                await _order(other, run_id, 2, [(bier, 2, 260, 250)])
+            return totals
+
+        monkeypatch.setattr(analytics, "_runs", then_an_order)
+        async with engine.connect() as conn:
+            detail = await run_detail(conn, run_id)
+        return detail.run, list(detail.per_product)
+
+    run, per_product = _with_engine(settings, database_url, body)
+
+    assert sum(p.revenue_cents for p in per_product) == run.revenue_cents == 250
+    assert sum(p.qty for p in per_product) == run.qty == 1
+
+
 def test_a_run_without_orders_is_zero_totals_and_no_rows(
     settings: Settings, database_url: str
 ) -> None:
