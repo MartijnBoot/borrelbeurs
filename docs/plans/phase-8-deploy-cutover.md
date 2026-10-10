@@ -1,6 +1,6 @@
 # Plan: Phase 8 — Deploy and cutover
 
-Spec: [docs/specs/phase-8-deploy-cutover.md](../specs/phase-8-deploy-cutover.md) (`Status: Approved`, rewritten 2026-10-10; **uncommitted** on `docs/phase-8-plan` at planning time) · Status: Draft — awaiting audit
+Spec: [docs/specs/phase-8-deploy-cutover.md](../specs/phase-8-deploy-cutover.md) (`Status: Approved`, rewritten 2026-10-10; **uncommitted** on `docs/phase-8-plan` at planning time) · Status: Audited — PASS (2026-10-10)
 Design: [architecture.md](../design/architecture.md) ("Shape", "Durability", "Tick model"), [data-model.md](../design/data-model.md), [realtime-protocol.md](../design/realtime-protocol.md)
 ADRs honoured: 0003 (one writer; standby and the app clock are written as an addendum in T21, accepted by the human at approval of the spec), 0004 (Postgres is the persistence layer; the host export is a *copy*, never read back), 0006 (no CDN; AC7 re-checks the built assets inside the image), 0007 (the v1 hotfix's image is the v1 fallback, SD17), 0009/0010 (hard stops: ADR text, `docs/design/`, credentials and external accounts, `borrelbeurs-v1`), 0011 (migrate at boot; SD3 is the expand/contract mechanism it assumed, and its overlap paragraph is superseded in T21)
 Fixes: D-42, D-43
@@ -1046,19 +1046,39 @@ Everything in the spec's "Out of scope", and also:
 
 ## Audit (plan-auditor — PASS required before implementation starts)
 
-- [ ] Every AC maps to at least one task
-- [ ] Every task maps to at least one AC (no orphans)
-- [ ] Each task's expected output is what we actually need
-- [ ] Existing patterns reused; nothing reinvented
-- [ ] No new dependency without an approval note
-- [ ] Data changes additive and reversible
-- [ ] Errors, empty states and permissions are tasks, not afterthoughts
-- [ ] Each task reviewable in one sitting
-- [ ] Verification named per task
-- [ ] Nothing touches prod, secrets or infra it should not
-- [ ] Every task has a Depends on and an Autonomy note
-- [ ] No two tasks in one parallel group write the same file
-- [ ] PD1, PD3, PD5, PD6, PD7, PD9, PD12, PD13, PD14 confirmed or overruled
-- [ ] actionlint (R11) approved or declined
+- [x] Every AC maps to at least one task
+- [x] Every task maps to at least one AC (no orphans)
+- [x] Each task's expected output is what we actually need
+- [x] Existing patterns reused; nothing reinvented
+- [x] No new dependency without an approval note
+- [x] Data changes additive and reversible
+- [x] Errors, empty states and permissions are tasks, not afterthoughts
+- [x] Each task reviewable in one sitting
+- [x] Verification named per task
+- [x] Nothing touches prod, secrets or infra it should not
+- [x] Every task has a Depends on and an Autonomy note
+- [x] No two tasks in one parallel group write the same file
+- [x] PD1, PD3, PD5, PD6, PD7, PD9, PD12, PD13, PD14 confirmed or overruled — all **confirmed**
+- [x] actionlint (R11) approved or declined — **approved** (local container check only, T18)
 
-Audited by: ______  Date: ______
+**Findings raised at the audit and accepted as-is** (the human chose "accept all lines"):
+- **The v1 fallback tar has no producing task.** SD17's saved `b617a56` image, and how it runs
+  on port 8000, are assumed by T19 (`v1-fallback.md`) and H2/H3 but built by no task. Left to
+  H3 to prepare by hand.
+- **`restore.cmd`'s failure path is unspecified**: the state of the stack if `pg_restore` fails
+  after `app` and `backup` are stopped.
+- **Over the size limit on files:** T3 (~13), T6 (~11–12), T15 (~16); T1 and T4 borderline. Not
+  split; the ~400 source-line stop-and-ask still applies.
+- **Weakly checkable outputs:** T19, T20, T21 (`check.sh` and review only); T18 (the PR's CI run);
+  T17's deploy-hook `imgURL` form (text-checked only); the `.cmd` scripts (exercised only in H2).
+- **PD4 misses one stamp site:** `app/api/news.py:68` stamps `clock.wall_ms()` raw. T4's builder
+  may add it under "eight call sites".
+- **T11 makes `websockets`, `httptools`, `uvloop` direct dependencies**: already locked, named in
+  the spec's scope; the PR still states their licence and maintenance.
+- **Rollback floor:** after Phase 8 is deployed, no pre-`0011` image can be rolled back to;
+  `rollback.md` (T19) must say so.
+- **AC9's older-image half** is proven by a stamped-ahead database, not an older binary (PD3),
+  until a second SD3 image exists in GHCR (R3).
+- R1 is stale: the spec was committed (`40c2c89`) before the audit.
+
+Audited by: MartijnBoot (human, Gate B)  Date: 2026-10-10
