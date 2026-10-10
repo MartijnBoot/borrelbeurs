@@ -25,6 +25,7 @@ very file the config module deliberately refuses to read (R12).
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
@@ -38,6 +39,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException
 from starlette.responses import Response
+from starlette.staticfiles import PathLike
 from starlette.types import Scope
 
 from app.api.admin import router as admin_router
@@ -106,7 +108,29 @@ class SpaStaticFiles(StaticFiles):
     A `GET` of exactly one of `SPA_ROUTES` that matches no file serves
     `index.html`, so a reload of `/koers` or a `/login?next=` redirect renders the
     app. Every other unknown path stays a plain 404.
+
+    Phase 8 AC27: `index.html` is `no-store`, so a phone picks up a deploy on its
+    next load; Vite's content-hashed `assets/*` are cached for good. Set on
+    whatever `file_response` returns, so a 304 keeps it too. Other files are left
+    as they were.
     """
+
+    def file_response(
+        self,
+        full_path: PathLike,
+        stat_result: os.stat_result,
+        scope: Scope,
+        status_code: int = 200,
+    ) -> Response:
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        served = Path(full_path)
+        # `full_path` is a realpath (`StaticFiles.lookup_path`); compare like with like.
+        assets = Path(os.path.realpath(self.directory or "")) / "assets"
+        if served.name == "index.html":
+            response.headers["Cache-Control"] = "no-store"
+        elif served.parent == assets:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         try:
