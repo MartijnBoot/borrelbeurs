@@ -508,6 +508,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/analytics/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Compare */
+        get: operations["get_compare_api_analytics_compare_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/analytics/price-curve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Price Curve */
+        get: operations["get_price_curve_api_analytics_price_curve_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/theme.css": {
         parameters: {
             query?: never;
@@ -628,6 +662,26 @@ export interface components {
             l: number;
             /** C */
             c: number;
+        };
+        /** CompareRowData */
+        CompareRowData: {
+            /** Product Key */
+            product_key: string;
+            /** Product Id */
+            product_id: number | null;
+            /** Name */
+            name: string;
+            a: components["schemas"]["CompareSide"] | null;
+            b: components["schemas"]["CompareSide"] | null;
+        };
+        /** CompareSide */
+        CompareSide: {
+            /** Qty */
+            qty: number;
+            /** Revenue Cents */
+            revenue_cents: number;
+            /** Bar Price Total Cents */
+            bar_price_total_cents: number;
         };
         /**
          * ConfigData
@@ -1020,6 +1074,20 @@ export interface components {
             demand_enabled?: boolean | null;
             /** Auto Calibrate S0 */
             auto_calibrate_s0?: boolean | null;
+        };
+        /** PriceCurveData */
+        PriceCurveData: {
+            /** A */
+            a: components["schemas"]["PricePoint"][];
+            /** B */
+            b: components["schemas"]["PricePoint"][];
+        };
+        /** PricePoint */
+        PricePoint: {
+            /** Minute */
+            minute: number;
+            /** Price Cents */
+            price_cents: number | null;
         };
         /**
          * Receipt
@@ -2158,6 +2226,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AnalyticsRunDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_compare_api_analytics_compare_get: {
+        parameters: {
+            query: {
+                a: number;
+                b: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompareRowData"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_price_curve_api_analytics_price_curve_get: {
+        parameters: {
+            query: {
+                product_id: number;
+                a: number;
+                b: number;
+                bucket_s?: 60 | 300 | 900;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PriceCurveData"];
                 };
             };
             /** @description Validation Error */

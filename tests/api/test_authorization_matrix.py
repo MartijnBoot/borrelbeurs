@@ -66,6 +66,8 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     # Phase 7 SD12.
     ("GET", "/api/analytics/runs"): ADMIN,
     ("GET", "/api/analytics/runs/{run_id}"): ADMIN,
+    ("GET", "/api/analytics/compare"): ADMIN,
+    ("GET", "/api/analytics/price-curve"): ADMIN,
 }
 
 ACTORS: Final = ("anonymous", "revoked", "display", "bar", "admin")

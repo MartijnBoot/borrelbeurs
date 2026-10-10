@@ -9,6 +9,14 @@ summed in SQL from `order_line`; nothing here is stored.
   for an ended run only.
 - `run_detail`: one run's totals, and a row per product that sold -- removed
   drinks included -- named after the product's newest drink in the run.
+- `compare`: two runs' per-product rows side by side, joined on the product
+  (PD14, AC11) by `match_products`; a product in one run only has `None` on the
+  other side. A row is named after B's drink when B has it, else A's.
+- `price_curve`: one product's price in one run, bucketed in SQL (PD13). The
+  product's drink is the run's newest with that product; a bucket is minutes
+  since the run's first tick, and its price is the `p_q` of the bucket's last
+  tick carrying that drink -- `None` when any tick in the bucket is a `gap`, so
+  the line breaks. Buckets with no tick carrying the drink are left out.
 
 SD13's fallbacks for rows a rolled-back image wrote: a line without a bar price
 takes its drink's current one, and a drink without a product groups by its
@@ -17,14 +25,17 @@ takes its drink's current one, and a drink without a product groups by its
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import BigInteger, ColumnElement, cast, func, select
+from sqlalchemy import BigInteger, ColumnElement, Float, cast, func, select, type_coerce
+from sqlalchemy.dialects.postgresql import ARRAY, aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.db import models
 from app.db.exports import product_key
+from app.db.mapping import cents_from_quantised
 from app.db.runs import RunNotFound
 
 
@@ -205,3 +216,120 @@ async def run_detail(conn: AsyncConnection, run_id: int) -> RunDetail:
         if t.qty
     )
     return RunDetail(run=runs[0], per_product=per_product)
+
+
+@dataclass(frozen=True)
+class SideTotals:
+    qty: int
+    revenue_cents: int
+    bar_price_total_cents: int
+
+
+@dataclass(frozen=True)
+class CompareRow:
+    product_key: str
+    product_id: int | None
+    name: str
+    a: SideTotals | None
+    b: SideTotals | None
+
+
+def _side(totals: ProductTotals | None) -> SideTotals | None:
+    if totals is None:
+        return None
+    return SideTotals(totals.qty, totals.revenue_cents, totals.bar_price_total_cents)
+
+
+def match_products(
+    a: Sequence[ProductTotals],
+    b: Sequence[ProductTotals],
+    *,
+    key: Callable[[ProductTotals], str] = lambda totals: totals.product_key,
+) -> list[CompareRow]:
+    """A's products in order, then B's only ones; joined on `key` (PD14, never the name)."""
+    in_a = {key(totals): totals for totals in a}
+    in_b = {key(totals): totals for totals in b}
+    rows: list[CompareRow] = []
+    for joined in [*in_a, *(k for k in in_b if k not in in_a)]:
+        named = in_b.get(joined) or in_a[joined]
+        rows.append(
+            CompareRow(
+                named.product_key,
+                named.product_id,
+                named.name,
+                _side(in_a.get(joined)),
+                _side(in_b.get(joined)),
+            )
+        )
+    return rows
+
+
+async def compare(conn: AsyncConnection, a: int, b: int) -> list[CompareRow]:
+    """Runs `a` and `b` per product, or `RunNotFound` naming the unknown `side`."""
+    details: list[RunDetail] = []
+    for side, run_id in (("a", a), ("b", b)):
+        try:
+            details.append(await run_detail(conn, run_id))
+        except RunNotFound:
+            raise RunNotFound(f"no run {run_id} ({side})", extra={"side": side}) from None
+    return match_products(details[0].per_product, details[1].per_product)
+
+
+@dataclass(frozen=True)
+class CurvePoint:
+    minute: int
+    price_cents: int | None
+
+
+async def price_curve(
+    conn: AsyncConnection, run_id: int, product_id: int, *, bucket_ms: int
+) -> list[CurvePoint]:
+    """`product_id`'s price per bucket in `run_id`, or `RunNotFound`; `[]` without it."""
+    run, drink, tick = models.Run, models.Drink, models.PriceTick
+    if (await conn.execute(select(run.run_id).where(run.run_id == run_id))).first() is None:
+        raise RunNotFound(f"no run {run_id}")
+    drink_id = (
+        await conn.execute(
+            select(func.max(drink.drink_id)).where(
+                drink.run_id == run_id, drink.product_id == product_id
+            )
+        )
+    ).scalar_one()
+    t0 = (
+        await conn.execute(
+            select(tick.wall_ts_ms).where(tick.run_id == run_id).order_by(tick.version).limit(1)
+        )
+    ).scalar_one_or_none()
+    if drink_id is None or t0 is None:
+        return []
+    ticks = (
+        select(
+            ((tick.wall_ts_ms - t0) // bucket_ms).label("k"),
+            tick.version,
+            tick.source,
+            cast(tick.prices[(str(drink_id), "p_q")].astext, Float).label("p_q"),
+        )
+        .where(tick.run_id == run_id)
+        .subquery()
+    )
+    last_carrying = func.array_agg(aggregate_order_by(ticks.c.p_q, ticks.c.version.desc())).filter(
+        ticks.c.p_q.is_not(None)
+    )
+    rows = await conn.execute(
+        select(
+            ticks.c.k,
+            func.bool_or(ticks.c.source == "gap").label("gap"),
+            type_coerce(last_carrying, ARRAY(Float))[1].label("p_q"),
+        )
+        .group_by(ticks.c.k)
+        .having(func.count(ticks.c.p_q) > 0)
+        .order_by(ticks.c.k)
+    )
+    minutes_per_bucket = bucket_ms // 60_000
+    return [
+        CurvePoint(
+            int(row.k) * minutes_per_bucket,
+            None if row.gap else cents_from_quantised(float(row.p_q)),
+        )
+        for row in rows
+    ]

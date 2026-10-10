@@ -8,6 +8,14 @@ integer cents named per PD11 -- `revenue_cents`, `bar_price_total_cents`,
 - `GET /api/analytics/runs`: every run, newest first, with its totals.
 - `GET /api/analytics/runs/{run_id}`: the same row plus `per_product`, one row
   per product that sold (removed drinks included); 404 `run_not_found`.
+- `GET /api/analytics/compare?a=&b=`: both runs per product, joined on the
+  product (PD14); a side the product is absent from is `null`.
+- `GET /api/analytics/price-curve?product_id=&a=&b=&bucket_s=`: the product's
+  price per bucket in each run, minutes since the run's start (PD13); `[]` for
+  a run without the product.
+
+Both two-run routes answer 404 `run_not_found` with `side` naming the unknown
+run.
 """
 
 from __future__ import annotations
@@ -19,8 +27,9 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict
 
 from app.api.deps import Principal, heavy_engine, require_role
-from app.db.analytics import RunTotals, run_detail, run_list
-from app.db.runs import RunStatus
+from app.api.earnings import BucketSeconds
+from app.db.analytics import RunTotals, compare, price_curve, run_detail, run_list
+from app.db.runs import RunNotFound, RunStatus
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
@@ -80,3 +89,64 @@ async def get_run_detail(
             AnalyticsProduct.model_validate(dataclasses.asdict(p)) for p in detail.per_product
         ],
     )
+
+
+class CompareSide(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    qty: int
+    revenue_cents: int
+    bar_price_total_cents: int
+
+
+class CompareRowData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    product_key: str
+    product_id: int | None
+    name: str
+    a: CompareSide | None
+    b: CompareSide | None
+
+
+class PricePoint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    minute: int
+    price_cents: int | None
+
+
+class PriceCurveData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    a: list[PricePoint]
+    b: list[PricePoint]
+
+
+@router.get("/compare")
+async def get_compare(
+    a: int, b: int, request: Request, _: Annotated[Principal, Depends(require_role("admin"))]
+) -> list[CompareRowData]:
+    async with heavy_engine(request).connect() as conn:
+        rows = await compare(conn, a, b)
+    return [CompareRowData.model_validate(dataclasses.asdict(row)) for row in rows]
+
+
+@router.get("/price-curve")
+async def get_price_curve(
+    product_id: int,
+    a: int,
+    b: int,
+    request: Request,
+    _: Annotated[Principal, Depends(require_role("admin"))],
+    bucket_s: BucketSeconds = 60,
+) -> PriceCurveData:
+    curves: dict[str, list[PricePoint]] = {}
+    async with heavy_engine(request).connect() as conn:
+        for side, run_id in (("a", a), ("b", b)):
+            try:
+                points = await price_curve(conn, run_id, product_id, bucket_ms=bucket_s * 1000)
+            except RunNotFound:
+                raise RunNotFound(f"no run {run_id} ({side})", extra={"side": side}) from None
+            curves[side] = [PricePoint(minute=p.minute, price_cents=p.price_cents) for p in points]
+    return PriceCurveData(**curves)
