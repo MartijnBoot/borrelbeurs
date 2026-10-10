@@ -15,7 +15,12 @@ route calls: the routes must pick the heavy engine, so it counts zero.
 
 The heavy timeout is left at its default (60 s). T15's autonomy note: a call
 over 10 s, or a seed over a minute, is a stop -- the bounds below assert both,
-and the timings are printed (`-s`) for the phase exit.
+and the timings are printed (`-s`) for the phase exit. The 10 s bound holds
+for the reads and for `read_snapshot` + `build_workbook`, the export's work.
+The export **through the worker** is not one call: it adds the build process's
+start, storing the file and the polling, and on a loaded gate it measured
+10.87 s with the build itself at 6.3 s. So it is held to the heavy timeout
+instead (the user's choice, 2026-10-10).
 """
 
 from __future__ import annotations
@@ -47,6 +52,8 @@ ORDERS: Final = 30_000
 TICKS: Final = 18_000  # one a second for five hours
 DRINKS: Final = ("Bier", "Wijn", "Fris", "Cola", "Tonic", "Radler")
 CALL_LIMIT_S: Final = 10.0
+# The export through the worker: the heavy-read timeout's default.
+ROUND_TRIP_LIMIT_S: Final = 60.0
 SEED_LIMIT_S: Final = 60.0
 
 
@@ -201,7 +208,7 @@ def test_every_heavy_read_is_fast_enough_and_off_the_live_engine(
                 "done",
                 "failed",
             }:
-                assert time.perf_counter() - began < 60, status
+                assert time.perf_counter() - began < ROUND_TRIP_LIMIT_S, status
                 time.sleep(0.1)
             timings["export_via_worker"] = time.perf_counter() - began
         finally:
@@ -221,5 +228,10 @@ def test_every_heavy_read_is_fast_enough_and_off_the_live_engine(
     assert any("auth_key" in s for s in seen)  # the listener does fire: the session lookups
     assert live_statements == [], live_statements
     assert timings["seed"] < SEED_LIMIT_S, report
-    slow = {name: s for name, s in timings.items() if name != "seed" and s > CALL_LIMIT_S}
+    assert timings["read_snapshot"] + timings["build_workbook"] < CALL_LIMIT_S, report
+    assert timings["export_via_worker"] < ROUND_TRIP_LIMIT_S, report
+    bounded_above = {"seed", "read_snapshot", "build_workbook", "export_via_worker"}
+    slow = {
+        name: s for name, s in timings.items() if name not in bounded_above and s > CALL_LIMIT_S
+    }
     assert not slow, report
