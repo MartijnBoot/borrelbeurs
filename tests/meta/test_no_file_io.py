@@ -3,7 +3,9 @@
 v1 kept its market in JSON and Excel files read on the request path (D-35).
 Phase 2 moves every value into Postgres, so nothing under `app/db/` or
 `app/runtime/` (the repositories, the ring, the aggregate, rehydrate) has any
-business opening a file. A walk over the syntax tree holds that, modelled on
+business opening a file. Phase 7 adds `app/jobs/`: the xlsx export builds into
+memory and stores its bytes in the database (SD6), and `openpyxl` stays a
+test-only reader. A walk over the syntax tree holds that, modelled on
 `test_config_boundary.py`: parse every file under the scanned roots and fail
 on a banned reference.
 
@@ -19,8 +21,9 @@ ever be added here, never removed.
 
 **A guard that cannot fail is worse than no guard.** As in
 `test_config_boundary.py`, two tests exist only to stop a silently-empty scan:
-the walk must reach real files, `app/db/runs.py` and `app/runtime/gap.py`
-among them, and the detector must flag each banned form in a snippet.
+the walk must reach real files, `app/db/runs.py`, `app/runtime/gap.py` and
+`app/jobs/export_xlsx.py` among them, and the detector must flag each banned
+form in a snippet.
 """
 
 from __future__ import annotations
@@ -33,12 +36,13 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-SCANNED_ROOTS = (Path("app") / "db", Path("app") / "runtime")
+SCANNED_ROOTS = (Path("app") / "db", Path("app") / "runtime", Path("app") / "jobs")
 
 MUST_SEE = (
     Path("app") / "db" / "runs.py",
     Path("app") / "runtime" / "gap.py",
     Path("app") / "runtime" / "holder.py",
+    Path("app") / "jobs" / "export_xlsx.py",
 )
 
 FILE_METHODS = frozenset({"read_text", "read_bytes", "write_text", "write_bytes", "open"})

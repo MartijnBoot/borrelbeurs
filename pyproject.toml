@@ -45,6 +45,11 @@ dependencies = [
     # Starlette's form parser needs it; stdlib has no multipart parser since
     # `cgi` was removed. Apache-2.0, maintained under the Kludex/Starlette org.
     "python-multipart>=0.0.18,<1.0",
+    # The xlsx export (Phase 7 SD17; PD1, approved at the plan audit). Stdlib has
+    # no xlsx writer; hand-rolled OOXML is hundreds of lines to maintain.
+    # BSD-2-Clause, pure Python, no dependencies; writes to a BytesIO in its
+    # `in_memory` mode. Used under `app/jobs/` only.
+    "xlsxwriter>=3.2,<4",
 ]
 
 [dependency-groups]
@@ -55,6 +60,10 @@ dev = [
     "testcontainers>=4.8,<5",
     # FastAPI's TestClient imports it (Phase 3 SD33; approved under plan PD1).
     "httpx>=0.27,<1.0",
+    # Reads exported workbooks back in the tests only (Phase 7 PD1, approved at
+    # the plan audit). MIT; what v1 used. `tests/meta/test_no_file_io.py` keeps
+    # it out of `app/db`, `app/runtime` and `app/jobs`.
+    "openpyxl>=3.1,<4",
 ]
 
 [tool.uv]
@@ -104,6 +113,12 @@ explicit_package_bases = true
 [[tool.mypy.overrides]]
 module = "tests.engine.v1_reference.*"
 follow_imports = "skip"
+
+# Neither ships a py.typed marker (Phase 7 PD1); their calls stay at the
+# workbook's edges, `app/jobs/export_xlsx.py` and the export tests.
+[[tool.mypy.overrides]]
+module = ["xlsxwriter", "openpyxl"]
+ignore_missing_imports = true
 
 # --- tests -------------------------------------------------------------------
 
