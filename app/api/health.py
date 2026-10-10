@@ -49,7 +49,8 @@ async def healthz(request: Request) -> JSONResponse:
     if ticker is None:
         return JSONResponse(
             {
-                "status": "ok",
+                # Alive and waiting for the lock (Phase 8 SD5): 200, never restarted for it.
+                "status": "standby" if getattr(state, "standby", False) else "ok",
                 "build_sha": build_sha,
                 "last_tick_age_ms": None,
                 "last_commit_age_ms": None,

@@ -7,8 +7,10 @@ so a crashed process releases it without help, and a dropped connection means
 the process can no longer prove it is the only writer: `watchdog` notices and
 calls `on_lost` (plan PD5), which in production exits the process.
 
-Only `pg_try_advisory_lock`: a writer that would wait for the lock is a second
-writer in waiting, and boot must fail fast instead (AC18).
+Only `pg_try_advisory_lock`, never a blocking wait: a booting instance that does
+not get the lock waits in **standby** (Phase 8 SD4, `app/runtime/boot.py`), retrying
+once a second while it serves `/healthz`. It writes nothing until it holds the lock,
+so there is still one writer.
 """
 
 from __future__ import annotations

@@ -1,4 +1,7 @@
-"""Boot and shutdown of the runtime (Phase 3 T20: SD11, SD16; AC18 in-process half, AC18c, AC4).
+"""Boot and shutdown of the runtime (Phase 3 T20: SD11, SD16; AC18c, AC4).
+
+Phase 8 T6 (SD4, AC12): a held lock is standby, no longer a boot failure -- the
+in-process AC18 fail-fast test is replaced by the standby tests at the end.
 
 Phase 7 T11 (AC6, PD9): boot fails the exports a stopped process left
 unfinished before it starts the export worker.
@@ -8,8 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
@@ -75,37 +77,6 @@ async def _go_live(settings: Settings, url: str) -> int:
         return run_id
     finally:
         await engine.dispose()
-
-
-def test_a_held_lock_fails_boot_fast_naming_the_lock_and_never_migrates(
-    on: str, settings: Settings, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    """AC18 (in-process half), SD11: lock before migrate; fail within 5 s."""
-    migrated: list[bool] = []
-    monkeypatch.setattr(boot, "upgrade_to_head", lambda: migrated.append(True))
-
-    async def scenario() -> float:
-        holder_engine = create_engine(_settings(settings, on))
-        held = await acquire(holder_engine)
-        assert held is not None
-        app = FastAPI()
-        started = time.monotonic()
-        try:
-            with pytest.raises(BootFailure, match="advisory lock"):
-                async with start_runtime(
-                    app, _settings(settings, on), clock=AppClock(FakeClock(T0)), run_migrations=True
-                ):
-                    pass
-            return time.monotonic() - started
-        finally:
-            await release(held)
-            await holder_engine.dispose()
-
-    with caplog.at_level(logging.ERROR, logger="app.runtime.boot"):
-        elapsed = asyncio.run(scenario())
-    assert elapsed < 5
-    assert migrated == []
-    assert any("advisory lock" in str(r.__dict__.get("reason", "")) for r in caplog.records)
 
 
 def test_boot_runs_in_sd11s_order_and_shutdown_releases_the_lock(
@@ -608,3 +579,148 @@ def test_booting_with_the_wall_clock_behind_the_last_commit_raises_the_app_clock
     assert now == T0 + 1_000
     assert [source for source, _ in rows] == ["reset", "tick"]
     assert rows[1][1] == T0 + 1_000
+
+
+# --- Phase 8 T6: standby instead of exit (SD4; AC12, AC8 after standby; PD1) -------
+
+
+async def _until(condition: Callable[[], bool], *, seconds: float = 30.0) -> None:
+    """Poll in real time: the standby task's retries and migration do real I/O."""
+    for _ in range(int(seconds / 0.01)):
+        if condition():
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError("condition never held")
+
+
+def test_a_held_lock_puts_boot_in_standby_and_releasing_it_hands_over(
+    empty_database: str,
+    settings: Settings,
+    alembic: RunAlembic,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """AC12 in process: while another holder has the lock nothing is migrated, ticked or
+    written, and `lock_wait` is logged on entry and every 30 s; once it is released the
+    instance takes it, migrates, rehydrates and becomes ready."""
+    head, previous = head_and_previous()
+    assert alembic(empty_database, "upgrade", previous).returncode == 0
+    monkeypatch.setenv("DATABASE_URL", empty_database)
+    get_settings.cache_clear()
+    url = empty_database
+
+    async def scenario() -> tuple[list[tuple[Any, ...]], list[tuple[Any, ...]], str]:
+        holder_engine = create_engine(_settings(settings, url))
+        held = await acquire(holder_engine)
+        assert held is not None
+        fake = FakeClock(T0)
+        app = FastAPI()
+        try:
+            async with start_runtime(
+                app, _settings(settings, url), clock=AppClock(fake), run_migrations=True
+            ):
+                assert app.state.standby is True
+                assert app.state.ready is False
+                for _ in range(30):
+                    await _until(lambda: fake.sleepers == 1)
+                    fake.advance(1_000)
+                await _until(lambda: fake.sleepers == 1)
+                while_waiting = await _execute(url, "SELECT version_num FROM alembic_version")
+                ticks_while_waiting = await _execute(url, "SELECT count(*) FROM price_tick")
+                await release(held)
+                held = None
+                fake.advance(1_000)
+                await _until(lambda: bool(app.state.ready))
+                assert app.state.standby is False
+            ((after,),) = await _execute(url, "SELECT version_num FROM alembic_version")
+            return while_waiting, ticks_while_waiting, str(after)
+        finally:
+            if held is not None:
+                await release(held)
+            await holder_engine.dispose()
+
+    with caplog.at_level(logging.INFO, logger="app.runtime.boot"):
+        while_waiting, ticks, after = asyncio.run(scenario())
+    get_settings.cache_clear()
+
+    assert while_waiting == [(previous,)]
+    assert ticks == [(0,)]
+    assert after == head
+    waits = [r for r in caplog.records if r.getMessage() == "lock_wait"]
+    assert [r.levelno for r in waits] == [logging.WARNING, logging.WARNING]
+    assert [r.__dict__["waited_s"] for r in waits] == [0, 30]
+
+
+def test_a_boot_failure_after_standby_takes_the_boot_failed_exit(
+    on: str, settings: Settings, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """AC8 after standby: there is no lifespan left to raise out of, so the task logs
+    `boot_failed` and calls `on_boot_failed` -- production's `os._exit(3)` -- unready."""
+
+    def broken() -> None:
+        raise RuntimeError("migration 0042 exploded")
+
+    monkeypatch.setattr(boot, "upgrade_to_head", broken)
+    exits: list[str] = []
+
+    async def scenario() -> bool:
+        holder_engine = create_engine(_settings(settings, on))
+        held = await acquire(holder_engine)
+        assert held is not None
+        fake = FakeClock(T0)
+        app = FastAPI()
+        try:
+            async with start_runtime(
+                app,
+                _settings(settings, on),
+                clock=AppClock(fake),
+                run_migrations=True,
+                on_boot_failed=lambda: exits.append("boot failed"),
+            ):
+                await _until(lambda: fake.sleepers == 1)
+                await release(held)
+                fake.advance(1_000)
+                await _until(lambda: bool(exits))
+                return bool(app.state.ready)
+        finally:
+            await holder_engine.dispose()
+
+    with caplog.at_level(logging.ERROR, logger="app.runtime.boot"):
+        ready = asyncio.run(scenario())
+
+    assert exits == ["boot failed"]
+    assert ready is False
+    reasons = [r.__dict__.get("reason") for r in caplog.records if r.getMessage() == "boot_failed"]
+    assert reasons == ["migration failed"]
+
+
+def test_shutdown_during_standby_stops_the_wait_and_writes_nothing(
+    on: str, settings: Settings
+) -> None:
+    """PD1: the lifespan's exit cancels the standby task; there is no lock to release."""
+
+    async def scenario() -> tuple[bool, bool]:
+        holder_engine = create_engine(_settings(settings, on))
+        held = await acquire(holder_engine)
+        assert held is not None
+        fake = FakeClock(T0)
+        app = FastAPI()
+        try:
+            async with start_runtime(
+                app, _settings(settings, on), clock=AppClock(fake), run_migrations=False
+            ):
+                await _until(lambda: fake.sleepers == 1)
+            still_held = await _execute(
+                on,
+                "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted"
+                f" AND objid = {ADVISORY_LOCK_KEY}"
+                " AND database = (SELECT oid FROM pg_database WHERE datname = current_database())",
+            )
+            return bool(app.state.ready), still_held == [(1,)]
+        finally:
+            await release(held)
+            await holder_engine.dispose()
+
+    ready, only_the_holders_lock = asyncio.run(scenario())
+    assert ready is False
+    assert only_the_holders_lock

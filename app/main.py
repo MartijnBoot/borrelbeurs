@@ -57,6 +57,7 @@ from app.api.news import router as news_router
 from app.api.orders import router as orders_router
 from app.api.runs import router as runs_router
 from app.api.security import ROLE_ROUTES, LoginLimiter, OriginGuard
+from app.api.standby import StandbyGate
 from app.api.state import router as state_router
 from app.api.theme import theme_css_router, theme_router
 from app.core.config import Settings, get_settings
@@ -245,11 +246,14 @@ def create_app(
     # False until the lifespan says otherwise, so an app that is merely
     # constructed -- in a test, in `--reload`'s parent process -- is never ready.
     application.state.ready = False
+    application.state.standby = False
 
     application.add_exception_handler(AppError, handle_app_error)
     application.add_exception_handler(RequestValidationError, handle_validation_error)
     # SD9. No CORS middleware, ever: one origin (AC6b).
     application.add_middleware(OriginGuard)
+    # Added last, so outermost: in standby nothing behind it runs (Phase 8 SD4).
+    application.add_middleware(StandbyGate)
     application.include_router(health_router)
     application.include_router(api_router)
     application.include_router(ws_router)
