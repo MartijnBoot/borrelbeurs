@@ -130,6 +130,9 @@ def spawn_app(
         [sys.executable, "-m", "app.main"],
         cwd=REPO_ROOT,
         env=app_env(database_url, port),
+        # Never `serve.py`'s stdin: it blocks reading it, and on Windows the export's
+        # build process (Phase 7 T11) would stall at startup on that same pipe.
+        stdin=subprocess.DEVNULL,
         # The app's JSON log goes to stdout; keep it with stderr for the assertions.
         stdout=stderr,
         stderr=stderr,
