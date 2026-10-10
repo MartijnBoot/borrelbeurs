@@ -17,11 +17,13 @@ author=...)`, where `state` is `app.state`:
    replay log and sends every connected client `run_closed` -- and, until the
    next go-live, any client that was sent `hello` for the run before the close
    but connects after it. The ticker idles on its grid;
-   `app.state.tick_interval_ms` is kept.
+   `app.state.tick_interval_ms` is kept. Last, the export worker is woken for
+   the final export the close queued (PD9).
 """
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from app.db.runs import NameMismatch, RunNotLive, RunSummary, close_run, get_run
@@ -75,4 +77,6 @@ async def close_in_process(
             data=RunClosedData(run_id=run_id, name=run.name, ended_at_ms=ended_at_ms),
         )
     )
+    export_wakeup: asyncio.Event = state.export_wakeup
+    export_wakeup.set()
     return RunSummary(run_id=run_id, name=run.name, status="ended")

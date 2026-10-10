@@ -94,9 +94,12 @@ def test_a_close_ends_the_run_and_unloads_it(
     assert _sql(settings, api_env, "SELECT count(*) FROM market_event WHERE ended_at IS NULL") == [
         (0,)
     ]
-    assert _sql(settings, api_env, "SELECT run_id, kind, status, requested_by FROM export") == [
-        (live_run, "final", "queued", "Bestuur")
-    ]
+    # The close wakes the export worker (T11), so the row may already be built.
+    [(run_id, kind, status, requested_by)] = _sql(
+        settings, api_env, "SELECT run_id, kind, status, requested_by FROM export"
+    )
+    assert (run_id, kind, requested_by) == (live_run, "final", "Bestuur")
+    assert status in {"queued", "running", "done"}
     assert live_client.app.state.holder.is_empty  # type: ignore[attr-defined]
     ticks = _sql(settings, api_env, "SELECT count(*) FROM price_tick WHERE run_id = :r", r=live_run)
     advance(5_000)

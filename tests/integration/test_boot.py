@@ -1,4 +1,8 @@
-"""Boot and shutdown of the runtime (Phase 3 T20: SD11, SD16; AC18 in-process half, AC18c, AC4)."""
+"""Boot and shutdown of the runtime (Phase 3 T20: SD11, SD16; AC18 in-process half, AC18c, AC4).
+
+Phase 7 T11 (AC6, PD9): boot fails the exports a stopped process left
+unfinished before it starts the export worker.
+"""
 
 from __future__ import annotations
 
@@ -16,8 +20,10 @@ from sqlalchemy.ext.asyncio import create_async_engine
 import app.runtime.boot as boot
 from app.core.config import Settings, get_settings
 from app.db.advisory_lock import ADVISORY_LOCK_KEY, acquire, release, watchdog
+from app.db.exports import interrupt_unfinished
 from app.db.runs import add_drink, create_draft_run, go_live
 from app.db.session import create_engine
+from app.jobs.export_xlsx import run_worker
 from app.runtime.boot import BootFailure, start_runtime
 from app.runtime.rehydrate import rehydrate
 from app.runtime.ticker import Ticker
@@ -123,6 +129,8 @@ def test_boot_runs_in_sd11s_order_and_shutdown_releases_the_lock(
 
     monkeypatch.setattr(Ticker, "start", start)
     monkeypatch.setattr(boot, "watchdog", spy("watchdog", watchdog))
+    monkeypatch.setattr(boot, "interrupt_unfinished", spy("interrupt", interrupt_unfinished))
+    monkeypatch.setattr(boot, "run_worker", spy("worker", run_worker))
 
     async def scenario() -> tuple[bool, bool]:
         app = FastAPI()
@@ -144,9 +152,59 @@ def test_boot_runs_in_sd11s_order_and_shutdown_releases_the_lock(
         return after, free
 
     after, lock_free = asyncio.run(scenario())
-    assert order == ["lock", "migrate", "rehydrate", "ticker", "watchdog", "ready"]
+    assert order == [
+        "lock",
+        "migrate",
+        "rehydrate",
+        "interrupt",
+        "ticker",
+        "watchdog",
+        "worker",
+        "ready",
+    ]
     assert after is False
     assert lock_free
+
+
+def test_boot_fails_the_exports_a_stopped_process_left_unfinished(
+    on: str, settings: Settings
+) -> None:
+    """AC6, PD9: a `queued` and a `running` export become `failed`, `onderbroken`."""
+    run_id = asyncio.run(_go_live(settings, on))
+
+    async def scenario() -> list[tuple[str, str, str | None, bool]]:
+        engine = create_engine(_settings(settings, on))
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        "INSERT INTO export (run_id, kind, status, requested_by) VALUES"
+                        " (:r, 'final', 'running', 't'), (:r, 'manual', 'queued', 't'),"
+                        " (:r, 'manual', 'failed', 't')"
+                    ),
+                    {"r": run_id},
+                )
+            app = FastAPI()
+            async with start_runtime(
+                app, _settings(settings, on), clock=FakeClock(T0), run_migrations=False
+            ):
+                await asyncio.sleep(0.2)  # the worker's first scan finds nothing to build
+            async with engine.connect() as conn:
+                rows = await conn.execute(
+                    text(
+                        "SELECT kind, status, error, finished_at IS NOT NULL FROM export"
+                        " ORDER BY export_id"
+                    )
+                )
+                return [tuple(row) for row in rows]  # type: ignore[misc]
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(scenario()) == [
+        ("final", "failed", "onderbroken", True),
+        ("manual", "failed", "onderbroken", True),
+        ("manual", "failed", None, False),
+    ]
 
 
 def test_with_no_live_run_the_app_is_ready_and_the_holder_empty(

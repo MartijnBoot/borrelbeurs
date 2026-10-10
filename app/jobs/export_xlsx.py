@@ -13,19 +13,42 @@ into a `BytesIO` in its `in_memory` mode. Three sheets, v1-shaped and extended:
 Euros are `Decimal(cents) / 100` written with the `0.00` format; every total is
 summed in integer cents first, never from the written numbers. Data text goes
 through `write_string`, so a drink named `=1+1` stays text, not a formula.
+
+**The worker** (PD9) is one task, `run_worker`, started by boot. It drains the
+queue (`app/db/exports.py`), then sleeps on `wakeup`, which a close (and, from
+T12, a request) sets; the event is cleared *before* each drain, so a set during
+a build is never lost. Per export, `build_export` reads the snapshot on a
+heavy-read engine and builds the workbook **in a separate process**
+(`BuildProcess`); only the finished bytes cross back, and the result is written
+on the main engine (the heavy engine is read-only, SD11). A thread was not
+enough: AC21's timing test measured a 20 000-line build in `asyncio.to_thread`
+holding the GIL long enough to take the p95 order latency from 29 ms to 933 ms
+(R16; the process was chosen on 2026-10-10). A failed build records its error
+and leaves the run as it is (AC7). Cancelling the worker terminates the
+process, so shutdown waits for no build (SD6).
 """
 
 from __future__ import annotations
 
+import asyncio
 import io
+import logging
+import multiprocessing
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Final
+from multiprocessing.pool import Pool
+from typing import Final, Protocol
 
 import xlsxwriter
+from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.db.exports import ExportSnapshot
+from app.core.config import Settings
+from app.db.exports import ExportSnapshot, claim_next, fail, finish, read_snapshot
+from app.db.session import create_heavy_read_engine
+from app.runtime.clock import Clock
+
+logger = logging.getLogger(__name__)
 
 SALES_HEADERS: Final = (
     "ts_iso",
@@ -154,3 +177,156 @@ def build_workbook(snapshot: ExportSnapshot, *, generated_at_ms: int) -> bytes:
 
     book.close()
     return buffer.getvalue()
+
+
+@dataclass(frozen=True)
+class BuiltExport:
+    data: bytes
+    line_count: int
+    total_cents: int
+
+
+def build_export(settings: Settings, run_id: int, generated_at_ms: int) -> BuiltExport:
+    """Read the run's snapshot and build its workbook; blocking, in the build process."""
+
+    async def read() -> ExportSnapshot:
+        heavy_engine = create_heavy_read_engine(settings)
+        try:
+            async with heavy_engine.connect() as conn:
+                return await read_snapshot(conn, run_id)
+        finally:
+            await heavy_engine.dispose()
+
+    snapshot = asyncio.run(read())
+    return BuiltExport(
+        data=build_workbook(snapshot, generated_at_ms=generated_at_ms),
+        line_count=snapshot.line_count,
+        total_cents=snapshot.total_cents,
+    )
+
+
+def _build_or_error(settings: Settings, run_id: int, generated_at_ms: int) -> BuiltExport | str:
+    """`build_export`, with a failure turned into its message: an exception raised in
+    the child may not unpickle in the parent, and a string always does."""
+    try:
+        return build_export(settings, run_id, generated_at_ms)
+    except Exception as error:
+        return f"{type(error).__name__}: {error}"
+
+
+class Builder(Protocol):
+    async def build(self, settings: Settings, run_id: int, generated_at_ms: int) -> BuiltExport:
+        """The built export, or an exception naming why it could not be built."""
+        ...
+
+
+class BuildFailed(Exception):
+    """The build process reported a failure; the message is the child's."""
+
+
+class BuildProcess:
+    """Builds in one spawned process (R16): its own GIL, so neither decoding the
+    snapshot nor writing the workbook can hold the event loop's.
+
+    The process starts on the first build, not at boot, and is kept for the
+    next. `close` terminates it, so shutdown waits for no build (SD6).
+    """
+
+    def __init__(self) -> None:
+        self._pool: Pool | None = None
+
+    async def build(self, settings: Settings, run_id: int, generated_at_ms: int) -> BuiltExport:
+        if self._pool is None:
+            self._pool = multiprocessing.get_context("spawn").Pool(processes=1)
+        loop = asyncio.get_running_loop()
+        result: asyncio.Future[BuiltExport | str] = loop.create_future()
+
+        def settle(value: BuiltExport | str | BaseException) -> None:
+            if result.done():
+                return
+            if isinstance(value, BaseException):
+                result.set_exception(value)
+            else:
+                result.set_result(value)
+
+        # The callbacks run on the pool's result thread, so they hop back onto the loop.
+        self._pool.apply_async(
+            _build_or_error,
+            (settings, run_id, generated_at_ms),
+            callback=lambda value: loop.call_soon_threadsafe(settle, value),
+            error_callback=lambda error: loop.call_soon_threadsafe(settle, error),
+        )
+        built = await result
+        if isinstance(built, str):
+            raise BuildFailed(built)
+        return built
+
+    def close(self) -> None:
+        if self._pool is not None:
+            self._pool.terminate()
+            self._pool.join()
+            self._pool = None
+
+
+async def build_next(
+    *, engine: AsyncEngine, builder: Builder, settings: Settings, clock: Clock
+) -> bool:
+    """Build the oldest queued export, if any; whether there was one."""
+    async with engine.begin() as conn:
+        job = await claim_next(conn)
+    if job is None:
+        return False
+    log = {"export_id": job.export_id, "run_id": job.run_id, "kind": job.kind}
+    logger.info("export_started", extra=log)
+    try:
+        built = await builder.build(settings, job.run_id, clock.wall_ms())
+    except Exception as error:
+        message = (
+            str(error) if isinstance(error, BuildFailed) else f"{type(error).__name__}: {error}"
+        )
+        logger.error("export_failed", extra={**log, "error": message})
+        async with engine.begin() as conn:
+            recorded = await fail(conn, job.export_id, error=message)
+    else:
+        async with engine.begin() as conn:
+            recorded = await finish(
+                conn,
+                job,
+                data=built.data,
+                line_count=built.line_count,
+                total_cents=built.total_cents,
+            )
+        if recorded:
+            logger.info("export_done", extra={**log, "bytes": len(built.data)})
+    if not recorded:
+        logger.warning("export_dropped", extra=log)
+    return True
+
+
+async def run_worker(
+    *,
+    engine: AsyncEngine,
+    settings: Settings,
+    clock: Clock,
+    wakeup: asyncio.Event,
+    builder: Builder | None = None,
+) -> None:
+    """Drain the queue, then sleep until `wakeup`; forever, until cancelled.
+
+    Without a `builder` it owns a `BuildProcess`, terminated when it is cancelled.
+    """
+    process = BuildProcess()
+    try:
+        while True:
+            wakeup.clear()
+            try:
+                while await build_next(
+                    engine=engine, builder=builder or process, settings=settings, clock=clock
+                ):
+                    pass
+            except Exception:
+                # The database itself failed; the rows stay as they are until the next wake-up.
+                logger.exception("export_worker_failed")
+            await wakeup.wait()
+    finally:
+        process.close()

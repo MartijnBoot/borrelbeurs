@@ -9,18 +9,31 @@ order path's pool.
 SD13's fallbacks for rows a rolled-back image wrote: a line without a bar price
 takes its drink's current one, and a drink without a product groups by its
 `name_key`.
+
+The worker's queue (PD9) is the `export` rows themselves. `claim_next` takes the
+oldest `queued` row and marks it `running`; `finish` writes the file and prunes
+the run's manual exports to the three newest completed (SD6 retention; finals
+never) in the same transaction; `fail` records the error. Both match only a
+`running` row, so a result for a row deleted meanwhile (its run was deleted)
+matches nothing and says so. `interrupt_unfinished` is boot's: a `queued` or
+`running` row left by a stopped process becomes `failed`, `onderbroken`.
 """
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Final
 
-from sqlalchemy import BigInteger, func, select, type_coerce
+from sqlalchemy import BigInteger, delete, func, select, type_coerce, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.db import models
 from app.db.runs import RunNotFound
+
+INTERRUPTED: Final = "onderbroken"
+KEEP_MANUAL: Final = 3
 
 
 @dataclass(frozen=True)
@@ -163,3 +176,91 @@ async def read_snapshot(conn: AsyncConnection, run_id: int) -> ExportSnapshot:
         line_count=int(count),
         total_cents=int(total),
     )
+
+
+@dataclass(frozen=True)
+class ExportJob:
+    export_id: int
+    run_id: int
+    kind: str
+
+
+async def claim_next(conn: AsyncConnection) -> ExportJob | None:
+    """The oldest `queued` export, now `running`; `None` when nothing waits."""
+    export = models.Export
+    oldest = (
+        select(export.export_id)
+        .where(export.status == "queued")
+        .order_by(export.export_id)
+        .limit(1)
+        .with_for_update(skip_locked=True)
+        .scalar_subquery()
+    )
+    row = (
+        await conn.execute(
+            update(export)
+            .where(export.export_id == oldest)
+            .values(status="running", started_at=func.now())
+            .returning(export.export_id, export.run_id, export.kind)
+        )
+    ).one_or_none()
+    return None if row is None else ExportJob(int(row.export_id), int(row.run_id), row.kind)
+
+
+async def finish(
+    conn: AsyncConnection, job: ExportJob, *, data: bytes, line_count: int, total_cents: int
+) -> bool:
+    """Store the built file on the `running` row and prune; `False` if the row is gone."""
+    export = models.Export
+    result = await conn.execute(
+        update(export)
+        .where(export.export_id == job.export_id, export.status == "running")
+        .values(
+            status="done",
+            data=data,
+            sha256=hashlib.sha256(data).hexdigest(),
+            bytes=len(data),
+            line_count=line_count,
+            total_cents=total_cents,
+            finished_at=func.now(),
+        )
+    )
+    if result.rowcount != 1:
+        return False
+    await prune_manual(conn, job.run_id)
+    return True
+
+
+async def fail(conn: AsyncConnection, export_id: int, *, error: str) -> bool:
+    """Mark the `running` export `failed` with `error`; `False` if the row is gone."""
+    export = models.Export
+    result = await conn.execute(
+        update(export)
+        .where(export.export_id == export_id, export.status == "running")
+        .values(status="failed", error=error, finished_at=func.now())
+    )
+    return bool(result.rowcount == 1)
+
+
+async def prune_manual(conn: AsyncConnection, run_id: int, *, keep: int = KEEP_MANUAL) -> int:
+    """Delete the run's completed manual exports beyond the `keep` newest; how many went."""
+    export = models.Export
+    completed = (export.run_id == run_id, export.kind == "manual", export.status == "done")
+    newest = (
+        select(export.export_id).where(*completed).order_by(export.export_id.desc()).limit(keep)
+    )
+    result = await conn.execute(
+        delete(export).where(*completed, export.export_id.not_in(newest.scalar_subquery()))
+    )
+    return int(result.rowcount)
+
+
+async def interrupt_unfinished(conn: AsyncConnection) -> int:
+    """Boot's: every `queued` or `running` export becomes `failed`, `onderbroken` (AC6)."""
+    export = models.Export
+    result = await conn.execute(
+        update(export)
+        .where(export.status.in_(("queued", "running")))
+        .values(status="failed", error=INTERRUPTED, finished_at=func.now())
+    )
+    return int(result.rowcount)

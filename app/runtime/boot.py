@@ -15,12 +15,16 @@ Startup, in this order, and nothing is served until the end:
    or without a live run;
 5. **rehydrate** the live run (with the gap rule), or an empty holder (SD16);
 6. the hub and the publisher (the holder's sink);
-7. the ticker and the lock watchdog;
-8. ready.
+7. **interrupted exports** (Phase 7 PD9): every `queued` or `running` export a
+   stopped process left becomes `failed`, `onderbroken` (AC6);
+8. the ticker, the lock watchdog and the export worker, woken through
+   `app.state.export_wakeup`;
+9. ready.
 
-Shutdown (SD10): not ready, draining, the ticker finishes its slot, every
-socket is closed with 1012, the lock is released, the engines disposed. Nothing
-is written on the way out.
+Shutdown (SD10): not ready, draining, the ticker finishes its slot, the
+watchdog and the export worker are cancelled (its build process is
+terminated, not waited for), every socket is closed with 1012, the lock is released, the
+engines disposed. Nothing is written on the way out.
 """
 
 from __future__ import annotations
@@ -42,9 +46,11 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.config import Settings
 from app.db.advisory_lock import acquire, release, watchdog
+from app.db.exports import interrupt_unfinished
 from app.db.models import Run
 from app.db.session import create_engine, create_heavy_read_engine
 from app.db.theme import get_theme
+from app.jobs.export_xlsx import run_worker
 from app.realtime.hub import Hub
 from app.realtime.publish import Publisher, active_drink_ids, seeded_book
 from app.runtime.clock import Clock
@@ -177,11 +183,18 @@ async def start_runtime(
         sink.target = publisher
         ticker = Ticker(holder, clock=clock, interval_ms=tick_interval_ms)
 
+        async with engine.begin() as conn:
+            interrupted = await interrupt_unfinished(conn)
+        if interrupted:
+            logger.warning("exports_interrupted", extra={"count": interrupted})
+        export_wakeup = asyncio.Event()
+
         app.state.holder = holder
         app.state.hub = hub
         app.state.publisher = publisher
         app.state.ticker = ticker
         app.state.tick_interval_ms = tick_interval_ms
+        app.state.export_wakeup = export_wakeup
         app.state.draining = False
         # /healthz measures from here until the ticker's first iteration (SD15).
         app.state.runtime_started_monotonic = clock.monotonic()
@@ -196,6 +209,11 @@ async def start_runtime(
                     on_lost=on_lock_lost,
                     timeout_s=step_timeout_s,
                 )
+            )
+        )
+        tasks.append(
+            asyncio.get_running_loop().create_task(
+                run_worker(engine=engine, settings=settings, clock=clock, wakeup=export_wakeup)
             )
         )
         app.state.ready = True
