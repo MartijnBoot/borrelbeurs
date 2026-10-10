@@ -291,6 +291,62 @@ def test_after_a_close_a_new_borrel_can_start_and_the_old_one_is_kept(
     assert before[0][0] == 1 and before[0][3] == 1
 
 
+def test_an_order_booked_before_the_close_still_replays_after_it(
+    live_client: TestClient, live_run: int, login: Login
+) -> None:
+    """AC4, SD20: a retry whose first answer was lost replays its receipt, not `no_live_run`;
+    a new key, or the same key for another order, is still refused."""
+    bar = login("bar")
+    drink = live_client.app.state.holder.drink_ids[0]  # type: ignore[attr-defined]
+    body = {
+        "quote_version": live_client.app.state.holder.state.version,  # type: ignore[attr-defined]
+        "lines": [
+            {
+                "drink_id": drink,
+                "qty": 1,
+                "unit_price_cents": _live_price(live_client.app.state.holder, drink),  # type: ignore[attr-defined]
+            }
+        ],
+    }
+    placed = bar.post("/api/orders", json=body, headers={"Idempotency-Key": "close-retry-01"})
+    assert placed.status_code == 201, placed.text
+    assert (
+        login("admin")
+        .post(f"/api/runs/{live_run}/close", json={"confirm_name": "Borrel"})
+        .is_success
+    )
+
+    retried = bar.post("/api/orders", json=body, headers={"Idempotency-Key": "close-retry-01"})
+    fresh = bar.post("/api/orders", json=body, headers={"Idempotency-Key": "close-retry-02"})
+    other = {**body, "lines": [{**body["lines"][0], "qty": 2}]}
+    reused = bar.post("/api/orders", json=other, headers={"Idempotency-Key": "close-retry-01"})
+
+    assert retried.status_code == 200, retried.text
+    assert retried.content == placed.content
+    assert (fresh.status_code, fresh.json()["error"]["code"]) == (409, "no_live_run")
+    assert (reused.status_code, reused.json()["error"]["code"]) == (422, "idempotency_key_reused")
+
+
+def test_a_socket_mid_handshake_at_the_close_is_told_too(
+    live_client: TestClient, live_run: int, login: Login
+) -> None:
+    """AC3: a client sent `hello` for the live run, which closed before its own hello
+    arrived, is sent `run_closed` rather than an empty market it takes for live."""
+    admin = login("admin")
+    with admin.websocket_connect("wss://testserver/ws") as ws:
+        assert _until(ws, "hello")["data"]["run_id"] == live_run
+        assert admin.post(f"/api/runs/{live_run}/close", json={"confirm_name": "Borrel"}).is_success
+
+        ws.send_text(json.dumps({"type": "hello", "boot_id": "x", "last_seq": 0}))
+
+        frames: list[dict[str, Any]] = []
+        while not frames or frames[-1]["type"] != "theme":  # the theme catch-up comes last
+            frames.append(json.loads(ws.receive_text()))
+    closed = [f for f in frames if f["type"] == "run_closed"]
+    assert [f["data"]["run_id"] for f in closed] == [live_run]
+    assert closed[0]["data"]["name"] == "Borrel"
+
+
 @pytest.mark.parametrize("role", ["display", "bar"])
 def test_other_roles_are_403(
     live_client: TestClient, live_run: int, login: Login, role: str

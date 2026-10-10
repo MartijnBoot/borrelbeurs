@@ -28,7 +28,8 @@ idle too.
 
 **Go-live (Phase 6 SD3)** calls `adopt_interval` with the run's interval: the
 grid is re-anchored at that moment and a ticker asleep on the old grid is woken
-to sleep again on the new one. Its task is never stopped.
+to sleep again on the new one. Its task is never stopped. A gap the closed run
+still owed is dropped: the new run's first slot is a tick.
 
 Time is the injected `Clock` only (SD32). `last_iteration_monotonic` is when an
 iteration last completed (committed, failed or idle), for `/healthz` (SD15).
@@ -120,6 +121,8 @@ class Ticker:
         _check_interval(interval_ms)
         self._interval_ms = interval_ms
         self._anchor()
+        # A gap still owed is the closed run's; the new run has none (Phase 7 SD2).
+        self._gap_pending = False
         self._reanchored.set()
 
     async def run(self) -> None:

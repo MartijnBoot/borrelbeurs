@@ -12,6 +12,10 @@ tick interval for the client's `hello {boot_id, last_seq}`. With the current
 the broadcasts it missed; otherwise one `snapshot` at the current `seq`, or
 nothing with no live run (AC21, SD16). Only then is the connection added to
 the hub, with no await in between, so no broadcast can overtake the replay.
+If the run `hello` named closed in the wait (Phase 7 SD2), the close's
+`run_closed` follows instead of a snapshot: the broadcast went out before the
+connection joined, and without it the client would take the empty market for
+the run it was told is live (AC3).
 
 **The theme (Phase 4 SD9, PD7).** `hello` carries the current theme. Because
 `hello` goes out before the connection joins the hub, a `theme` broadcast in
@@ -241,6 +245,10 @@ class _Session:
                 self.connection.enqueue(json.loads(frame)["type"], frame)
         else:
             self.send_snapshot()
+            closed = self.hub.closed
+            if hello.run_id is not None and self.holder.is_empty and closed is not None:
+                # The run in our `hello` closed before this connection could hear it (AC3).
+                self.hub.unicast(self.connection, closed)
         self.send_theme()
         if first is not None and not isinstance(parsed, ClientHello):
             self.handle(first)

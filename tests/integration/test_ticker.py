@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 from app.core.config import Settings
 from app.db.engine_state import load_state
 from app.db.market_events import active_events, insert_event
-from app.db.runs import add_drink, create_draft_run, go_live
+from app.db.runs import add_drink, close_run, create_draft_run, go_live
 from app.db.session import create_engine
 from app.runtime.gap import DEFAULT_CATCH_UP_BUDGET_MS
 from app.runtime.holder import (
@@ -531,3 +531,51 @@ def test_a_ticker_waiting_on_the_lock_during_a_release_idles(
     assert version == 1
     assert later_ticks == 0
     assert not [r for r in caplog.records if r.getMessage() == "tick_commit_failed"]
+
+
+def test_a_gap_owed_to_a_closed_run_is_not_written_into_the_next(
+    settings: Settings, database_url: str
+) -> None:
+    """Phase 7 SD2, AC18a: a failed gap is retried in its own run only; the next run's
+    first slot after go-live is a tick."""
+
+    async def scenario() -> list[str]:
+        async with _running(settings, database_url) as h:
+            await h.advance(INTERVAL)
+            closing = h.holder.run_id
+            assert closing is not None
+
+            def drop_connection(*args: Any) -> None:
+                if args[2].startswith("INSERT INTO price_tick"):
+                    raise OSError("injected: connection lost")
+
+            event.listen(h.engine.sync_engine, "before_cursor_execute", drop_connection)
+            try:
+                await h.advance(45 * INTERVAL)  # a gap, which does not commit
+            finally:
+                event.remove(h.engine.sync_engine, "before_cursor_execute", drop_connection)
+
+            async def close(view: MarketView) -> None:
+                async with h.engine.begin() as conn:
+                    await close_run(
+                        conn, closing, ended_at_ms=h.clock.wall_ms(), requested_by="test"
+                    )
+
+            await h.holder.release(close)
+            run = await _live(h.engine)
+
+            async def load() -> RehydratedRun:
+                return run
+
+            await h.holder.adopt(load)
+            h.ticker.adopt_interval(INTERVAL)
+            await h.settle()
+            await h.advance(INTERVAL)
+            async with h.engine.connect() as conn:
+                rows = await conn.execute(
+                    text("SELECT source FROM price_tick WHERE run_id = :r ORDER BY version"),
+                    {"r": run.run_id},
+                )
+                return [str(r[0]) for r in rows]
+
+    assert asyncio.run(scenario()) == ["reset", "tick"]

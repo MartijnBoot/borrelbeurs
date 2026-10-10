@@ -13,9 +13,11 @@ author=...)`, where `state` is `app.state`:
    memory (`holder.release`). An order queued behind the lock finds no run
    and is 409 `no_live_run` (SD16).
 3. **Then, with no await in between**, so no client sees a half-closed market:
-   the hub clears its replay log, the publisher drops the run's candles and
-   drinks, and every connected client is sent `run_closed`. The ticker idles
-   on its grid; `app.state.tick_interval_ms` is kept.
+   the publisher drops the run's candles and drinks, and the hub clears its
+   replay log and sends every connected client `run_closed` -- and, until the
+   next go-live, any client that was sent `hello` for the run before the close
+   but connects after it. The ticker idles on its grid;
+   `app.state.tick_interval_ms` is kept.
 """
 
 from __future__ import annotations
@@ -62,9 +64,8 @@ async def close_in_process(
     # No await from here on: every client learns of the close in one step.
     hub: Hub = state.hub
     publisher: Publisher = state.publisher
-    hub.release_run()
     publisher.adopt(CandleBook(holder.candle_interval_ms), active=())
-    hub.broadcast(
+    hub.release_run(
         Envelope(
             type="run_closed",
             seq=0,  # the hub stamps the real one

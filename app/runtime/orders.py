@@ -26,6 +26,12 @@ byte-identical even though `jsonb` reorders keys (plan PD7).
 A unique violation on the key at commit -- another writer won the race -- is
 re-read and replayed (SD20). Any other failure leaves memory as it was and
 surfaces as 503 `persistence_unavailable` through the holder (SD21).
+
+**No live run (Phase 7 SD2).** An order that committed before a close is still
+replayed after it: on `no_live_run` the key is looked up once more, outside
+the lock -- a closed run's orders no longer change -- and only a key with no
+stored order is 409 `no_live_run`. A bar whose first answer was lost would
+otherwise be told its booked order was refused.
 """
 
 from __future__ import annotations
@@ -37,7 +43,7 @@ from typing import Annotated
 
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.core.errors import AppError
 from app.db.codec import tick_prices
@@ -47,7 +53,15 @@ from app.runtime.clock import Clock
 from app.runtime.earnings import DrinkEarnings
 from app.runtime.grace import PriceChanged, QuotedLine, judge, step_cents_from
 from app.runtime.history import TickEntry
-from app.runtime.holder import CommittedLine, MarketHolder, MarketView, OrderCommitted, Outcome
+from app.runtime.holder import (
+    CommittedLine,
+    MarketHolder,
+    MarketView,
+    NoLiveRunError,
+    OrderCommitted,
+    Outcome,
+    PersistenceUnavailable,
+)
 from exchange import advance
 
 _UNIQUE_KEY = "order_idempotency_key_key"
@@ -281,4 +295,14 @@ async def place_order(
             earnings_lines=earnings_lines,
         )
 
-    return await holder.mutate("order", step)
+    try:
+        return await holder.mutate("order", step)
+    except NoLiveRunError:
+        try:
+            async with engine.connect() as conn:
+                stored = await find_order_by_key(conn, request.idempotency_key)
+        except (SQLAlchemyError, OSError) as error:
+            raise PersistenceUnavailable("the database did not answer the replay") from error
+        if stored is None:
+            raise
+        return _replay(stored, request)
