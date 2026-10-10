@@ -32,6 +32,7 @@ from app.db.runs import add_drink, create_draft_run, delete_run, go_live
 from app.db.session import create_engine
 from app.jobs.export_xlsx import BuildProcess, BuiltExport, build_export, build_next
 from app.runtime.boot import start_runtime
+from app.runtime.clock import AppClock
 from app.runtime.close import close_in_process
 from exchange import Params
 from tests.support.clock import FakeClock
@@ -190,7 +191,7 @@ def test_a_close_builds_its_final_export_equal_to_the_database(on: str, settings
             app = FastAPI()
             app.state.clock = clock = FakeClock(T0 + 1_000)  # `create_app` sets it in production
             async with start_runtime(
-                app, _settings(settings, on), clock=clock, run_migrations=False
+                app, _settings(settings, on), clock=AppClock(clock), run_migrations=False
             ):
                 await close_in_process(app.state, run_id, confirm_name="Vrijmibo", author="t")
                 exports = await _settled(engine, run_id)
@@ -228,7 +229,7 @@ def test_a_failed_build_is_recorded_and_the_next_request_builds(
             app = FastAPI()
             app.state.clock = clock = FakeClock(T0 + 1_000)
             async with start_runtime(
-                app, _settings(settings, on), clock=clock, run_migrations=False
+                app, _settings(settings, on), clock=AppClock(clock), run_migrations=False
             ):
                 await close_in_process(app.state, run_id, confirm_name="Vrijmibo", author="t")
                 failed = await _settled(engine, run_id)

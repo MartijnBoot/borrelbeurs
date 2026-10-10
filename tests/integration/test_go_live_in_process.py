@@ -27,6 +27,7 @@ from app.db.runs import LiveRunExists, active_drinks, add_drink, create_draft_ru
 from app.db.session import create_engine
 from app.realtime.hub import Hub
 from app.realtime.publish import Publisher, active_drink_ids, seeded_book
+from app.runtime.clock import AppClock
 from app.runtime.golive import go_live_in_process
 from app.runtime.holder import DomainEvent, MarketHolder
 from app.runtime.theme import resolve
@@ -100,7 +101,7 @@ class Runtime:
             active=active_drink_ids(self.holder),
             ring=lambda: self.holder.ring,
         )
-        self.ticker = Ticker(self.holder, clock=clock, interval_ms=BOOT_INTERVAL)
+        self.ticker = Ticker(self.holder, clock=AppClock(clock), interval_ms=BOOT_INTERVAL)
         self.tick_interval_ms = BOOT_INTERVAL
         self.theme = resolve("blauw", 0)
         self.socket = RecordingSocket()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import logging
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
@@ -17,6 +18,7 @@ from app.db.engine_state import load_state
 from app.db.market_events import active_events, insert_event
 from app.db.runs import add_drink, close_run, create_draft_run, go_live
 from app.db.session import create_engine
+from app.runtime.clock import AppClock
 from app.runtime.gap import DEFAULT_CATCH_UP_BUDGET_MS
 from app.runtime.holder import (
     DomainEvent,
@@ -67,12 +69,20 @@ async def _live(engine: AsyncEngine) -> RehydratedRun:
 
 class Harness:
     def __init__(
-        self, engine: AsyncEngine, holder: MarketHolder, ticker: Ticker, clock: FakeClock
+        self,
+        engine: AsyncEngine,
+        holder: MarketHolder,
+        ticker: Ticker,
+        clock: FakeClock,
+        app_clock: AppClock,
     ) -> None:
         self.engine = engine
         self.holder = holder
         self.ticker = ticker
+        # The fake clock the test drives, and the app clock over it that the runtime
+        # reads (Phase 8 SD15).
         self.clock = clock
+        self.app_clock = app_clock
         self.events: list[DomainEvent] = []
 
     async def settle(self) -> None:
@@ -99,6 +109,7 @@ class Harness:
 async def _running(settings: Settings, url: str, *, empty: bool = False) -> AsyncIterator[Harness]:
     engine = _engine(settings, url)
     clock = FakeClock(T0)
+    app_clock = AppClock(clock)
     events: list[DomainEvent] = []
 
     def sink(batch: Sequence[DomainEvent]) -> None:
@@ -106,13 +117,13 @@ async def _running(settings: Settings, url: str, *, empty: bool = False) -> Asyn
 
     try:
         if empty:
-            holder = MarketHolder.empty(engine=engine, clock=clock, sink=sink)
+            holder = MarketHolder.empty(engine=engine, clock=app_clock, sink=sink)
         else:
             holder = MarketHolder.from_rehydrated(
-                await _live(engine), engine=engine, clock=clock, sink=sink
+                await _live(engine), engine=engine, clock=app_clock, sink=sink
             )
-        ticker = Ticker(holder, clock=clock, interval_ms=INTERVAL)
-        harness = Harness(engine, holder, ticker, clock)
+        ticker = Ticker(holder, clock=app_clock, interval_ms=INTERVAL)
+        harness = Harness(engine, holder, ticker, clock, app_clock)
         harness.events = events
         ticker.start()
         await harness.settle()
@@ -255,21 +266,98 @@ async def _prices(engine: AsyncEngine) -> dict[int, Any]:
         return {int(r[0]): r[1] for r in rows}
 
 
-def test_a_wall_clock_jump_re_anchors(settings: Settings, database_url: str) -> None:
-    """SD13: wall and monotonic diverging past the budget is treated as a gap."""
+HOUR = 3_600_000
+# Ticks watched after a step back: past one Brownian/idle period (60 s at the defaults).
+AFTER_STEP = 71
 
-    async def scenario() -> list[tuple[int, str, int]]:
+
+def _p_cont(prices: dict[int, Any], version: int) -> dict[str, float]:
+    return {drink: p["p_cont"] for drink, p in prices[version].items()}
+
+
+def test_a_wall_clock_step_forward_by_an_hour_is_one_gap_and_moves_no_price(
+    settings: Settings, database_url: str
+) -> None:
+    """AC14 (Phase 8), SD13: one `gap` row, a re-anchor, ticks at 1 Hz again, and no
+    drink's `p_cont` jumps across the hour."""
+
+    async def scenario() -> tuple[list[tuple[int, str, int]], dict[int, Any]]:
         async with _running(settings, database_url) as h:
             await h.advance(INTERVAL)
-            h.clock.set_wall(h.clock.wall_ms() + 10 * 60_000)
-            await h.advance(INTERVAL)
-            await h.advance(INTERVAL)
-            return await h.ticks()
+            h.clock.set_wall(h.clock.wall_ms() + HOUR)
+            for _ in range(3):
+                await h.advance(INTERVAL)
+            return await h.ticks(), await _prices(h.engine)
 
-    rows = asyncio.run(scenario())
-    assert [r[1] for r in rows] == ["reset", "tick", "gap", "tick"]
-    assert rows[2][2] == T0 + 2 * INTERVAL + 10 * 60_000
-    assert rows[3][2] == rows[2][2] + INTERVAL
+    rows, prices = asyncio.run(scenario())
+    assert [r[1] for r in rows] == ["reset", "tick", "gap", "tick", "tick"]
+    assert rows[2][2] == T0 + 2 * INTERVAL + HOUR
+    assert [r[2] - rows[2][2] for r in rows[3:]] == [INTERVAL, 2 * INTERVAL]
+    before, gap, after = rows[1][0], rows[2][0], rows[3][0]
+    assert _p_cont(prices, gap) == _p_cont(prices, before)
+    assert _p_cont(prices, after) == _p_cont(prices, before)
+
+
+def test_a_wall_clock_step_back_by_an_hour_raises_the_app_clock_and_keeps_ticking(
+    settings: Settings, database_url: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """AC15, SD15: one zero-shift `gap` row at the last commit's time, the app clock
+    raised to it, then ticks 1 s apart again -- not an hour of ticks frozen at the last
+    commit's stamp while the grid catches up."""
+
+    async def scenario() -> tuple[list[tuple[int, str, int]], dict[int, Any], int, int]:
+        async with _running(settings, database_url) as h:
+            await h.advance(INTERVAL)
+            h.clock.set_wall(h.clock.wall_ms() - HOUR)
+            stepped_at = h.clock.wall_ms()
+            for _ in range(1 + AFTER_STEP):
+                await h.advance(INTERVAL)
+            return await h.ticks(), await _prices(h.engine), h.app_clock.offset_ms, stepped_at
+
+    with caplog.at_level(logging.WARNING, logger="app.runtime.ticker"):
+        rows, prices, offset_ms, stepped_at = asyncio.run(scenario())
+
+    assert [r[1] for r in rows] == ["reset", "tick", "gap"] + ["tick"] * AFTER_STEP
+    stamps = [r[2] for r in rows]
+    assert stamps == sorted(stamps), stamps
+    last_commit = rows[1][2]
+    assert rows[2][2] == last_commit  # the gap: no time evolved
+    # The first tick after the step lands within 2 s of fake time, 1 s after the gap.
+    assert rows[3][2] == last_commit + INTERVAL
+    assert [b[2] - a[2] for a, b in itertools.pairwise(rows[2:])] == [INTERVAL] * AFTER_STEP
+    # Zero shift: the gap row carries the prices of the tick before it.
+    assert _p_cont(prices, rows[2][0]) == _p_cont(prices, rows[1][0])
+    # Prices evolve again. With no orders only the Brownian and idle steps move them,
+    # once per `bm_dt_minutes` / `refresh_minutes` (1 min by default), so the window is
+    # just over a minute -- held at the last commit, as before SD15, nothing would move
+    # for the whole hour.
+    assert any(_p_cont(prices, v) != _p_cont(prices, rows[2][0]) for v, _, _ in rows[3:])
+    # The offset lifts the stepped-back clock (one interval later) to the last commit.
+    assert offset_ms == last_commit - (stepped_at + INTERVAL)
+    (stepped,) = [r for r in caplog.records if r.getMessage() == "clock_stepped_back"]
+    assert stepped.__dict__["step_ms"] == offset_ms
+    assert stepped.__dict__["offset_ms"] == offset_ms
+
+
+def test_a_wall_clock_step_back_within_the_budget_holds_stamps_and_writes_no_gap(
+    settings: Settings, database_url: str
+) -> None:
+    """SD15: ADR 0003's documented hold is kept for a small step back -- no gap, no
+    offset, stamps held at the last commit until the grid passes it."""
+
+    async def scenario() -> tuple[list[tuple[int, str, int]], int]:
+        async with _running(settings, database_url) as h:
+            await h.advance(INTERVAL)
+            h.clock.set_wall(h.clock.wall_ms() - 10_000)
+            for _ in range(3):
+                await h.advance(INTERVAL)
+            return await h.ticks(), h.app_clock.offset_ms
+
+    rows, offset_ms = asyncio.run(scenario())
+    assert offset_ms == 0
+    assert "gap" not in [r[1] for r in rows]
+    stamps = [r[2] for r in rows]
+    assert stamps == sorted(stamps), stamps
 
 
 def test_a_failed_commit_is_skipped_and_the_next_slot_proceeds(
@@ -386,13 +474,16 @@ async def _running_rehydrated(settings: Settings, url: str) -> AsyncIterator[Har
     """A ticker over the live run already in the database."""
     engine = _engine(settings, url)
     clock = FakeClock(T0)
+    app_clock = AppClock(clock)
     events: list[DomainEvent] = []
     try:
         run = await rehydrate(engine, now_ms=T0)
         assert isinstance(run, RehydratedRun)
-        holder = MarketHolder.from_rehydrated(run, engine=engine, clock=clock, sink=events.extend)
-        ticker = Ticker(holder, clock=clock, interval_ms=INTERVAL)
-        harness = Harness(engine, holder, ticker, clock)
+        holder = MarketHolder.from_rehydrated(
+            run, engine=engine, clock=app_clock, sink=events.extend
+        )
+        ticker = Ticker(holder, clock=app_clock, interval_ms=INTERVAL)
+        harness = Harness(engine, holder, ticker, clock, app_clock)
         harness.events = events
         ticker.start()
         await harness.settle()

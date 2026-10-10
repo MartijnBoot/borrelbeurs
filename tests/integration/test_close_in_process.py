@@ -20,6 +20,7 @@ from app.core.config import Settings, get_settings
 from app.db.runs import add_drink, close_run, create_draft_run, go_live
 from app.db.session import create_engine
 from app.runtime.boot import start_runtime
+from app.runtime.clock import AppClock
 from app.runtime.close import close_in_process
 from app.runtime.holder import PersistenceUnavailable
 from exchange import Params
@@ -86,13 +87,16 @@ def test_a_closed_run_is_not_rehydrated_and_stays_as_it_was(on: str, settings: S
             app = FastAPI()
             app.state.clock = clock = FakeClock(T0 + 1_000)  # `create_app` sets it in production
             async with start_runtime(
-                app, _settings(settings, on), clock=clock, run_migrations=False
+                app, _settings(settings, on), clock=AppClock(clock), run_migrations=False
             ):
                 await close_in_process(app.state, run_id, confirm_name="Vrijmibo", author="t")
             before = await _rows(engine, run_id)
             again = FastAPI()
             async with start_runtime(
-                again, _settings(settings, on), clock=FakeClock(T0 + 9_000), run_migrations=False
+                again,
+                _settings(settings, on),
+                clock=AppClock(FakeClock(T0 + 9_000)),
+                run_migrations=False,
             ):
                 empty = again.state.holder.is_empty
             async with engine.connect() as conn:
@@ -124,7 +128,10 @@ def test_a_shutdown_without_a_close_leaves_the_run_live_and_rehydrates_it(
             run_id = await _live(engine)
             first = FastAPI()
             async with start_runtime(
-                first, _settings(settings, on), clock=FakeClock(T0 + 1_000), run_migrations=False
+                first,
+                _settings(settings, on),
+                clock=AppClock(FakeClock(T0 + 1_000)),
+                run_migrations=False,
             ):
                 assert first.state.holder.run_id == run_id
             async with engine.connect() as conn:
@@ -137,7 +144,10 @@ def test_a_shutdown_without_a_close_leaves_the_run_live_and_rehydrates_it(
                 )
             again = FastAPI()
             async with start_runtime(
-                again, _settings(settings, on), clock=FakeClock(T0 + 9_000), run_migrations=False
+                again,
+                _settings(settings, on),
+                clock=AppClock(FakeClock(T0 + 9_000)),
+                run_migrations=False,
             ):
                 return status, again.state.holder.run_id
         finally:
@@ -169,7 +179,7 @@ def test_a_close_whose_commit_fails_leaves_everything_live(
             async with start_runtime(
                 app,
                 _settings(settings, on),
-                clock=clock,
+                clock=AppClock(clock),
                 run_migrations=False,
                 on_lock_lost=lambda: lost.append("lost"),
             ):
@@ -211,7 +221,7 @@ def test_a_close_whose_commit_lands_unacknowledged_diverges(
             async with start_runtime(
                 app,
                 _settings(settings, on),
-                clock=clock,
+                clock=AppClock(clock),
                 run_migrations=False,
                 on_lock_lost=lambda: lost.append("lost"),
             ):

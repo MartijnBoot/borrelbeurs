@@ -26,6 +26,7 @@ from app.db.schema_compat import DbState, read_db_state
 from app.db.session import create_engine
 from app.jobs.export_xlsx import run_worker
 from app.runtime.boot import BootFailure, start_runtime
+from app.runtime.clock import AppClock
 from app.runtime.rehydrate import rehydrate
 from app.runtime.ticker import Ticker
 from tests.integration.conftest import RunAlembic, head_and_previous
@@ -92,7 +93,7 @@ def test_a_held_lock_fails_boot_fast_naming_the_lock_and_never_migrates(
         try:
             with pytest.raises(BootFailure, match="advisory lock"):
                 async with start_runtime(
-                    app, _settings(settings, on), clock=FakeClock(T0), run_migrations=True
+                    app, _settings(settings, on), clock=AppClock(FakeClock(T0)), run_migrations=True
                 ):
                     pass
             return time.monotonic() - started
@@ -137,7 +138,7 @@ def test_boot_runs_in_sd11s_order_and_shutdown_releases_the_lock(
         app = FastAPI()
         app.state.ready = False
         async with start_runtime(
-            app, _settings(settings, on), clock=FakeClock(T0), run_migrations=True
+            app, _settings(settings, on), clock=AppClock(FakeClock(T0)), run_migrations=True
         ):
             await asyncio.sleep(0)
             order.append("ready" if app.state.ready else "not-ready")
@@ -187,7 +188,7 @@ def test_boot_fails_the_exports_a_stopped_process_left_unfinished(
                 )
             app = FastAPI()
             async with start_runtime(
-                app, _settings(settings, on), clock=FakeClock(T0), run_migrations=False
+                app, _settings(settings, on), clock=AppClock(FakeClock(T0)), run_migrations=False
             ):
                 await asyncio.sleep(0.2)  # the worker's first scan finds nothing to build
             async with engine.connect() as conn:
@@ -216,7 +217,7 @@ def test_with_no_live_run_the_app_is_ready_and_the_holder_empty(
     async def scenario() -> tuple[bool, bool, int]:
         app = FastAPI()
         async with start_runtime(
-            app, _settings(settings, on), clock=FakeClock(T0), run_migrations=False
+            app, _settings(settings, on), clock=AppClock(FakeClock(T0)), run_migrations=False
         ):
             return app.state.ready, app.state.holder.is_empty, app.state.tick_interval_ms
 
@@ -235,7 +236,7 @@ def test_boot_builds_a_heavy_read_engine_with_its_own_connections_and_timeout(
 
     async def scenario() -> tuple[bool, bool, str, str]:
         app = FastAPI()
-        async with start_runtime(app, bounded, clock=FakeClock(T0), run_migrations=False):
+        async with start_runtime(app, bounded, clock=AppClock(FakeClock(T0)), run_migrations=False):
             engine, heavy = app.state.engine, app.state.heavy_engine
             async with heavy.connect() as conn:
                 slept = await conn.execute(text("SELECT pg_sleep(6)::text"))
@@ -273,7 +274,7 @@ def test_a_live_run_is_rehydrated_and_its_tick_interval_used(on: str, settings: 
             await engine.dispose()
         app = FastAPI()
         async with start_runtime(
-            app, _settings(settings, on), clock=FakeClock(T0), run_migrations=False
+            app, _settings(settings, on), clock=AppClock(FakeClock(T0)), run_migrations=False
         ):
             assert app.state.holder.run_id == run_id
             return app.state.holder.run_id, app.state.tick_interval_ms
@@ -294,7 +295,7 @@ def test_a_failing_migration_fails_boot_and_releases_the_lock(
         app = FastAPI()
         with pytest.raises(BootFailure, match="migration failed"):
             async with start_runtime(
-                app, _settings(settings, on), clock=FakeClock(T0), run_migrations=True
+                app, _settings(settings, on), clock=AppClock(FakeClock(T0)), run_migrations=True
             ):
                 pass
         assert app.state.ready is False
@@ -323,7 +324,10 @@ def test_boot_migrates_a_database_one_revision_behind_to_head(
     async def scenario() -> str:
         app = FastAPI()
         async with start_runtime(
-            app, _settings(settings, empty_database), clock=FakeClock(T0), run_migrations=True
+            app,
+            _settings(settings, empty_database),
+            clock=AppClock(FakeClock(T0)),
+            run_migrations=True,
         ):
             pass
         engine = create_async_engine(empty_database, poolclass=pool.NullPool)
@@ -353,7 +357,7 @@ def test_a_lost_lock_connection_calls_on_lock_lost(on: str, settings: Settings) 
         async with start_runtime(
             app,
             _settings(settings, on),
-            clock=clock,
+            clock=AppClock(clock),
             run_migrations=False,
             on_lock_lost=lambda: lost.append("lost"),
         ):
@@ -397,7 +401,7 @@ def test_a_diverged_state_calls_on_lock_lost(on: str, settings: Settings) -> Non
         async with start_runtime(
             app,
             _settings(settings, on),
-            clock=clock,
+            clock=AppClock(clock),
             run_migrations=False,
             on_lock_lost=lambda: lost.append("lost"),
         ):
@@ -505,7 +509,7 @@ def test_a_schema_ahead_but_declared_compatible_boots_without_migrating(
     async def scenario() -> bool:
         app = FastAPI()
         async with start_runtime(
-            app, _settings(settings, at_head), clock=FakeClock(T0), run_migrations=True
+            app, _settings(settings, at_head), clock=AppClock(FakeClock(T0)), run_migrations=True
         ):
             return bool(app.state.ready)
 
@@ -550,7 +554,7 @@ def test_a_schema_ahead_and_incompatible_is_refused_having_written_nothing(
         app = FastAPI()
         with pytest.raises(BootFailure, match="schema ahead of image"):
             async with start_runtime(
-                app, _settings(settings, at_head), clock=clock, run_migrations=True
+                app, _settings(settings, at_head), clock=AppClock(clock), run_migrations=True
             ):
                 pass  # pragma: no cover - the boot above is expected to raise
         return app
@@ -567,3 +571,40 @@ def test_a_schema_ahead_and_incompatible_is_refused_having_written_nothing(
     assert asyncio.run(_execute(at_head, "SELECT version_num FROM alembic_version")) == [
         (AHEAD_FIXTURE,)
     ]
+
+
+# --- Phase 8 T5: rehydrating behind the last commit (SD15, PD4) -------------------
+
+HOUR = 3_600_000
+
+
+def test_booting_with_the_wall_clock_behind_the_last_commit_raises_the_app_clock(
+    on: str, settings: Settings
+) -> None:
+    """SD15: boot lifts the app clock to the stored commit, writing no gap (no time
+    evolved), so the first tick is stamped after it -- not an hour of frozen ticks."""
+
+    async def scenario() -> tuple[int, int, list[tuple[Any, ...]]]:
+        await _go_live(settings, on)  # its last commit is at T0
+        fake = FakeClock(T0 - HOUR)
+        clock = AppClock(fake)
+        app = FastAPI()
+        async with start_runtime(app, _settings(settings, on), clock=clock, run_migrations=False):
+            offset_ms = clock.offset_ms
+            for _ in range(200):
+                if fake.sleepers >= 2:
+                    break
+                await asyncio.sleep(0.005)
+            fake.advance(1_000)
+            for _ in range(200):
+                await asyncio.sleep(0.005)
+                if app.state.ticker.last_iteration_monotonic is not None:
+                    break
+            rows = await _execute(on, "SELECT source, wall_ts_ms FROM price_tick ORDER BY version")
+        return offset_ms, clock.wall_ms(), rows
+
+    offset_ms, now, rows = asyncio.run(scenario())
+    assert offset_ms == HOUR
+    assert now == T0 + 1_000
+    assert [source for source, _ in rows] == ["reset", "tick"]
+    assert rows[1][1] == T0 + 1_000

@@ -17,6 +17,7 @@ Startup, in this order, and nothing is served until the end:
 4. **the theme** (Phase 4 PD5): the stored row, or Blauw at revision 0, with
    or without a live run;
 5. **rehydrate** the live run (with the gap rule), or an empty holder (SD16);
+   a wall clock behind its last commit raises the app clock to it (Phase 8 SD15);
 6. the hub and the publisher (the holder's sink);
 7. **interrupted exports** (Phase 7 PD9): every `queued` or `running` export a
    stopped process left becomes `failed`, `onderbroken` (AC6);
@@ -58,7 +59,7 @@ from app.db.theme import get_theme
 from app.jobs.export_xlsx import run_worker
 from app.realtime.hub import Hub
 from app.realtime.publish import Publisher, active_drink_ids, seeded_book
-from app.runtime.clock import Clock
+from app.runtime.clock import AppClock
 from app.runtime.holder import DomainEvent, MarketHolder
 from app.runtime.rehydrate import RehydratedRun, rehydrate
 from app.runtime.theme import DEFAULT_PRESET, Theme, resolve
@@ -151,7 +152,7 @@ async def start_runtime(
     app: FastAPI,
     settings: Settings,
     *,
-    clock: Clock,
+    clock: AppClock,
     run_migrations: bool,
     on_lock_lost: Callable[[], None] = exit_process,
 ) -> AsyncIterator[None]:
@@ -181,6 +182,9 @@ async def start_runtime(
         step_timeout_s = 2 * settings.database_timeout_seconds
         run = await rehydrate(engine, now_ms=clock.wall_ms())
         if isinstance(run, RehydratedRun):
+            # SD15: a wall clock behind the stored commit continues from it. No gap
+            # row: no time evolved, and the ticker's first slot stamps after it.
+            clock.raise_to(run.wall_ts_ms)
             holder = MarketHolder.from_rehydrated(
                 run,
                 engine=engine,
