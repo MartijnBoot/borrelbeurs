@@ -35,6 +35,7 @@ from tests.integration.conftest import RunAlembic, head_and_previous
 from tests.integration.realapp.harness import (
     Client,
     mint_key,
+    order_until_acked,
     seed_live_run,
     spawn_app,
     start_app,
@@ -74,31 +75,6 @@ def _committed(url: str) -> tuple[int, int, int]:
     return int(version), int(rng), int(wall)
 
 
-def _order_until_acked(client: Client, key: str) -> dict[str, Any] | None:
-    """One order of drink one at its live price; on a 409, once more with the returned prices.
-
-    `/api/state` carries no version, so the quote is version 0 at the live price:
-    charged under SD18's equal-price rule whatever its age, or 409 with the
-    current version and prices to retry with.
-    """
-    state = client.state()
-    drink = int(next(iter(state["prices"])))
-    price = state["prices"][str(drink)]["price_cents"]
-    quote = 0
-    for _ in range(3):
-        status, body = client.order(
-            key, quote, [{"drink_id": drink, "qty": 1, "unit_price_cents": price}]
-        )
-        if status in (200, 201):
-            receipt: dict[str, Any] = body
-            return receipt
-        if status != 409:
-            raise AssertionError((status, body))
-        quote = body["error"]["version"]
-        price = next(p["price_cents"] for p in body["error"]["prices"] if p["drink_id"] == drink)
-    return None
-
-
 def test_a_killed_app_loses_no_acknowledged_order_and_at_most_one_tick(
     database_url: str, tmp_path: Path
 ) -> None:
@@ -119,7 +95,7 @@ def test_a_killed_app_loses_no_acknowledged_order_and_at_most_one_tick(
                 def stream(client: Client = client, n: int = n) -> None:
                     for k in range(50):
                         try:
-                            receipt = _order_until_acked(client, f"k-stream-{n}-{k:03d}")
+                            receipt = order_until_acked(client, f"k-stream-{n}-{k:03d}")
                         except Exception:
                             return
                         if receipt is not None:
@@ -132,7 +108,7 @@ def test_a_killed_app_loses_no_acknowledged_order_and_at_most_one_tick(
                 app.kill()
                 worker.join(timeout=30)
             elif point == "after-ack":
-                receipt = _order_until_acked(client, f"k-ack-{n:04d}")
+                receipt = order_until_acked(client, f"k-ack-{n:04d}")
                 assert receipt is not None
                 acked.append(receipt)
                 before_kill = _committed(database_url)

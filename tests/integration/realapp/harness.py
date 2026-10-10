@@ -207,3 +207,39 @@ class Client:
             {"quote_version": quote_version, "lines": lines},
             headers={"Idempotency-Key": key},
         )
+
+
+def order_until_acked(client: Client, key: str) -> dict[str, Any] | None:
+    """One order of drink one at its live price; on a 409, once more with the returned prices.
+
+    `/api/state` carries no version, so the quote is version 0 at the live price:
+    charged under SD18's equal-price rule whatever its age, or 409 with the
+    current version and prices to retry with.
+    """
+    state = client.state()
+    drink = int(next(iter(state["prices"])))
+    price = state["prices"][str(drink)]["price_cents"]
+    quote = 0
+    for _ in range(3):
+        status, body = client.order(
+            key, quote, [{"drink_id": drink, "qty": 1, "unit_price_cents": price}]
+        )
+        if status in (200, 201):
+            receipt: dict[str, Any] = body
+            return receipt
+        if status != 409:
+            raise AssertionError((status, body))
+        quote = body["error"]["version"]
+        price = next(p["price_cents"] for p in body["error"]["prices"] if p["drink_id"] == drink)
+    return None
+
+
+def stop_gracefully(app: AppProcess, admin_key: str, timeout: float = 30.0) -> int:
+    """`POST /api/admin/shutdown` (Phase 3 PD17): uvicorn's own graceful path -- the
+    lifespan's exit releases the lock -- on every OS, Windows included, where there is
+    no SIGTERM to send. Returns the exit code."""
+    admin = Client(app.base)
+    admin.login(admin_key)
+    status, body = admin.request("POST", "/api/admin/shutdown")
+    assert status == 202, body
+    return app.wait(timeout=timeout)
