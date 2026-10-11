@@ -4,8 +4,8 @@
 # artifact". ADR 0004 nonetheless makes the offline venue laptop a real target,
 # so both images are digest-pinned: `docker save` at the venue must bundle the
 # exact image that was tested, not whatever the tag pointed at last (plan D3,
-# R4). Resolving that tension properly is Phase 8's job; pinning keeps the door
-# open without deciding it here.
+# R4). Resolved in Phase 8: the venue laptop runs deploy/venue/compose.yml, a
+# separate stack with its own names; this file stays a development tool.
 #
 # Usage:
 #   docker compose up -d db    # what scripts/setup.sh runs; all migrations need

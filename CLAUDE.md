@@ -28,6 +28,12 @@ backed by **Postgres** (`db/`, Alembic), with the pure pricing engine (`exchange
   `revoke <key_id>` — access keys; `create` prints `bb_<key_id>_<secret>` once.
 - `uv run python -m app.cli.runs go-live <run_id>` — make a draft run live; refused while the
   app runs (it holds the advisory lock), so it takes effect at the next boot.
+- `bash scripts/make_bundle.sh <sha> [--local <image>]` — the venue bundle in `bundle/` (gitignored).
+- `uv run python scripts/smoke.py <url> --expect-sha <sha>` — smoke-test a running app; the key is
+  in `BB_SMOKE_KEY`.
+- `uv run pytest tests/image --image <ref>` — drills against a built image (boot, kill, venue);
+  skipped without `--image`; `check.sh` never collects it.
+- `deploy` workflow (Actions, manual) — deploys a pushed SHA to Render; never run by an agent.
 
 ## Workflow
 

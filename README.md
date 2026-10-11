@@ -3,9 +3,9 @@
 A drink stock exchange for student borrels. Prices move live with demand, idle decay and
 Brownian noise; bar staff place orders, a big screen shows the market, admins pull the levers.
 
-> **Status: Phase 0, in progress.** The repository skeleton and toolchain pins are in place.
-> `scripts/setup.sh`, `scripts/check.sh` and the application shell arrive later in this phase
-> (plan tasks T5-T9). Until then the setup below is the target, not yet the reality.
+> **Status: Phase 8 (deploy and cutover), in progress.** The engine, API, web app, admin and
+> analytics are built (Phases 0-7). Phase 8 adds the image, CI, the Render deploy and the
+> offline venue stack; see [Deploy and venue](#deploy-and-venue).
 
 ## Requirements
 
@@ -38,13 +38,23 @@ tests, in that order, and it is the same script CI runs.
 | `web/` | Vite + React + TypeScript frontend, served from the same origin |
 | `db/` | Alembic migrations |
 | `docker/` | Dockerfile and build context |
-| `scripts/` | `setup.sh`, `check.sh` |
+| `scripts/` | `setup.sh`, `check.sh`, `smoke.py`, `make_bundle.sh`, `ci/` (image checks, Trivy) |
+| `deploy/venue/` | The offline venue stack: compose file, `.cmd` wrappers, `LEESMIJ.md` |
 | `tests/` | `unit/`, `integration/`, `engine/` (golden fixtures), `meta/` (boundary checks) |
 | `docs/` | Specs, ADRs, design notes and the rebuild plan |
 | `legacy/v1/` | v1, verbatim and frozen. Reference only — no gate reads it, nothing imports it |
 
 Start with [docs/README.md](docs/README.md). Architectural decisions are in
 [docs/adr/](docs/adr/); the rebuild route is [docs/plans/rebuild-route.md](docs/plans/rebuild-route.md).
+
+## Deploy and venue
+
+CI builds one image and pushes it to GHCR by commit SHA on `main`; merging deploys nothing.
+Real events run on a laptop with no internet (`deploy/venue/`); Render is the hosted option.
+The runbooks in [docs/runbooks/](docs/runbooks/) cover each case:
+[deploy](docs/runbooks/deploy.md), [rollback](docs/runbooks/rollback.md),
+[restore](docs/runbooks/restore.md), [the venue](docs/runbooks/venue.md),
+[incidents](docs/runbooks/incident.md) and the [v1 fallback](docs/runbooks/v1-fallback.md).
 
 ## Licence
 

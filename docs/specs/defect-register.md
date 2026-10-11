@@ -73,15 +73,15 @@ intentional and documented here.
 Closed ahead of the rebuild, see [ADR 0007](../adr/0007-v1-authorization-hotfix.md).
 Listed because v2 must not reintroduce them.
 
-| ID | Defect | Consequence |
-|---|---|---|
-| D-37 | **No API-level authorization on any endpoint** | Anyone reachable could `POST /reset` and wipe a live event |
-| D-38 | `/static` mount served every admin page unauthenticated | Page RBAC was decorative |
-| D-39 | `JWT_SECRET` fell back to a per-process random value | Every restart logged out every bar tablet |
-| D-40 | Session cookie not `Secure` | — |
-| D-41 | `allow_origins=["*"]` with an ad-hoc CSRF middleware whose stated premise is wrong | — |
-| D-42 | Access keys stored in plaintext and committed to git | **Rotate them; they remain in history** |
-| D-43 | No `.dockerignore`; `COPY . .` copied the image tarball into the image | 1.65 GB image for an 814 kB app |
+| ID | Defect | Consequence | Phase |
+|---|---|---|---|
+| D-37 | **No API-level authorization on any endpoint** | Anyone reachable could `POST /reset` and wipe a live event | hotfix |
+| D-38 | `/static` mount served every admin page unauthenticated | Page RBAC was decorative | hotfix |
+| D-39 | `JWT_SECRET` fell back to a per-process random value | Every restart logged out every bar tablet | hotfix |
+| D-40 | Session cookie not `Secure` | — | hotfix |
+| D-41 | `allow_origins=["*"]` with an ad-hoc CSRF middleware whose stated premise is wrong | — | hotfix |
+| D-42 | Access keys stored in plaintext and committed to git | **Rotate them; they remain in history** | 8 |
+| D-43 | No `.dockerignore`; `COPY . .` copied the image tarball into the image | 1.65 GB image for an 814 kB app | 8 |
 
 ## F. Found while specifying Phase 6
 
@@ -128,6 +128,17 @@ Each defect Phase 7 fixes, the acceptance criteria that pin it
 |---|---|---|
 | D-20 | AC12, AC13, AC14 | T2 (the bar price stored per sale, written first as a failing gate test); T1 (the column and its backfill), T10 (the workbook's `bar_price`), T13 (`test_no_p0_totals`: no `p0_*` in the schema, the web source or the export) |
 | D-31 | AC15, AC16 | T9 (5 000 orders in ten minutes are at most 10 points at 60 s and 2 at 300 s); T1 (the `order_run_wall_ts` index), T15 (the series on 30 000 orders, off the live engine) |
+
+### Phase 8 evidence
+
+Each defect Phase 8 fixes, the acceptance criteria that pin it
+([phase-8-deploy-cutover.md](phase-8-deploy-cutover.md)), and the tasks whose tests are its
+evidence ([plan](../plans/phase-8-deploy-cutover.md)):
+
+| ID | ACs | Evidence tasks |
+|---|---|---|
+| D-42 | AC32 | T9 (no path in v2 reads `keys.json` or `ADMIN_TOKEN`, and a v1-shaped key is 401); H4 (v1's keys rotated by the human, recorded without key material) |
+| D-43 | AC1, AC2, AC3 | T11 (the image trimmed and checked for contents and size: **227.7 MB uncompressed**, limit 300 MB, measured 2026-10-11 on `borrelbeurs:local`); T18 (the same checks on every CI run) |
 
 ## Deliberately not treated as defects
 
