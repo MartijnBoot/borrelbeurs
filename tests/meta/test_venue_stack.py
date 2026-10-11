@@ -161,3 +161,25 @@ def test_start_requires_the_containerd_image_store() -> None:
     check = data.find(b"io.containerd.snapshotter")
     load = data.find(b"docker load -i")
     assert -1 < check < load, "start.cmd must check the image store before it loads images"
+
+
+def test_restore_starts_db_before_it_restores_and_the_app_only_after() -> None:
+    """restore.cmd must bring `db` up itself (after stop.cmd, or on an empty laptop, it is
+    down) without starting `backup`, whose first dump would be of an empty database and
+    become the "newest" one; `app` starts again only once the restore has succeeded."""
+    data = (VENUE / "restore.cmd").read_bytes()
+    stop = data.find(b"stop app backup")
+    db_up = data.find(b"up -d --wait db")
+    restore = data.find(b"/scripts/restore.sh")
+    start_all = data.find(b"up -d\r")
+    assert -1 < stop < db_up < restore < start_all, "restore.cmd's steps are out of order"
+
+
+def test_restore_reads_the_whole_dump_before_it_drops_anything() -> None:
+    """`pg_restore --list` reads only the table of contents, so a dump cut short in its
+    data passes it and the database is dropped for nothing."""
+    text = (VENUE / "restore.sh").read_text(encoding="utf-8")
+    assert "pg_restore --list" not in text
+    check = text.find("pg_restore --file=/dev/null")
+    drop = text.find("dropdb")
+    assert -1 < check < drop, "restore.sh must read the whole archive before dropdb"

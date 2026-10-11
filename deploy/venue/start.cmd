@@ -15,6 +15,13 @@ if "%BB_IMAGE_SHA%"=="" (
   pause & exit /b 1
 )
 
+docker info >nul 2>&1
+if errorlevel 1 (
+  echo Docker Desktop draait niet. Start Docker Desktop, wacht tot het klaar is,
+  echo en start dit bestand opnieuw.
+  pause & exit /b 1
+)
+
 rem docker load keeps the pinned Postgres digest only on the containerd image store;
 rem on the classic store compose could not find it offline (pull_policy: never).
 docker info --format "{{json .DriverStatus}}" 2>nul | findstr /c:"io.containerd.snapshotter" >nul

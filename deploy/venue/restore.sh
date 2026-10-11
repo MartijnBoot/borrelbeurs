@@ -23,8 +23,10 @@ if [ -z "$dump" ] || [ ! -f "$dump" ]; then
   echo "restore: no dump found in $DIR" >&2
   exit 2
 fi
-# Check the archive before dropping anything: a truncated dump fails here.
-pg_restore --list "$dump" >/dev/null
+# Read the whole archive before dropping anything. `--list` reads only the table of
+# contents at the head of the file, so a dump cut short in its data passes it; writing
+# the script to /dev/null walks every data block and fails on a truncated one.
+pg_restore --file=/dev/null "$dump"
 
 echo "restore: $(basename "$dump") -> $DB"
 dropdb --username="$USER_" --if-exists --force "$DB"

@@ -9,8 +9,10 @@ nothing, so a merge during a live event never redeploys it (SD6, ADR 0009).
 - Once, by the human (H1): the Render services exist, and these are set in GitHub:
   - secret `RENDER_DEPLOY_HOOK_URL` (the web service's deploy hook, with its `?key=...`);
   - secret `BB_SMOKE_KEY`: an admin key labelled `smoke`
-    (`uv run python -m app.cli.keys create --role admin --label smoke` against the Render
-    database; it prints `bb_<key_id>_<secret>` once);
+    (in the Render web service's shell, `python -m app.cli.keys create --role admin --label
+    smoke`: the image has no `uv`. From a dev machine instead, export Render's external
+    `DATABASE_URL` with the `postgresql+asyncpg://` scheme and any `JWT_SECRET` first, or the
+    key lands in the local database. It prints `bb_<key_id>_<secret>` once);
   - variable `RENDER_URL`, for example `https://borrelbeurs.onrender.com`.
 
 ## First deploy (H1)
@@ -23,7 +25,10 @@ nothing, so a merge during a live event never redeploys it (SD6, ADR 0009).
 4. Apply the Blueprint. Set `DATABASE_URL` by hand: Render's **internal** database URL with
    its scheme changed to `postgresql+asyncpg://` (for example `postgres://u:p@host/db` becomes
    `postgresql+asyncpg://u:p@host/db`). The app accepts no other shape and rewrites nothing.
-5. Run "Deploy a SHA" below with the same SHA.
+5. Turn Blueprint auto-sync off. `render.yaml` pins `image.url` to the first SHA; with
+   auto-sync on, a later merge that edits the file would put that old SHA back, a silent
+   rollback. From here the image changes only through the "Deploy a SHA" workflow.
+6. Run "Deploy a SHA" below with the same SHA.
 
 ## Deploy a SHA
 

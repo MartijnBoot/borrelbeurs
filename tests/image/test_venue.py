@@ -349,15 +349,20 @@ def test_the_newest_dump_restores_and_a_bad_one_leaves_the_app_down(venue: Venue
     newest = venue.dumps()[-1]
 
     # A truncated dump: restore.sh refuses it before dropping anything (restore.cmd's
-    # sequence: stop app and backup, restore, and only on success start them again).
-    bad = venue.data / "backups" / "borrelbeurs-truncated.dump"
-    bad.write_bytes(newest.read_bytes()[: newest.stat().st_size // 2])
+    # sequence: stop app and backup, restore, and only on success start them again). Cut
+    # in half the table of contents is broken; cut at 95% only the data is, which
+    # `pg_restore --list` cannot see.
     venue.compose("stop", "backup")
-    failed = venue.compose("exec", "-T", "db", "sh", "/scripts/restore.sh", bad.name, check=False)
-    assert failed.returncode != 0, failed.stdout
-    assert venue.state("app")["Running"] is False
-    assert venue.orders() == at_dump, "a failed restore dropped the database"
-    bad.unlink()
+    for fraction in (0.5, 0.95):
+        bad = venue.data / "backups" / "borrelbeurs-truncated.dump"
+        bad.write_bytes(newest.read_bytes()[: int(newest.stat().st_size * fraction)])
+        failed = venue.compose(
+            "exec", "-T", "db", "sh", "/scripts/restore.sh", bad.name, check=False
+        )
+        assert failed.returncode != 0, (fraction, failed.stdout)
+        assert venue.state("app")["Running"] is False
+        assert venue.orders() == at_dump, f"a failed restore dropped the database ({fraction})"
+        bad.unlink()
 
     # The newest dump into a fresh volume.
     venue.compose("down", "--volumes", "--timeout", "10")

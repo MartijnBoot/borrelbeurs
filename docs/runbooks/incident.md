@@ -13,7 +13,9 @@ on Render, redeploy the same SHA). Nothing acknowledged is lost.
 ## Standby that never takes over
 
 Log shows `lock_wait` with a growing `waited_s`; `/healthz` says `standby`. Another instance
-holds the advisory lock. Find it:
+holds the advisory lock. Find it, in
+`docker exec -it borrelbeurs-venue-db psql -U borrelbeurs` (venue) or Render's database
+shell:
 `SELECT pid, application_name, state FROM pg_stat_activity WHERE datname = current_database();`
 If an old instance is gone but its session is not (a stuck connection), end that backend with
 `SELECT pg_terminate_backend(<pid>);`. Do not terminate a live instance's session.

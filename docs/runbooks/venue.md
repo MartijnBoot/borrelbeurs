@@ -18,7 +18,7 @@
    `docker compose -f compose.yml --env-file .env run --rm --no-deps app <command>`:
    - `python -m app.cli.keys create --role admin --label <who>` (roles `admin`, `bar`,
      `display`; the key is shown once, write it down);
-   - `python -m app.cli.import_v1 --config <file>` prints a `run_id` (the file must be
+   - `python -m app.cli.import_v1 --config /seed/<name>` prints a `run_id` (the file must be
      mounted into the container with `-v <host path>:/seed/<name>:ro` before `app`);
    - `python -m app.cli.runs go-live <run_id>`.
 

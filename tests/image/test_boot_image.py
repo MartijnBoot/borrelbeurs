@@ -48,7 +48,13 @@ def _head_and_previous() -> tuple[str, str]:
 def _image_build_sha(image: str) -> str:
     out = docker("image", "inspect", "--format", "{{json .Config.Env}}", image)
     env = dict(str(item).split("=", 1) for item in json.loads(out.stdout))
-    return env["BUILD_SHA"]
+    sha = env["BUILD_SHA"]
+    # The image's own value proves nothing if the build arg was dropped (it says `unknown`):
+    # in CI the commit being built is the expected one.
+    expected = os.environ.get("GITHUB_SHA")
+    if expected:
+        assert sha == expected, (sha, expected)
+    return sha
 
 
 def _admin_key(stack: Stack) -> str:

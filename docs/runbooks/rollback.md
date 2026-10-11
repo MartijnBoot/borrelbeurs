@@ -25,8 +25,9 @@ fallback is v1: `v1-fallback.md`.
    be on the laptop: the previous bundle's `images.tar` (`docker load -i images.tar`) or one
    already listed by `docker image ls ghcr.io/martijnboot/borrelbeurs`.
 3. Double-click `start.cmd`. It waits for `/readyz` and prints the phone URL.
-4. Verify: `python scripts/smoke.py http://127.0.0.1 --expect-sha <sha>` with `BB_SMOKE_KEY`
-   set, or open the board on a phone.
+4. Verify: open the board on a phone, and check that `http://127.0.0.1/healthz` names the SHA.
+   (The bundle carries no `scripts/smoke.py` and the laptop has no Python; run the smoke from
+   a dev machine on the router's network if you need it.)
 
 ## When it fails
 
