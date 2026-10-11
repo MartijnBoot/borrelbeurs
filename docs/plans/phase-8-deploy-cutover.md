@@ -1132,4 +1132,4 @@ smoke check is too strict.** Nothing in the spec changes.
   deploy (step 8), and n+1 the previous image for H3.** The first deployed image stays n.
 - **Graph:** `T23←T10` · `H1←T23` (step 6 onward).
 
-Re-audit A2: _pending, the human's call._
+Re-audit A2 (2026-10-11): accepted by the human ("accept"). Audited by: MartijnBoot (human, Gate B, A2 re-audit)  Date: 2026-10-11
