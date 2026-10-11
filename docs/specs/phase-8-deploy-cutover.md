@@ -1,7 +1,8 @@
 # Spec: Phase 8 — Deploy and cutover
 
 Status: Approved (rewritten at the spec interview, 2026-10-10; replaces the earlier approved
-draft, which predates Phases 3–7) · Depends on: Phase 7 · Fixes: D-42, D-43
+draft, which predates Phases 3–7) · **Amended 2026-10-11 (A1: no v1 fallback, see the end of
+this document)** · Depends on: Phase 7 · Fixes: D-42, D-43
 
 ## Problem
 
@@ -296,27 +297,19 @@ of them at approval.
 - **SD16 — Runbooks.** *(delegated)*
   - `docs/runbooks/`, in English: `deploy.md`, `rollback.md`, `restore.md`, `venue.md` (the
     offline event end to end, including laptop preparation, router, power plan and lid
-    settings), `incident.md`, and `v1-fallback.md`.
+    settings), and `incident.md`. *(A1: `v1-fallback.md` removed.)*
   - The bundle's `LEESMIJ.md` is a one-page card **in Dutch**, for the treasurer: start,
     status, "it hangs", "the power went off", "make a backup now", "where are the files", and
     when to call whom.
-- **SD17 — v1 stays as a fallback, run from its own saved image, never rebuilt from
-  `legacy/v1/`.** *(delegated)*
-  - The fallback image is the one built in `borrelbeurs-v1` at the hotfix (`b617a56`), saved as
-    a tar next to the bundle. `legacy/v1/` has no `.dockerignore`, and building from it would
-    re-create D-43.
-  - It runs on the same laptop and router on host port 8000, with fresh keys generated on the
-    laptop (SD18).
-  - **Falling back loses v2's live prices**: v1 starts from its own config. Revenue so far stays
-    in v2's last dump and host exports. `v1-fallback.md` says so.
-  - Target: from the decision to the bar taking orders on v1 in **≤ 5 minutes**. Previous-image
-    rollback of v2, at the venue or on Render: **≤ 5 minutes**. Both are rehearsed and timed
-    (AC23, AC24).
-  - v1's hard-coded `ADMIN_TOKEN=TestTest` in its `run.bat` is accepted for a fallback on a
-    closed router. Fixing v1 is out of scope.
+- ~~**SD17 — v1 stays as a fallback, run from its own saved image.**~~ **Withdrawn by A1
+  (2026-10-11).** v2 replaces v1 at cutover and v1 is retired. The rollback target stays:
+  previous-image rollback of v2, at the venue or on Render, in **≤ 5 minutes**, rehearsed and
+  timed.
 - **SD18 — v1 key rotation (D-42) is a human task with a recorded outcome.** *(delegated)*
-  - Every place v1 runs gets a new `config/keys.json`, generated where it runs and never
-    committed. The leaked keys then grant nothing anywhere.
+  - Every place v1 still runs is stopped for good or gets a new `config/keys.json`, generated
+    where it runs and never committed. The leaked keys then grant nothing anywhere. *(A1: v1 is
+    retired, so "stopped for good" is the expected case; the keys stay in the history of the
+    kept backup repository either way.)*
   - Recommended alongside: make `borrelbeurs-v1` private or archive it (Phase 0 R8).
   - The outcome (where v1 runs, date rotated, repo status) is recorded in the rehearsal record,
     with no key material.
@@ -399,9 +392,9 @@ of them at approval.
 - Monitoring, alerting or uptime services beyond Render's logs and `/healthz`.
 - Per-request `correlation_id` (deferred by the Phase 3 plan:822 to here; no criterion needs
   it, so it is deferred again).
-- Deleting `legacy/v1/`. Specs and the register cite its line numbers.
-- Any edit to v1 (its `run.bat`, `ADMIN_TOKEN`, Dockerfile), or a v1 → v2 live state transfer
-  during fallback.
+- Deleting `legacy/v1/`. Specs and the register cite its line numbers. *(A1: planned as the
+  post-cutover cleanup, listed in A1; still not part of Phase 8.)*
+- Any edit to v1 (its `run.bat`, `ADMIN_TOKEN`, Dockerfile).
 - Changes to the dev `docker-compose.yml` beyond its header comment.
 - Any change to pricing behaviour. The golden fixtures stay green.
 - An admin UI for backups, restore or the auto exports.
@@ -527,9 +520,9 @@ of them at approval.
 **Cutover — D-42**
 
 - **AC30.** Before the first real event, a full mock borrel shall be run on the venue setup with
-  no uplink and v1 available as fallback, and recorded per SD19.
-- **AC31.** Before go-live, a v2 previous-image rollback (at the venue and on Render) and a v1
-  fallback shall each be rehearsed, timed against the 5-minute targets, and recorded.
+  no uplink, and recorded per SD19.
+- **AC31.** Before go-live, a v2 previous-image rollback (at the venue and on Render) shall be
+  rehearsed, timed against the 5-minute target, and recorded.
 - **AC32.** Before go-live, the v1 keys in `borrelbeurs-v1`'s history shall grant access to
   nothing:
   - every running v1 shall have new keys;
@@ -561,7 +554,7 @@ of them at approval.
   then exercised only by the integration test.
 - **The real check — the mock borrel (AC30):**
   - Venue setup: travel router with no uplink, laptop on its fixed IP, bundle loaded from USB.
-  - At least one hour, at least two bar phones and one display, with v1's tar on the laptop.
+  - At least one hour, at least two bar phones and one display.
   - Include:
     - a drink added mid-run;
     - "Sluit app" then `start.cmd`;
@@ -574,13 +567,63 @@ of them at approval.
   - Afterwards: restore the newest dump into a fresh volume and check the order count (AC22),
     and copy `data/` to a USB stick.
   - Record what broke (SD19).
-- **Rehearsals (AC31):** previous-image rollback at the venue and on Render, and the v1
-  fallback, each timed.
+- **Rehearsals (AC31):** previous-image rollback at the venue and on Render, each timed.
 - **Key rotation (AC32):** the human rotates the keys and records it; a test shows a v1 key
   fails v2 login.
 
 ## Exit condition
 
 The same image digest serves on Render and on the offline venue laptop; previous-image rollback
-and the v1 fallback have been rehearsed within their time targets; and a full mock borrel has
-been run offline without needing v1, recorded.
+has been rehearsed within its time target; and a full mock borrel has been run offline,
+recorded.
+
+## Amendment A1 — no v1 fallback (2026-10-11)
+
+**Decision (the human, 2026-10-11).** v2 replaces v1 at cutover; v1 is not kept as a fallback.
+A backup copy of the `borrelbeurs-v1` repository is kept for inspiration only, outside v2.
+This withdraws SD17 and the v1 halves of AC30, AC31 and the exit condition. Nothing else in
+this spec changes.
+
+**What stays.** Previous-image rollback (≤ 5 minutes, venue and Render), the mock borrel, and
+key rotation (SD18, AC32): the leaked v1 keys remain in the history of the backup repository,
+and AC32's tests (a v1 key gets 401 on v2; no import path for v1 keys) are unaffected.
+
+**Consequence for the rollback floor (SD3).** `rollback.md` and ADR 0011 said "for anything
+older than the floor the fallback is v1". With no fallback, that sentence goes. The floor is
+`0011`, and this phase's first deployed image is the one that introduces it, so no older image
+has ever served a real database: the floor excludes nothing until a later phase adds a schema
+step that older images cannot read. When that happens, the way out is a newer image or a
+restore of the last dump taken before the step (`restore.md`).
+
+**Changes this amendment requires** (the plan carries them as T22 and the human plan):
+
+| Where | Change |
+|---|---|
+| `docs/runbooks/v1-fallback.md` | delete |
+| `docs/runbooks/rollback.md` (lines 13, 35) | replace the v1 sentences with the consequence above |
+| `docs/runbooks/venue.md` (step 7) | drop "keep `borrelbeurs-v1-fallback\` on the USB stick" |
+| `deploy/venue/LEESMIJ.md` (the "Niets werkt" line) | drop v1; the administrator decides on a rollback (`rollback.md`) or a restore |
+| `docs/runbooks/rehearsals/README.md` | drop "v1 fallback" from the timing line |
+| `README.md` (line 57) | drop the v1 fallback link |
+| ADR 0011 (line 98) | drop the v1 sentence — **hard stop, the human approves the text** |
+| H5 (the fallback folder) and H3's v1 half | removed; the human steps move to `docs/plans/phase-8-human-steps.md` |
+
+**Left as it is, deliberately.** `.gitignore`'s `bierbeurs-image.tar` entry and the image
+check that rejects tarballs (D-43) guard v2's own image and stay.
+
+**Follow-up, after cutover (not Phase 8): remove `legacy/v1/`.** Several v2 tests read v1's
+files directly, so deleting the folder first would break them. These need a copy inside
+`tests/` (or a fixture) before the delete:
+
+- `legacy/v1/config/exchange_config.json`: `tests/engine/golden/scenarios.py`,
+  `tests/image/test_kill_drill.py`, `tests/image/test_venue.py`,
+  `tests/integration/durability/harness.py`, `tests/integration/realapp/harness.py`,
+  `tests/integration/test_import_v1.py`, `tests/unit/test_v1_files.py`;
+- `legacy/v1/static/news.json`: `tests/integration/test_import_v1.py`,
+  `tests/unit/test_v1_files.py`;
+- `legacy/v1/static/theme.js`: `tests/unit/test_theme_manifest.py`;
+- `legacy/v1/backend/api.py`: `tests/unit/test_market_events.py`.
+
+Also: `pyproject.toml`'s ruff exclude, `tests/meta` mentions, and the `legacy/v1/...:line`
+citations in code comments, specs and the defect register (they would point at nothing). The
+v1 engine itself is already independent, as `tests/engine/v1_reference/engine.py`.
