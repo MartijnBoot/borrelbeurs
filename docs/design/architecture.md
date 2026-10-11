@@ -264,5 +264,6 @@ venue drills against that very image, and on `main` only pushes it to GHCR as
   only after the older one has released the lock, so exactly one process ever writes (ADR 0003,
   Phase 8 addendum). A database whose schema is newer than the image is served as it is when
   `schema_compat` says the image is still compatible, and refused otherwise (ADR 0011).
-- **Rollback and fallback.** Rolling back is running the previous SHA, down to the floor set by
-  `schema_compat`. Below it, v1 runs from its own saved image beside the bundle.
+- **Rollback.** Rolling back is running the previous SHA, down to the floor set by
+  `schema_compat`. No older image has served a real database, so the floor excludes nothing
+  yet; past a later floor, the way out is a newer image or a restore of the last dump before it.

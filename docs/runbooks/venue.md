@@ -23,7 +23,6 @@
    - `python -m app.cli.runs go-live <run_id>`.
 
    Then `start.cmd` again.
-7. Keep `borrelbeurs-v1-fallback\` on the same USB stick (`v1-fallback.md`).
 
 ## Before: the router
 
