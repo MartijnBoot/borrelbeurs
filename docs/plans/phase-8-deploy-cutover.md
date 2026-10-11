@@ -1,8 +1,8 @@
 # Plan: Phase 8 — Deploy and cutover
 
-Spec: [docs/specs/phase-8-deploy-cutover.md](../specs/phase-8-deploy-cutover.md) (`Status: Approved`, rewritten 2026-10-10; **uncommitted** on `docs/phase-8-plan` at planning time) · Status: Audited — PASS (2026-10-10; amendment re-audited the same day)
+Spec: [docs/specs/phase-8-deploy-cutover.md](../specs/phase-8-deploy-cutover.md) (`Status: Approved`, rewritten 2026-10-10; **uncommitted** on `docs/phase-8-plan` at planning time) · Status: Audited — PASS (2026-10-10; amendment A1 re-audited 2026-10-11)
 Design: [architecture.md](../design/architecture.md) ("Shape", "Durability", "Tick model"), [data-model.md](../design/data-model.md), [realtime-protocol.md](../design/realtime-protocol.md)
-ADRs honoured: 0003 (one writer; standby and the app clock are written as an addendum in T21, accepted by the human at approval of the spec), 0004 (Postgres is the persistence layer; the host export is a *copy*, never read back), 0006 (no CDN; AC7 re-checks the built assets inside the image), 0007 (the v1 hotfix's image is the v1 fallback, SD17), 0009/0010 (hard stops: ADR text, `docs/design/`, credentials and external accounts, `borrelbeurs-v1`), 0011 (migrate at boot; SD3 is the expand/contract mechanism it assumed, and its overlap paragraph is superseded in T21)
+ADRs honoured: 0003 (one writer; standby and the app clock are written as an addendum in T21, accepted by the human at approval of the spec), 0004 (Postgres is the persistence layer; the host export is a *copy*, never read back), 0006 (no CDN; AC7 re-checks the built assets inside the image), 0007 (v1 is retired, not kept as a fallback: SD17 withdrawn by A1), 0009/0010 (hard stops: ADR text, `docs/design/`, credentials and external accounts, `borrelbeurs-v1`), 0011 (migrate at boot; SD3 is the expand/contract mechanism it assumed, and its overlap paragraph is superseded in T21)
 Fixes: D-42, D-43
 
 ---
@@ -142,7 +142,7 @@ confirms or overrules them. No row is a hard stop except where marked.
 | `scripts/make_bundle.sh`, `tests/image/test_venue.py`, `.gitignore` | Create / Modify | Bundle (SD11); venue drill; ignore `bundle/` | T16 |
 | `render.yaml`, `.github/workflows/deploy.yml`, `tests/meta/test_render_blueprint.py` | Create | SD6–SD9, AC28 | T17 |
 | `.github/workflows/ci.yml` | Modify | PD10 | T18 |
-| `docs/runbooks/{deploy,rollback,restore,venue,incident,v1-fallback}.md`, `docs/runbooks/rehearsals/README.md` | Create | SD16, SD19 | T19 |
+| `docs/runbooks/{deploy,rollback,restore,venue,incident,v1-fallback}.md`, `docs/runbooks/rehearsals/README.md` | Create | SD16, SD19 (`v1-fallback.md` is deleted by T22, A1) | T19 |
 | `README.md`, `CLAUDE.md`, `docker-compose.yml` (header only), `docs/specs/defect-register.md`, `docs/plans/manual-checklist.md` | Modify | Commands, R4, Phase 8 evidence, checklist | T20 |
 | `docs/adr/0003-*.md`, `docs/adr/0011-*.md`, `docs/adr/0001-*.md`, `docs/design/architecture.md` | Modify | Addenda; deploy topology (**hard stop**) | T21 |
 | `docs/runbooks/rehearsals/<date>-*.md` | Create | Human-performed records | H1–H4 |
@@ -853,14 +853,19 @@ confirms or overrules them. No row is a hard stop except where marked.
     rollback or a restore, no v1 (Dutch, one line);
   - `docs/runbooks/rehearsals/README.md`: "rollback v1 fallback" becomes "rollback";
   - `README.md` line 57: the v1 fallback link dropped;
-  - ADR 0011 line 98: the v1 sentence dropped, in the text the human approves.
-- **Verification:** `./scripts/check.sh`, and `grep -rniE "v1[- ]fallback" docs deploy README.md`
-  finds only the spec's amendment, this plan, and history (ADR 0007, the rehearsal records).
-  The human's approval of the ADR text before commit.
+  - ADR 0011 line 98: the v1 sentence dropped, in the text the human approves;
+  - `docs/design/architecture.md:267-268` ("Rollback and fallback": "Below it, v1 runs from its
+    own saved image beside the bundle"): the v1 sentence replaced by A1's consequence. Found at
+    the A1 re-audit; A1's change table omits it. `docs/design/` is a hard stop, so the human
+    approves this text too.
+- **Verification:** `./scripts/check.sh`, and
+  `grep -rniE "v1[- ]fallback|fallback (is|for).*v1|v1 runs from|saved image" docs deploy README.md`
+  finds only the spec's amendment, this plan, `phase-8-human-steps.md`, and history (ADR 0007,
+  the rehearsal records). The human's approval of the ADR and design text before commit.
 - **Depends on:** nothing built after T19; T19 and T20 are already merged.
 - **Autonomy note:**
-  - **Hard stop: the builder must stop for approval before committing**, because ADR text is a
-    hard stop (ADR 0009, ADR 0010).
+  - **Hard stop: the builder must stop for approval before committing**, because ADR text and
+    `docs/design/` are hard stops (ADR 0009, ADR 0010).
   - **May decide alone:** wording elsewhere. **Must stop and ask if** a runbook step cannot be
     reworded without a code change.
 
@@ -1074,4 +1079,14 @@ close the findings above. Re-audit of those sections: MartijnBoot (human), 2026-
 
 **Amendment A1 (2026-10-11): no v1 fallback.** H5 and H3's v1 half withdrawn; the human tasks
 moved to `phase-8-human-steps.md`; T22 added to remove the fallback from the built runbooks
-(T19, T20 stay merged). Spec: Amendment A1. Re-audit of these changes: **pending the human.**
+(T19, T20 stay merged). Spec: Amendment A1.
+
+Re-audit of A1 (2026-10-11): all ten checklist lines accepted by the human ("accept all
+lines"). Findings folded into T22 and this file: `docs/design/architecture.md:267-268` still
+described the v1 fallback and was in neither A1's table nor T22 (added, hard stop); T22's grep
+widened to catch it; stale status lines at the top of this plan corrected. The spec's A1 change
+table is left as written; T22 is the authority for the architecture.md edit. Accepted as-is:
+T22 has no AC of its own (its criterion is A1's change table), and T19's text keeps describing
+`v1-fallback.md` as history.
+
+Audited by: MartijnBoot (human, Gate B, A1 re-audit)  Date: 2026-10-11
