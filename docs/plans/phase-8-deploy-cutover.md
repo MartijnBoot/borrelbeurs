@@ -1,8 +1,8 @@
 # Plan: Phase 8 — Deploy and cutover
 
-Spec: [docs/specs/phase-8-deploy-cutover.md](../specs/phase-8-deploy-cutover.md) (`Status: Approved`, rewritten 2026-10-10; **uncommitted** on `docs/phase-8-plan` at planning time) · Status: Audited — PASS (2026-10-10; amendment re-audited the same day)
+Spec: [docs/specs/phase-8-deploy-cutover.md](../specs/phase-8-deploy-cutover.md) (`Status: Approved`, rewritten 2026-10-10; **uncommitted** on `docs/phase-8-plan` at planning time) · Status: Audited — PASS (2026-10-10; amendment A1 re-audited 2026-10-11)
 Design: [architecture.md](../design/architecture.md) ("Shape", "Durability", "Tick model"), [data-model.md](../design/data-model.md), [realtime-protocol.md](../design/realtime-protocol.md)
-ADRs honoured: 0003 (one writer; standby and the app clock are written as an addendum in T21, accepted by the human at approval of the spec), 0004 (Postgres is the persistence layer; the host export is a *copy*, never read back), 0006 (no CDN; AC7 re-checks the built assets inside the image), 0007 (the v1 hotfix's image is the v1 fallback, SD17), 0009/0010 (hard stops: ADR text, `docs/design/`, credentials and external accounts, `borrelbeurs-v1`), 0011 (migrate at boot; SD3 is the expand/contract mechanism it assumed, and its overlap paragraph is superseded in T21)
+ADRs honoured: 0003 (one writer; standby and the app clock are written as an addendum in T21, accepted by the human at approval of the spec), 0004 (Postgres is the persistence layer; the host export is a *copy*, never read back), 0006 (no CDN; AC7 re-checks the built assets inside the image), 0007 (v1 is retired, not kept as a fallback: SD17 withdrawn by A1), 0009/0010 (hard stops: ADR text, `docs/design/`, credentials and external accounts, `borrelbeurs-v1`), 0011 (migrate at boot; SD3 is the expand/contract mechanism it assumed, and its overlap paragraph is superseded in T21)
 Fixes: D-42, D-43
 
 ---
@@ -41,7 +41,7 @@ Nothing in `exchange/` changes. Time still enters the engine only as `now_ms`
 T18 then edits `.github/workflows/ci.yml` once. Image tests are pytest, not shell, so they reuse
 `tests/integration/realapp/harness.py`'s `Client` and order-stream helpers. They live in
 `tests/image/`, which `check.sh` never collects, because it names its test directories
-explicitly (`scripts/check.sh:104-118`). The human tasks (H1–H5) carry the criteria only a person
+explicitly (`scripts/check.sh:104-118`). The human tasks (H1–H4, in `phase-8-human-steps.md`) carry the criteria only a person
 at a router or a Render dashboard can meet.
 
 Rejected:
@@ -142,10 +142,10 @@ confirms or overrules them. No row is a hard stop except where marked.
 | `scripts/make_bundle.sh`, `tests/image/test_venue.py`, `.gitignore` | Create / Modify | Bundle (SD11); venue drill; ignore `bundle/` | T16 |
 | `render.yaml`, `.github/workflows/deploy.yml`, `tests/meta/test_render_blueprint.py` | Create | SD6–SD9, AC28 | T17 |
 | `.github/workflows/ci.yml` | Modify | PD10 | T18 |
-| `docs/runbooks/{deploy,rollback,restore,venue,incident,v1-fallback}.md`, `docs/runbooks/rehearsals/README.md` | Create | SD16, SD19 | T19 |
+| `docs/runbooks/{deploy,rollback,restore,venue,incident,v1-fallback}.md`, `docs/runbooks/rehearsals/README.md` | Create | SD16, SD19 (`v1-fallback.md` is deleted by T22, A1) | T19 |
 | `README.md`, `CLAUDE.md`, `docker-compose.yml` (header only), `docs/specs/defect-register.md`, `docs/plans/manual-checklist.md` | Modify | Commands, R4, Phase 8 evidence, checklist | T20 |
 | `docs/adr/0003-*.md`, `docs/adr/0011-*.md`, `docs/adr/0001-*.md`, `docs/design/architecture.md` | Modify | Addenda; deploy topology (**hard stop**) | T21 |
-| `docs/runbooks/rehearsals/<date>-*.md` | Create | Human-performed records | H1–H5 |
+| `docs/runbooks/rehearsals/<date>-*.md` | Create | Human-performed records | H1–H4 |
 
 ---
 
@@ -840,96 +840,42 @@ confirms or overrules them. No row is a hard stop except where marked.
     (0001, 0003) and `docs/design/` are hard stops (ADR 0009, ADR 0010).
   - **May decide alone:** wording inside each addendum.
 
-### H1 — Render and GHCR: setup, first deploy, a deploy mid-run (human)
+### T22 — Remove the v1 fallback from the runbooks (amendment A1)
 
-- **Implements:** AC28 (run), AC29; SD8, SD10; PD12
+- **Implements:** the spec's Amendment A1 ("Changes this amendment requires"); SD16 (as amended)
 - **Expected output:**
-  - Render services are created from `render.yaml`, after PD12's placeholder is replaced and the
-    plans are confirmed.
-  - `DATABASE_URL` is pasted with its scheme changed.
-  - GHCR visibility or Render registry credentials are set.
-  - GitHub secrets `RENDER_DEPLOY_HOOK_URL` and `BB_SMOKE_KEY` (an admin key labelled `smoke`)
-    are set, and the variable `RENDER_URL`.
-  - Deploy SHA *n* with the workflow. Start a borrel and take orders from a phone. Deploy *n+1*
-    mid-run and keep the logs that show `lock_wait`, the handover and contiguous versions.
-  - Record Render's actual overlap behaviour. If Render does not overlap, say so (spec,
-    Verification).
-- **Verification:** the workflow runs are green; the rehearsal record
-  `docs/runbooks/rehearsals/<date>-render-deploy.md` exists (SD19).
-- **Depends on:** T17, T18, T19
-- **Autonomy note:** **human only.** An agent may draft the record from the human's notes.
+  - `docs/runbooks/v1-fallback.md` deleted;
+  - `rollback.md`: the two v1 sentences (the floor paragraph and "When it fails") replaced by the
+    consequence A1 states: no older image has served a real database, and past a later floor the
+    way out is a newer image or a restore (`restore.md`);
+  - `venue.md` step 7 removed (and the steps renumbered if any follow);
+  - `deploy/venue/LEESMIJ.md`, "Niets werkt en de bar moet door": the administrator decides on a
+    rollback or a restore, no v1 (Dutch, one line);
+  - `docs/runbooks/rehearsals/README.md`: "rollback v1 fallback" becomes "rollback";
+  - `README.md` line 57: the v1 fallback link dropped;
+  - ADR 0011 line 98: the v1 sentence dropped, in the text the human approves;
+  - `docs/design/architecture.md:267-268` ("Rollback and fallback": "Below it, v1 runs from its
+    own saved image beside the bundle"): the v1 sentence replaced by A1's consequence. Found at
+    the A1 re-audit; A1's change table omits it. `docs/design/` is a hard stop, so the human
+    approves this text too.
+- **Verification:** `./scripts/check.sh`, and
+  `grep -rniE "v1[- ]fallback|fallback (is|for).*v1|v1 runs from|saved image" docs deploy README.md`
+  finds only the spec's amendment, this plan, `phase-8-human-steps.md`, and history (ADR 0007,
+  the rehearsal records). The human's approval of the ADR and design text before commit.
+- **Depends on:** nothing built after T19; T19 and T20 are already merged.
+- **Autonomy note:**
+  - **Hard stop: the builder must stop for approval before committing**, because ADR text and
+    `docs/design/` are hard stops (ADR 0009, ADR 0010).
+  - **May decide alone:** wording elsewhere. **Must stop and ask if** a runbook step cannot be
+    reworded without a code change.
 
-### H2 — The mock borrel, offline (human)
+### H1–H4 — moved (amendment A1)
 
-- **Implements:** AC30, plus the real-world halves of AC19, AC20, AC21 and AC22
-- **Expected output:** the spec's mock borrel, as listed under its Verification:
-  - the router with no uplink, and the laptop at its fixed IP;
-  - the bundle from USB;
-  - at least 1 h, at least two bar phones and one display, with v1's tar present;
-  - a drink added mid-run;
-  - "Sluit app", then `start.cmd`;
-  - a hard power-off and restart;
-  - the clock moved +1 h and back;
-  - a manual export downloaded on a phone;
-  - dumps and auto exports seen accruing;
-  - the run closed;
-  - a restore of the newest dump into a fresh volume, with the order count checked;
-  - `data/` copied to USB.
-- **Verification:** `docs/runbooks/rehearsals/<date>-mock-borrel.md` records what was done, the
-  image SHA, the timings and what broke.
-- **Depends on:** T16, T18 (a pushed SHA), T19, H5 (the v1 folder present)
-- **Autonomy note:** **human only.** Anything that broke becomes a follow-up task or a defect
-  entry, never a silent fix.
-
-### H3 — Rehearsals: previous-image rollback and v1 fallback (human)
-
-- **Implements:** AC31; SD17
-- **Expected output:**
-  - a timed previous-image rollback at the venue (`.env`'s `BB_IMAGE_SHA` set back, then
-    `start.cmd`) and on Render (the workflow with SHA *n*);
-  - a timed v1 fallback (the decision, then the bar taking orders on v1);
-  - each against ≤ 5 min.
-- **Verification:** `docs/runbooks/rehearsals/<date>-rollback.md` and `…-v1-fallback.md`, with
-  timings.
-- **Depends on:** H1, H2, H5
-- **Autonomy note:** **human only.**
-
-### H4 — Rotate v1's keys (human)
-
-- **Implements:** AC32 (human half); D-42; SD18
-- **Expected output:**
-  - every running v1 has a new `config/keys.json`, generated where it runs and never committed;
-  - optionally, `borrelbeurs-v1` made private or archived;
-  - the outcome recorded with no key material.
-- **Verification:** a rehearsal record (or a section of H3's) stating where v1 runs, the rotation
-  date and the repo's status.
-- **Depends on:** T9, T19
-- **Autonomy note:** **human only.** Touching `borrelbeurs-v1` is a hard stop (ADR 0009).
-
-### H5 — Prepare the v1 fallback folder (human; added after audit)
-
-- **Implements:** AC31 (the v1 fallback needs this to exist), AC30 ("v1 available as
-  fallback"); SD17
-- **Expected output:** a folder `borrelbeurs-v1-fallback/`, kept next to the bundle on the USB
-  stick and on the laptop, holding:
-  - `bierbeurs-image.tar`: `docker save bierbeurs:latest` of the image built in
-    `borrelbeurs-v1` at `b617a56`. Use the hotfix image already saved at the time if it still
-    exists. Otherwise `git checkout b617a56` in `borrelbeurs-v1` and `docker build` there. Never
-    build it from `legacy/v1/`, which has no `.dockerignore` (D-43);
-  - that commit's `run.bat`, `static/` and `config/exchange_config.json`;
-  - a new `config/keys.json`, generated on the laptop (one admin and one bar key at least),
-    never committed, never copied from the repo's history. This is also H4's rotation for the
-    laptop;
-  - `SHA256SUMS` covering the tar.
-
-  The image's sha256 and size go in the rehearsal record. Then a dry run on the laptop with no
-  uplink: `run.bat` loads the tar, `/healthz` is 200 on port 8000, and a bar key logs in.
-- **Verification:** a section in `docs/runbooks/rehearsals/<date>-v1-fallback.md` (H3's file),
-  or its own record, stating the image digest, the source commit and the dry-run result, with no
-  key material.
-- **Depends on:** T19 (`v1-fallback.md`)
-- **Autonomy note:** **human only.** Building from or checking out `borrelbeurs-v1` is a hard stop
-  (ADR 0009). An agent may draft the record from the human's notes.
+The human tasks are in [phase-8-human-steps.md](phase-8-human-steps.md), written to be walked
+through by an agent (`/human 8`). H5 (the v1 fallback folder) and H3's v1 half are withdrawn with
+SD17. Their ids, dependencies and the acceptance criteria they carry are unchanged: H1 (AC28 run,
+AC29), H2 (AC30 and the real-world halves of AC19-AC22), H3 (AC31, rollback only), H4 (AC32,
+human half).
 
 ---
 
@@ -944,8 +890,8 @@ confirms or overrules them. No row is a hard stop except where marked.
 | AC5 | T15, T17, T18 | AC16 | T4 | AC27 | T2 |
 | AC6 | T1, T10, T13 | AC17 | T14, T18 | AC28 | T10, T17, H1 |
 | AC7 | T13, T18 | AC18 | T14 | AC29 | T6, T7, H1 |
-| AC8 | T3, T6 | AC19 | T15, T16, H2 | AC30 | T19, H2, H5 |
-| AC9 | T3, T13, T18 | AC20 | T16, H2 | AC31 | T19, H3, H5 |
+| AC8 | T3, T6 | AC19 | T15, T16, H2 | AC30 | T19, H2 |
+| AC9 | T3, T13, T18 | AC20 | T16, H2 | AC31 | T19, H3, T22 |
 | AC10 | T3, T13 | AC21 | T8, T15, T16, H2 | AC32 | T9, H4 |
 | AC11 | T3 | AC22 | T15, T16, H2 | | |
 
@@ -965,15 +911,15 @@ Beside it:      T1 ─ T8 ──────────────────
                 T1 ─ T15 ─ T16;  T10, T15 ─ T17 ─ T19, T21
                 T9 (alone) ─ H4
 Documents:      T3, T5, T6, T17 ─ T21
-Human:          T19 ─ H5;  T17, T18, T19 ─ H1;  T16, T18, T19, H5 ─ H2;  H1, H2, H5 ─ H3;  T9, T19 ─ H4
+Documents:      T19, T20 ─ T22   (amendment A1)
+Human:          T17, T18, T19 ─ H1;  T16, T18, T19 ─ H2;  H1, H2 ─ H3;  T9, T19 ─ H4   (phase-8-human-steps.md)
 ```
 
 Edges, exactly:
 `T2←T1` · `T4←T2` · `T5←T3,T4` · `T6←T1,T2,T5` · `T7←T6` · `T8←T1` · `T10←T1` · `T11←T1` ·
 `T12←T11` · `T13←T3,T10,T11` · `T14←T7,T13` · `T15←T1` · `T16←T8,T13,T14,T15` ·
 `T17←T10,T15` · `T18←T11,T12,T13,T14,T16` · `T19←T15,T16,T17,T18` · `T20←T11,T16,T17,T18,T19` ·
-`T21←T3,T5,T6,T17` · `H1←T17,T18,T19` · `H2←T16,T18,T19,H5` · `H3←H1,H2,H5` · `H4←T9,T19` ·
-`H5←T19`.
+`T21←T3,T5,T6,T17` · `H1←T17,T18,T19` · `H2←T16,T18,T19` · `H3←H1,H2` · `H4←T9,T19` · `T22←T19,T20`.
 `T1`, `T3` and `T9` depend on nothing.
 
 **The server chain T1 → T2 → T4 → T5 → T6 → T7 is forced, not cautious.** `main.py` is written
@@ -1005,7 +951,8 @@ Shared files, ordered by dependency:
 | 9 | T18 | `.github/workflows/ci.yml` |
 | 10 | T19 | `docs/runbooks/**` |
 | 11 | T20 | `README.md`, `CLAUDE.md`, `docker-compose.yml` (header), `defect-register.md`, `manual-checklist.md` |
-| Human | H5 and H1 (after T19); H2 after H5; H3 after H1, H2, H5; H4 after T9 and T19 | `docs/runbooks/rehearsals/*.md` |
+| 12 | T22 | `docs/runbooks/**`, `deploy/venue/LEESMIJ.md`, `README.md`, ADR 0011 |
+| Human | H1 (after T19); H2 after T16, T18, T19; H3 after H1, H2; H4 after T9 and T19 | `docs/runbooks/rehearsals/*.md` |
 
 No two tasks in one group write the same file. In group 1, only T1 writes `main.py`, and only T3
 writes `boot.py` and the boot and process tests. In group 2, only T2 writes `main.py`; T15
@@ -1017,9 +964,8 @@ creates `test_no_latest.py` and nobody else in the group touches it. In group 3,
 - The CI run on `main` that pushed the image: the `image`, `image-drill`, `venue` and `push` jobs
   green. Paste the size line, the Trivy summary and the drill output.
 - T11's measured size, recorded in the register (T20).
-- H1–H5's rehearsal records, which together meet the spec's exit condition: the same digest on
-  Render and the venue laptop, rollback and v1 fallback within 5 min, and a mock borrel offline
-  without v1.
+- H1–H4's rehearsal records, which together meet the spec's exit condition: the same digest on
+  Render and the venue laptop, rollback within 5 min, and a mock borrel offline.
 
 ---
 
@@ -1130,3 +1076,60 @@ Audited by: MartijnBoot (human, Gate B)  Date: 2026-10-10
 
 Amended after audit (2026-10-10): H5 added; T4, T15, T16, T19, H2, H3 and the graph edited to
 close the findings above. Re-audit of those sections: MartijnBoot (human), 2026-10-10 — approved
+
+**Amendment A1 (2026-10-11): no v1 fallback.** H5 and H3's v1 half withdrawn; the human tasks
+moved to `phase-8-human-steps.md`; T22 added to remove the fallback from the built runbooks
+(T19, T20 stay merged). Spec: Amendment A1.
+
+Re-audit of A1 (2026-10-11): all ten checklist lines accepted by the human ("accept all
+lines"). Findings folded into T22 and this file: `docs/design/architecture.md:267-268` still
+described the v1 fallback and was in neither A1's table nor T22 (added, hard stop); T22's grep
+widened to catch it; stale status lines at the top of this plan corrected. The spec's A1 change
+table is left as written; T22 is the authority for the architecture.md edit. Accepted as-is:
+T22 has no AC of its own (its criterion is A1's change table), and T19's text keeps describing
+`v1-fallback.md` as history.
+
+Audited by: MartijnBoot (human, Gate B, A1 re-audit)  Date: 2026-10-11
+
+---
+
+## Amendment A2 (2026-10-11): the smoke test accepts a weak ETag — T23
+
+**Found by H1 step 6** (defect D-H1-1, [phase-8-human-steps.md](phase-8-human-steps.md)).
+On Render, Cloudflare sits in front of the app and rewrites `ETag: "theme-0-blauw"` to
+`etag: W/"theme-0-blauw"`: weak, and with a lowercase name. PD13 and T10 assumed the strong form
+reaches the client; T10's test runs against the app directly, so it could not see this. The
+deploy itself worked (`/healthz` named the SHA), but `smoke.py` failed at step 6 and the
+workflow ended red, so AC28's "smoke passes" is not yet met on Render. **The app is right; the
+smoke check is too strict.** Nothing in the spec changes.
+
+### T23 — The smoke test reads the ETag as a proxy delivers it
+
+- **Implements:** SD12, AC28 (as T10 did); PD13 refined, not replaced.
+- **Expected output:** in `scripts/smoke.py`:
+  - a function that takes the response headers and returns `(revision, preset)`: it finds
+    `ETag` without regard to the case of the name, strips a leading `W/`, then applies the
+    existing `"theme-<rev>-<preset>"` match; it raises `SmokeFailed` otherwise;
+  - the failure message names the ETag value it actually received (`theme.css: 200, ETag
+    'W/"..."'`), not only the `ETag`-cased lookup, which printed `None` here.
+- **Verification (failing test first):**
+  - `tests/unit/test_smoke_etag.py`: strong `"theme-3-blauw"` → `(3, "blauw")`; weak
+    `W/"theme-3-blauw"` → the same; header name `etag` and `ETag` and `ETAG` all work; a missing
+    header, `"theme-x-blauw"`, and `"other"` raise `SmokeFailed`, and the message contains the
+    received value;
+  - `uv run pytest tests/integration/test_smoke_script.py -v` still passes (strong form);
+  - `./scripts/check.sh`.
+- **Not in T23 (follow-up, recorded):** `app/api/theme.py:115` compares `if-none-match` exactly,
+  so behind Cloudflare the app never answers 304. Harmless (the CSS is resent); leave as it is.
+- **Depends on:** T10 (merged).
+- **Autonomy note:**
+  - **May decide alone:** the function's name and whether it sits above `main`.
+  - **Must stop and ask if:** the fix seems to need a change under `app/` (it must not), or a
+    new dependency.
+- **After it merges (human, H1 step 6 again):** CI pushes n+2, which contains the fixed
+  `smoke.py`. The deploy workflow checks out the SHA it deploys, so only **n+2** can pass; run
+  **deploy** with n+2 and expect seven passing steps. **n+2 is then the image for H1's mid-run
+  deploy (step 8), and n+1 the previous image for H3.** The first deployed image stays n.
+- **Graph:** `T23←T10` · `H1←T23` (step 6 onward).
+
+Re-audit A2 (2026-10-11): accepted by the human ("accept"). Audited by: MartijnBoot (human, Gate B, A2 re-audit)  Date: 2026-10-11

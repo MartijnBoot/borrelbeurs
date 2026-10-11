@@ -49,6 +49,6 @@ beheerder. Mislukt het, dan blijft de app uit: probeer met de beheerder de vorig
 ## Wie bel je wanneer?
 
 - **Iets hangt, of de prijzen bewegen niet meer**: eerst `start.cmd`, daarna de beheerder.
-- **Niets werkt en de bar moet door**: de beheerder beslist over terugvallen op de oude
-  versie (v1, de map `borrelbeurs-v1-fallback` op de USB-stick). Dat kost hooguit 5 minuten.
+- **Niets werkt en de bar moet door**: de beheerder beslist over het terugzetten
+  van een vorige versie of van een back-up.
 - **Beheerder**: _naam en telefoonnummer hier invullen vóór de borrel_.

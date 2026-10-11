@@ -53,8 +53,8 @@ CI builds one image and pushes it to GHCR by commit SHA on `main`; merging deplo
 Real events run on a laptop with no internet (`deploy/venue/`); Render is the hosted option.
 The runbooks in [docs/runbooks/](docs/runbooks/) cover each case:
 [deploy](docs/runbooks/deploy.md), [rollback](docs/runbooks/rollback.md),
-[restore](docs/runbooks/restore.md), [the venue](docs/runbooks/venue.md),
-[incidents](docs/runbooks/incident.md) and the [v1 fallback](docs/runbooks/v1-fallback.md).
+[restore](docs/runbooks/restore.md), [the venue](docs/runbooks/venue.md) and
+[incidents](docs/runbooks/incident.md).
 
 ## Licence
 

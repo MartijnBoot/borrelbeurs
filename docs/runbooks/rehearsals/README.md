@@ -10,7 +10,7 @@ Never put key material in one.
 - **Image SHA:** <40 hex>
 - **Who / where:** <names, venue or laptop>
 - **What was done:** <the steps actually performed, in order>
-- **Timings:** <each timed step, against its target (rollback and v1 fallback: 5 minutes)>
+- **Timings:** <each timed step, against its target (rollback: 5 minutes)>
 - **What broke:** <anything that did not go as the runbook says; "nothing" if so>
 - **Follow-ups:** <one line each: a task, a defect-register entry, or "none">
 ```

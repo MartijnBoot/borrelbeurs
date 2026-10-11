@@ -43,6 +43,18 @@ class SmokeFailed(Exception):
     """A step failed; the message says which and why, never with the key in it."""
 
 
+def theme_preset(headers: dict[str, str]) -> tuple[int, str]:
+    """The theme's `(revision, preset)` from `/theme.css`'s ETag, as a proxy delivers it.
+
+    Cloudflare in front of Render sends `etag: W/"theme-0-blauw"`: weak, and a lowercase name.
+    """
+    etag = next((value for name, value in headers.items() if name.lower() == "etag"), None)
+    match = ETAG.match(etag.removeprefix("W/")) if etag is not None else None
+    if match is None:
+        raise SmokeFailed(f"theme.css: ETag {etag!r}")
+    return int(match.group(1)), match.group(2)
+
+
 class Session:
     def __init__(self, base: str) -> None:
         self.base = base.rstrip("/")
@@ -123,10 +135,9 @@ def run(base: str, key: str, *, expect_sha: str | None, wait_seconds: float) -> 
         raise SmokeFailed(f"runs/current: {status} {_code(body)}")
 
     status, headers, _ = session.request("GET", "/theme.css")
-    match = ETAG.match(headers.get("ETag", headers.get("etag", "")))
-    if status != 200 or match is None:
-        raise SmokeFailed(f"theme.css: {status}, ETag {headers.get('ETag')!r}")
-    revision, preset = int(match.group(1)), match.group(2)
+    if status != 200:
+        raise SmokeFailed(f"theme.css: {status}")
+    revision, preset = theme_preset(headers)
     status, body = session.json("PUT", "/api/theme", {"preset": preset})
     if status != 200 or body.get("preset") != preset or body.get("revision") != revision + 1:
         raise SmokeFailed(f"theme: {status} {_code(body)}")
