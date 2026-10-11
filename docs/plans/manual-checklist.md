@@ -260,11 +260,11 @@ Exit: two past borrels comparable; xlsx export matches the database.
 ## Phase 8 — Deploy + cutover
 Exit: runs on Render *and* offline; rollback rehearsed; mock borrel passed.
 
-- [ ] spec — read `docs/specs/phase-8-deploy-cutover.md` (`Draft`) → approve, or `/clear` then `/spec 8`
-- [ ] branch — `git switch main` then `git pull` then `git switch -c docs/phase-8-plan`
-- [ ] plan — `/clear` then `/plan 8`
-- [ ] audit — `/clear` then `/audit 8`
-- [ ] merge the plan — per-phase loop step 5 with `<N>` = 8
+- [x] spec — read `docs/specs/phase-8-deploy-cutover.md` (`Draft`) → approve, or `/clear` then `/spec 8`
+- [x] branch — `git switch main` then `git pull` then `git switch -c docs/phase-8-plan`
+- [x] plan — `/clear` then `/plan 8`
+- [x] audit — `/clear` then `/audit 8`
+- [x] merge the plan — per-phase loop step 5 with `<N>` = 8
 - [ ] tasks (`/build 8 <T>`, `/review 8`):
   - [ ] …
 - [ ] rotate the v1 access keys still in `borrelbeurs-v1` git history (human, AC17)
