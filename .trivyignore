@@ -1,0 +1,9 @@
+# Trivy waivers for the image scan (scripts/ci/scan_image.sh; Phase 8 SD21, AC4).
+#
+# Empty on purpose. A fixable CRITICAL or HIGH fails the build; the first remedy
+# is a newer base-image digest. Waiving one is a human decision, and each entry
+# is two lines -- a reason, then the ID with an expiry -- so no waiver outlives
+# its review (tests/meta/test_trivyignore.py enforces both):
+#
+#   # reason: <why this does not apply, or what blocks the fix; who decided>
+#   CVE-2026-12345 exp:2026-12-31
