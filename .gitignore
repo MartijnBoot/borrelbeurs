@@ -22,6 +22,8 @@ keys.json
 
 # --- build output, caches and dependencies -----------------------------------
 node_modules/
+# scripts/make_bundle.sh (Phase 8 T16): the venue bundle, images.tar and all.
+/bundle/
 web/dist/
 dist/
 build/

@@ -16,6 +16,14 @@ applies the gap rule to the live state as one `gap` mutate: the state's anchors
 and the active events' start and end move by the same `gap_shift_ms`, with no
 `advance` across the gap (Phase 2 SD2, AC19a).
 
+**A wall clock stepping back (Phase 8 SD15).** Within the budget, stamps hold at
+the last commit until the grid passes it (ADR 0003). Beyond it -- the wall clock
+more than the budget behind the last commit -- the ticker raises the app clock's
+offset so its time continues from the last commit, writes one `gap` row with no
+time evolved and no anchor shift, logs `clock_stepped_back`, and re-anchors on
+the raised clock: prices go on evolving at the interval instead of freezing for
+the size of the step.
+
 **A failed commit (SD14)** is logged with the version and the slot skipped:
 memory keeps the last committed state and the next slot computes from it. It
 is never retried. The exception is a failed `gap`: the grid still re-anchors,
@@ -47,7 +55,7 @@ from typing import Any
 from app.db.codec import tick_prices
 from app.db.engine_state import compare_and_set, insert_tick, save_transition
 from app.db.market_events import end_event, shift_active_events
-from app.runtime.clock import Clock
+from app.runtime.clock import AppClock, commit_stamp_ms
 from app.runtime.gap import DEFAULT_CATCH_UP_BUDGET_MS, apply_gap_rule, gap_shift_ms
 from app.runtime.history import TickEntry
 from app.runtime.holder import (
@@ -61,7 +69,7 @@ from app.runtime.holder import (
     TickCommitted,
 )
 from app.runtime.market_events import shift_events
-from exchange import advance
+from exchange import EngineState, advance
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +79,7 @@ class Ticker:
         self,
         holder: MarketHolder,
         *,
-        clock: Clock,
+        clock: AppClock,
         interval_ms: int,
         budget_ms: int = DEFAULT_CATCH_UP_BUDGET_MS,
     ) -> None:
@@ -165,6 +173,10 @@ class Ticker:
             return
         now_mono = self._clock.monotonic()
         now_wall = self._clock.wall_ms()
+        last_commit = self._holder.last_commit_wall_ms
+        if last_commit is not None and now_wall < last_commit - self._budget_ms:
+            await self._stepped_back(now_wall, last_commit)
+            return
         lag_ms = (now_mono - due) * 1000
         drift_ms = abs((now_wall - self._wall_anchor) - (now_mono - self._mono_anchor) * 1000)
         if self._gap_pending or lag_ms > self._budget_ms or drift_ms > self._budget_ms:
@@ -180,6 +192,18 @@ class Ticker:
                 await self._end_due_events(self._last_stamp_ms)
             if self._stopping:
                 return
+
+    async def _stepped_back(self, now_wall: int, last_commit: int) -> None:
+        """SD15: continue the app clock from the last commit, mark it, re-anchor on it."""
+        self._clock.raise_to(last_commit)
+        logger.warning(
+            "clock_stepped_back",
+            extra={"step_ms": last_commit - now_wall, "offset_ms": self._clock.offset_ms},
+        )
+        # Not `_gap_pending` on a failure: a zero-shift gap guards no anchor shift, so
+        # the next slot may advance from the last committed state as any tick does.
+        await self._guarded("gap", self._zero_shift_gap_step())
+        self._anchor()
 
     async def _guarded(self, op: str, step: Step[Any]) -> bool:
         """One mutate; a failed commit is logged and skipped (SD14). Whether it committed."""
@@ -202,7 +226,8 @@ class Ticker:
         catch-up budget (30 s) is not a gap: it holds every tick at the last
         commit's time until the grid passes it, and prices freeze for up to the
         budget meanwhile (Phase 4 SD30, ADR 0003). A step back beyond the budget
-        is a gap and re-anchors instead.
+        raises the app clock and writes a zero-shift gap instead (Phase 8 SD15,
+        `_stepped_back`), so ticks are never held for longer than the budget.
         """
         holder = self._holder
         ticker = self
@@ -242,7 +267,6 @@ class Ticker:
         return step
 
     def _gap_step(self, now_ms: int) -> Callable[[MarketView], Awaitable[Outcome[int | None]]]:
-        holder = self._holder
         budget_ms = self._budget_ms
 
         async def step(view: MarketView) -> Outcome[int | None]:
@@ -257,44 +281,64 @@ class Ticker:
             shift_ms = gap_shift_ms(**gap)
             if shifted is None or shift_ms is None:
                 return Outcome(result=None, view=view)  # a clock that went backwards
-            async with holder.engine.begin() as conn:
-                await compare_and_set(
-                    conn,
-                    run_id=view.run_id,
-                    expected_version=view.state.version,
-                    state=shifted,
-                    drink_ids=view.drink_ids,
-                    wall_ts_ms=now_ms,
-                )
-                await insert_tick(
-                    conn,
-                    run_id=view.run_id,
-                    state=shifted,
-                    spec=view.spec,
-                    drink_ids=view.drink_ids,
-                    source="gap",
-                    wall_ts_ms=now_ms,
-                )
-                await shift_active_events(conn, view.run_id, shift_ms)
-            entry = TickEntry(
-                version=shifted.version,
-                wall_ts_ms=now_ms,
-                source="gap",
-                prices=tick_prices(view.spec, shifted, view.drink_ids),
-            )
-            return Outcome(
-                result=shifted.version,
-                view=dataclasses.replace(
-                    view,
-                    state=shifted,
-                    last_commit_wall_ms=now_ms,
-                    market_events=shift_events(view.market_events, shift_ms),
-                ),
-                events=(TickCommitted(run_id=view.run_id, entry=entry),),
-                ticks=(entry,),
-            )
+            return await self._commit_gap(view, shifted, now_ms=now_ms, shift_ms=shift_ms)
 
         return step
+
+    def _zero_shift_gap_step(self) -> Callable[[MarketView], Awaitable[Outcome[int | None]]]:
+        """SD15's `gap` row: the next version, at the last commit's time, nothing moved."""
+        clock = self._clock
+
+        async def step(view: MarketView) -> Outcome[int | None]:
+            assert view.state is not None
+            marked = dataclasses.replace(view.state, version=view.state.version + 1)
+            now_ms = commit_stamp_ms(clock, view)
+            return await self._commit_gap(view, marked, now_ms=now_ms, shift_ms=0)
+
+        return step
+
+    async def _commit_gap(
+        self, view: MarketView, state: EngineState, *, now_ms: int, shift_ms: int
+    ) -> Outcome[int | None]:
+        """Write `state` as one `gap` row at `now_ms`, moving active events by `shift_ms`."""
+        assert view.run_id is not None and view.spec is not None and view.state is not None
+        async with self._holder.engine.begin() as conn:
+            await compare_and_set(
+                conn,
+                run_id=view.run_id,
+                expected_version=view.state.version,
+                state=state,
+                drink_ids=view.drink_ids,
+                wall_ts_ms=now_ms,
+            )
+            await insert_tick(
+                conn,
+                run_id=view.run_id,
+                state=state,
+                spec=view.spec,
+                drink_ids=view.drink_ids,
+                source="gap",
+                wall_ts_ms=now_ms,
+            )
+            if shift_ms:
+                await shift_active_events(conn, view.run_id, shift_ms)
+        entry = TickEntry(
+            version=state.version,
+            wall_ts_ms=now_ms,
+            source="gap",
+            prices=tick_prices(view.spec, state, view.drink_ids),
+        )
+        return Outcome(
+            result=state.version,
+            view=dataclasses.replace(
+                view,
+                state=state,
+                last_commit_wall_ms=now_ms,
+                market_events=shift_events(view.market_events, shift_ms),
+            ),
+            events=(TickCommitted(run_id=view.run_id, entry=entry),),
+            ticks=(entry,),
+        )
 
     async def _end_due_events(self, now_ms: int) -> None:
         if not any(e.t_end_ms <= now_ms for e in self._holder.market_events):

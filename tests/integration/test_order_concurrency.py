@@ -23,6 +23,7 @@ from app.db.engine_state import load_state, save_transition
 from app.db.mapping import cents_from_quantised
 from app.db.runs import add_drink, create_draft_run, go_live
 from app.db.session import create_engine
+from app.runtime.clock import AppClock
 from app.runtime.grace import QuotedLine
 from app.runtime.holder import (
     DomainEvent,
@@ -121,7 +122,7 @@ def test_fifty_concurrent_orders_with_ticks_and_jumps_tell_one_story(
         holder = MarketHolder.from_rehydrated(
             await _live(engine), engine=engine, clock=clock, sink=sink
         )
-        ticker = Ticker(holder, clock=clock, interval_ms=1_000)
+        ticker = Ticker(holder, clock=AppClock(clock), interval_ms=1_000)
         ticker.start()
 
         async def order(n: int) -> PlacedOrder | None:

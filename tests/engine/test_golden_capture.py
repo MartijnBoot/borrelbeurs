@@ -18,6 +18,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -30,6 +31,10 @@ from tests.engine.v1_reference import engine as v1
 V1_ENGINE = Path(__file__).parent / "v1_reference" / "engine.py"
 # sha256 of `exchange/engine.py` at main (b6a1b27), the v1 engine as imported.
 V1_ENGINE_SHA256 = "f74f8f4bd69a3dcc9ebaeaec35861f70660fa26d6b542fd866e28f981b3b5467"
+LINUX_ONLY = pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="the golden numbers are captured on Linux; run scripts/golden_linux.sh",
+)
 
 
 def test_the_reference_engine_is_v1_byte_for_byte() -> None:
@@ -44,6 +49,7 @@ def test_every_scenario_has_a_fixture_and_every_fixture_a_scenario() -> None:
     assert on_disk == {scenario.name for scenario in SCENARIOS}
 
 
+@LINUX_ONLY
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda s: s.name)
 def test_the_committed_fixture_reproduces_from_v1(scenario: Scenario) -> None:
     committed = capture.load_fixture(scenario.name)

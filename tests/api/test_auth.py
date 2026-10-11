@@ -257,13 +257,16 @@ def test_docs_are_served_outside_production(client: TestClient) -> None:
     assert client.get("/redoc").status_code == 200
 
 
-def test_docs_are_absent_in_production(
-    api_env: str, clock: FakeClock, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(("app_env", "secure"), [("production", "true"), ("venue", "false")])
+def test_docs_are_absent_in_production_and_at_the_venue(
+    api_env: str, clock: FakeClock, monkeypatch: pytest.MonkeyPatch, app_env: str, secure: str
 ) -> None:
+    """SD3; AC25: the venue boots with a plain-http cookie and still hides the docs."""
     from app.core.config import get_settings
     from app.main import create_app
 
-    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("APP_ENV", app_env)
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", secure)
     get_settings.cache_clear()
     with TestClient(create_app(clock=clock, run_migrations=False), base_url=BASE_URL) as client:
         for path in ("/openapi.json", "/docs", "/redoc"):

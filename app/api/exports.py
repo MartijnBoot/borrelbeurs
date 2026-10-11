@@ -19,9 +19,6 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import re
-import unicodedata
-from datetime import UTC, datetime
 from typing import Annotated, Final, Literal
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -29,11 +26,11 @@ from pydantic import BaseModel, ConfigDict
 
 from app.api.deps import Principal, db_engine, heavy_engine, refuse_while_draining, require_role
 from app.db.exports import ExportRow, export_file, get_export, list_exports, request_export
+from app.jobs.naming import filename
 
 router = APIRouter(tags=["exports"])
 
 XLSX: Final = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-SLUG_MAX: Final = 40
 
 
 class ExportData(BaseModel):
@@ -56,14 +53,6 @@ class ExportData(BaseModel):
 
 def _data(row: ExportRow) -> ExportData:
     return ExportData.model_validate(dataclasses.asdict(row))
-
-
-def filename(run_name: str, run_id: int, created_at_ms: int) -> str:
-    """PD10: `borrel-<slug>-<yyyymmdd-hhmm>.xlsx`, ASCII only, stamped in UTC."""
-    folded = unicodedata.normalize("NFKD", run_name).encode("ascii", "ignore").decode()
-    slug = re.sub(r"[^a-z0-9]+", "-", folded.lower()).strip("-")[:SLUG_MAX].strip("-")
-    stamp = datetime.fromtimestamp(created_at_ms // 1000, tz=UTC).strftime("%Y%m%d-%H%M")
-    return f"borrel-{slug or f'run-{run_id}'}-{stamp}.xlsx"
 
 
 @router.post("/runs/{run_id}/exports", status_code=202)

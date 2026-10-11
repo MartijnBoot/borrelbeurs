@@ -22,9 +22,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 import app.runtime.boot as boot
-from app.api.exports import XLSX, filename
+from app.api.exports import XLSX
 from app.core.config import Settings
 from app.db.session import create_engine
+from app.jobs.naming import filename
 from tests.api.conftest import Login
 
 T0_2025_10_01_1000 = 1_759_312_800_000

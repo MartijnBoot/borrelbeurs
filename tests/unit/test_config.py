@@ -7,13 +7,14 @@ that says only "validation error" costs an evening at a borrel.
 
 from __future__ import annotations
 
+import re
 import traceback
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
-from app.core.config import ConfigError, get_settings
+from app.core.config import ConfigError, Settings, get_settings
 
 ENV_VARS = (
     "DATABASE_URL",
@@ -23,6 +24,11 @@ ENV_VARS = (
     "APP_ENV",
     "LOGIN_RATE_PER_MINUTE",
     "SESSION_COOKIE_SECURE",
+    "DATABASE_TIMEOUT_SECONDS",
+    "HEAVY_READ_TIMEOUT_SECONDS",
+    "BUILD_SHA",
+    "TRUSTED_PROXY_IPS",
+    "EXPORT_DIR",
 )
 
 ENV_EXAMPLE = Path(__file__).resolve().parents[2] / ".env.example"
@@ -457,11 +463,103 @@ def test_production_refuses_an_insecure_session_cookie(monkeypatch: pytest.Monke
 
 
 @pytest.mark.parametrize(
-    ("app_env", "secure"), [("production", "true"), ("local", "false"), ("ci", "false")]
+    ("app_env", "secure"),
+    [("production", "true"), ("local", "false"), ("ci", "false"), ("venue", "false")],
 )
 def test_an_insecure_cookie_is_allowed_outside_production(
     monkeypatch: pytest.MonkeyPatch, app_env: str, secure: str
 ) -> None:
+    """AC25: the venue serves plain http on the travel router's LAN, so it boots with
+    `SESSION_COOKIE_SECURE=false`; production still refuses it (above)."""
     _set_env(monkeypatch, APP_ENV=app_env, SESSION_COOKIE_SECURE=secure)
 
     assert get_settings().session_cookie_secure is (secure == "true")
+
+
+# --- Phase 8: build SHA, proxy trust, export directory (SD7, SD9, SD14) ------------
+
+
+def test_every_setting_is_cleared_between_tests_and_documented() -> None:
+    """`ENV_VARS` is the isolation list above; a setting missing from it would leak a
+    developer's own export into these tests. `.env.example` documents each one."""
+    fields = {name.upper() for name in Settings.model_fields}
+    # Set, or commented out where no example value is right (`# EXPORT_DIR=/exports`).
+    documented = set(
+        re.findall(r"^#? ?([A-Z_]+)=", ENV_EXAMPLE.read_text(encoding="utf-8"), re.MULTILINE)
+    )
+
+    assert set(ENV_VARS) == fields
+    assert fields <= documented, sorted(fields - documented)
+
+
+def test_the_phase_8_settings_default_to_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_env(monkeypatch)
+
+    settings = get_settings()
+
+    assert settings.build_sha == "unknown"
+    assert settings.trusted_proxy_ips == ""
+    assert settings.export_dir is None
+
+
+def test_the_phase_8_settings_are_read_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    sha = "0123456789abcdef0123456789abcdef01234567"
+    _set_env(
+        monkeypatch,
+        APP_ENV="venue",
+        BUILD_SHA=sha,
+        TRUSTED_PROXY_IPS="*",
+        EXPORT_DIR=str(tmp_path),
+    )
+
+    settings = get_settings()
+
+    assert settings.app_env == "venue"
+    assert settings.build_sha == sha
+    assert settings.trusted_proxy_ips == "*"
+    assert settings.export_dir == tmp_path
+
+
+def test_an_empty_export_dir_means_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`EXPORT_DIR=` is "no host copy", never `Path("")` -- the working directory."""
+    _set_env(monkeypatch, EXPORT_DIR="")
+
+    assert get_settings().export_dir is None
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("*", "*"),
+        ("10.0.0.1", "10.0.0.1"),
+        ("10.0.0.0/8", "10.0.0.0/8"),
+        (" 10.0.0.1 , 172.16.0.0/12,::1 ", "10.0.0.1,172.16.0.0/12,::1"),
+        ("fd00::/8", "fd00::/8"),
+        ("", ""),
+    ],
+)
+def test_trusted_proxy_ips_accepts_addresses_networks_or_a_star(
+    monkeypatch: pytest.MonkeyPatch, value: str, expected: str
+) -> None:
+    """The form uvicorn's `forwarded_allow_ips` takes, normalised to no spaces."""
+    _set_env(monkeypatch, TRUSTED_PROXY_IPS=value)
+
+    assert get_settings().trusted_proxy_ips == expected
+
+
+@pytest.mark.parametrize(
+    "value", ["banana", "10.0.0.1,banana", "*,10.0.0.1", "10.0.0.0/33", "10.0.0.1,,10.0.0.2"]
+)
+def test_a_malformed_trusted_proxy_list_fails_naming_the_variable(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """uvicorn would keep a malformed entry as a literal that never matches a peer,
+    silently trusting no one -- so it is refused here, at boot, by name."""
+    _set_env(monkeypatch, TRUSTED_PROXY_IPS=value)
+
+    with pytest.raises(ConfigError) as excinfo:
+        get_settings()
+
+    assert "TRUSTED_PROXY_IPS" in str(excinfo.value)

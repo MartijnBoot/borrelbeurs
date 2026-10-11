@@ -69,6 +69,7 @@ def test_the_app_boots_on_the_real_environment_and_answers_its_probes(
     runtime writes, so it boots on the session's scratch database, never the
     developer's own (tests/integration/conftest.py)."""
     monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("BUILD_SHA", BUILD_SHA)
     get_settings.cache_clear()
     target = app.main.create_app()
 
@@ -83,6 +84,8 @@ def test_the_app_boots_on_the_real_environment_and_answers_its_probes(
 
     assert healthz[0] == 200
     assert healthz[1]["status"] == "ok"
+    # AC6: the deployed build names itself, so a deploy can check it is the one it asked for.
+    assert healthz[1]["build_sha"] == BUILD_SHA
     assert readyz == (200, {"status": "ready"})
 
 
@@ -114,11 +117,13 @@ def test_the_configured_postgres_answers_a_query(settings: Settings) -> None:
 # --- Phase 3 T20: ticker liveness and database readiness (SD15; AC17, AC18c) ------
 
 T0 = 1_759_312_800_000
+BUILD_SHA = "0123456789abcdef0123456789abcdef01234567"
 
 
 @pytest.fixture
 def scratch_env(monkeypatch: pytest.MonkeyPatch, database_url: str) -> Iterator[str]:
     monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("BUILD_SHA", BUILD_SHA)
     get_settings.cache_clear()
     yield database_url
     get_settings.cache_clear()
@@ -165,7 +170,12 @@ def test_a_stalled_ticker_fails_healthz_after_three_intervals(scratch_env: str) 
     assert alive[0] == 200 and alive[1]["last_tick_age_ms"] == 0
     assert at_limit[0] == 200
     assert stale[0] == 503
-    assert stale[1] == {"status": "stale", "last_tick_age_ms": 3_001, "last_commit_age_ms": None}
+    assert stale[1] == {
+        "status": "stale",
+        "build_sha": BUILD_SHA,
+        "last_tick_age_ms": 3_001,
+        "last_commit_age_ms": None,
+    }
 
 
 async def _go_live(settings: Settings, url: str) -> None:

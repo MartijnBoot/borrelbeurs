@@ -25,6 +25,7 @@ very file the config module deliberately refuses to read (R12).
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
@@ -38,6 +39,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException
 from starlette.responses import Response
+from starlette.staticfiles import PathLike
 from starlette.types import Scope
 
 from app.api.admin import router as admin_router
@@ -55,6 +57,7 @@ from app.api.news import router as news_router
 from app.api.orders import router as orders_router
 from app.api.runs import router as runs_router
 from app.api.security import ROLE_ROUTES, LoginLimiter, OriginGuard
+from app.api.standby import StandbyGate
 from app.api.state import router as state_router
 from app.api.theme import theme_css_router, theme_router
 from app.core.config import Settings, get_settings
@@ -62,7 +65,7 @@ from app.core.errors import AppError, handle_app_error, handle_validation_error
 from app.core.logging import configure_logging
 from app.realtime.ws import router as ws_router
 from app.runtime.boot import exit_process, start_runtime
-from app.runtime.clock import Clock, RealClock
+from app.runtime.clock import AppClock, Clock, RealClock
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +98,10 @@ WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
 # table grants, taken from the server's own table rather than copied.
 SPA_ROUTES: Final = frozenset({"/login"} | {r for routes in ROLE_ROUTES.values() for r in routes})
 
+# SD3, Phase 8 AC25: an allowlist, so a new environment -- `venue`, the borrel's
+# LAN -- hides the docs until someone decides otherwise.
+DOCS_ENVS: Final = frozenset({"local", "ci"})
+
 
 class SpaStaticFiles(StaticFiles):
     """`StaticFiles` with a history-mode fallback for the SPA's own routes only.
@@ -102,7 +109,29 @@ class SpaStaticFiles(StaticFiles):
     A `GET` of exactly one of `SPA_ROUTES` that matches no file serves
     `index.html`, so a reload of `/koers` or a `/login?next=` redirect renders the
     app. Every other unknown path stays a plain 404.
+
+    Phase 8 AC27: `index.html` is `no-store`, so a phone picks up a deploy on its
+    next load; Vite's content-hashed `assets/*` are cached for good. Set on
+    whatever `file_response` returns, so a 304 keeps it too. Other files are left
+    as they were.
     """
+
+    def file_response(
+        self,
+        full_path: PathLike,
+        stat_result: os.stat_result,
+        scope: Scope,
+        status_code: int = 200,
+    ) -> Response:
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        served = Path(full_path)
+        # `full_path` is a realpath (`StaticFiles.lookup_path`); compare like with like.
+        assets = Path(os.path.realpath(self.directory or "")) / "assets"
+        if served.name == "index.html":
+            response.headers["Cache-Control"] = "no-store"
+        elif served.parent == assets:
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         try:
@@ -135,7 +164,7 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.login_limiter = LoginLimiter(
         settings.login_rate_per_minute, application.state.clock
     )
-    if settings.app_env != "production":
+    if settings.app_env in DOCS_ENVS:
         _mount_docs(application)
 
     runtime: Runtime = application.state.runtime
@@ -148,14 +177,18 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     ):
         logger.info(
             "application started",
-            extra={"app_env": settings.app_env, "port": settings.port},
+            extra={
+                "app_env": settings.app_env,
+                "port": settings.port,
+                "build_sha": settings.build_sha,
+            },
         )
         yield
     logger.info("application stopped")
 
 
 def _mount_docs(application: FastAPI) -> None:
-    """SD3: `/openapi.json`, `/docs` and `/redoc`, outside production only (plan PD15).
+    """SD3: `/openapi.json`, `/docs` and `/redoc`, for `DOCS_ENVS` only (plan PD15).
 
     Put in front of the SPA mount, which would otherwise catch them.
     """
@@ -202,7 +235,9 @@ def create_app(
         redoc_url=None,
         openapi_url=None,
     )
-    application.state.clock = clock if clock is not None else RealClock()
+    # Phase 8 SD15: one app clock for every caller, its offset raised by the ticker
+    # and at boot; a test's `FakeClock` still drives it, since it only adds.
+    application.state.clock = AppClock(clock if clock is not None else RealClock())
     application.state.run_migrations = run_migrations
     application.state.request_shutdown = request_shutdown
     application.state.runtime = runtime
@@ -211,11 +246,14 @@ def create_app(
     # False until the lifespan says otherwise, so an app that is merely
     # constructed -- in a test, in `--reload`'s parent process -- is never ready.
     application.state.ready = False
+    application.state.standby = False
 
     application.add_exception_handler(AppError, handle_app_error)
     application.add_exception_handler(RequestValidationError, handle_validation_error)
     # SD9. No CORS middleware, ever: one origin (AC6b).
     application.add_middleware(OriginGuard)
+    # Added last, so outermost: in standby nothing behind it runs (Phase 8 SD4).
+    application.add_middleware(StandbyGate)
     application.include_router(health_router)
     application.include_router(api_router)
     application.include_router(ws_router)
@@ -259,6 +297,11 @@ def main() -> None:
             # Our JSON formatter owns the root logger; uvicorn's default dictConfig
             # would replace it with plain text half a second later.
             log_config=None,
+            # Phase 8 SD9, AC26: said explicitly. With `proxy_headers` on, uvicorn
+            # trusts `FORWARDED_ALLOW_IPS` (loopback by default); off, it reads no
+            # `X-Forwarded-For` at all, so the login limiter keys on the real peer.
+            proxy_headers=bool(settings.trusted_proxy_ips),
+            forwarded_allow_ips=settings.trusted_proxy_ips or None,
         )
     )
     app.state.request_shutdown = lambda: setattr(server, "should_exit", True)

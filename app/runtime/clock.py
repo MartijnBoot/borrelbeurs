@@ -9,6 +9,13 @@ ticks "on the fake clock". `RealClock` here is the only `import time` under
 Two readings, deliberately separate. `wall_ms` stamps what is persisted and
 broadcast; `monotonic` schedules, because wall time can jump (SD13 re-anchors
 when the two diverge).
+
+**The app clock (Phase 8 SD15, PD4).** `create_app` wraps whichever clock it is
+given in `AppClock`, so every caller -- ticker, orders, jumps, drink and config
+edits, news -- reads one wall time: the injected clock's plus an offset that only
+ever grows. The ticker raises it when the wall clock steps back past the last
+commit (T5), and boot when it rehydrates behind one. Each commit then stamps
+`commit_stamp_ms`: never before the last commit, whatever the wall clock did.
 """
 
 from __future__ import annotations
@@ -46,3 +53,42 @@ class RealClock:
         # tick -- so sleep again until the deadline has really passed.
         while (remaining := monotonic_deadline - time.monotonic()) > 0:
             await asyncio.sleep(remaining)
+
+
+class AppClock:
+    """`inner`'s clocks, with wall time raised by an offset that never decreases."""
+
+    def __init__(self, inner: Clock) -> None:
+        self._inner = inner
+        self._offset_ms = 0
+
+    @property
+    def offset_ms(self) -> int:
+        return self._offset_ms
+
+    def wall_ms(self) -> int:
+        return self._inner.wall_ms() + self._offset_ms
+
+    def monotonic(self) -> float:
+        return self._inner.monotonic()
+
+    async def sleep_until(self, monotonic_deadline: float) -> None:
+        await self._inner.sleep_until(monotonic_deadline)
+
+    def raise_to(self, target_ms: int) -> None:
+        """Make `wall_ms()` at least `target_ms` now; a lower target changes nothing."""
+        self._offset_ms = max(self._offset_ms, target_ms - self._inner.wall_ms())
+
+
+class _Committed(Protocol):
+    @property
+    def last_commit_wall_ms(self) -> int | None: ...
+
+
+def commit_stamp_ms(clock: Clock, committed: _Committed) -> int:
+    """The stamp for a commit: now, or the last commit's stamp if now is before it.
+
+    A wall clock stepping back within the catch-up budget therefore holds stamps
+    at the last commit (ADR 0003); beyond it the ticker raises the app clock (T5).
+    """
+    return max(clock.wall_ms(), committed.last_commit_wall_ms or 0)

@@ -238,3 +238,31 @@ broadcast.
    read-only: the export's result is written on the main engine.
 5. Static SPA assets are served with hashed filenames and `immutable` cache headers;
    `index.html` is `no-store`. This removes v1's per-request `sha1` and logo `listdir`.
+
+## Deploy topology
+
+One image, built once. CI builds `docker/Dockerfile` with the commit SHA as `BUILD_SHA`,
+checks its contents and size, scans it (Trivy) and writes an SBOM, runs the boot, kill and
+venue drills against that very image, and on `main` only pushes it to GHCR as
+`ghcr.io/martijnboot/borrelbeurs:<full sha>`. The tag is never `latest`.
+
+- **Render.** `render.yaml` describes a one-instance image-backed web service and a Postgres
+  database, both in Frankfurt. The manual `deploy` workflow calls Render's deploy hook with a
+  SHA already in GHCR and runs `scripts/smoke.py --expect-sha`, which follows the deploy until
+  `/healthz` reports that SHA. `TRUSTED_PROXY_IPS=*` because Render's proxy is the only way in.
+- **The venue.** `scripts/make_bundle.sh` writes a bundle: `images.tar` (the app image and the
+  pinned Postgres, linux/amd64), the venue compose file, the `.cmd` wrappers, `LEESMIJ.md` and
+  checksums. `deploy/venue/compose.yml` runs three services under `borrelbeurs-venue`: `db`
+  with no published port, `app` on port 80 with `restart: on-failure`, and `backup`, which dumps
+  every 5 minutes to the host. Nothing is pulled and nothing is built: `pull_policy: never`.
+  The laptop needs Docker's containerd image store, because `docker load` on the classic store
+  drops the pinned Postgres digest. The app also copies every finished export, and a live
+  run's Excel file every 15 minutes, to a host directory; the host copy is never read back.
+- **Standby.** Two instances of the app can exist for a moment, on Render during a deploy and
+  at the venue after a restart. The newer one cannot take the advisory lock, so it serves
+  `/healthz` as `standby` (and 503 elsewhere) and retries every second. It migrates and boots
+  only after the older one has released the lock, so exactly one process ever writes (ADR 0003,
+  Phase 8 addendum). A database whose schema is newer than the image is served as it is when
+  `schema_compat` says the image is still compatible, and refused otherwise (ADR 0011).
+- **Rollback and fallback.** Rolling back is running the previous SHA, down to the floor set by
+  `schema_compat`. Below it, v1 runs from its own saved image beside the bundle.

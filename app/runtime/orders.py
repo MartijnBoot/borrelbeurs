@@ -49,7 +49,7 @@ from app.core.errors import AppError
 from app.db.codec import tick_prices
 from app.db.mapping import cents_from_quantised
 from app.db.orders import OrderLineInput, StoredOrder, find_order_by_key, write_order
-from app.runtime.clock import Clock
+from app.runtime.clock import Clock, commit_stamp_ms
 from app.runtime.earnings import DrinkEarnings
 from app.runtime.grace import PriceChanged, QuotedLine, judge, step_cents_from
 from app.runtime.history import TickEntry
@@ -205,7 +205,7 @@ async def place_order(
                 },
             )
 
-        now_ms = clock.wall_ms()
+        now_ms = commit_stamp_ms(clock, view)
         qty = {line.drink_id: line.qty for line in judged.lines}
         orders = np.array([float(qty.get(d, 0)) for d in drink_ids])
         candidate = advance(spec, state, now_ms=now_ms, orders=orders, run_seed=view.run_seed).state

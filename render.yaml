@@ -1,0 +1,51 @@
+# BorrelBeurs on Render (Phase 8 SD6-SD10; plan PD12) -- a Blueprint.
+#
+# The web service runs the image CI built and pushed to GHCR, by full commit SHA; Render
+# never builds from this repository. Deploying is a manual step: the `deploy` workflow
+# (.github/workflows/deploy.yml) triggers Render's deploy hook with an image that is
+# already in GHCR, then smoke-tests it. Merging to `main` deploys nothing.
+#
+# Before the Blueprint is applied (H1, docs/runbooks/deploy.md):
+# - replace REPLACE_WITH_FIRST_DEPLOY_SHA with the first SHA CI pushed. A tag must be
+#   a SHA, never `latest` (tests/meta/test_render_blueprint.py, test_no_latest.py);
+# - confirm the plans. They are SD10's recommendation -- a paid Starter web service
+#   (a free one sleeps when idle, which stops the ticker) and paid Postgres (a free
+#   one expires after 90 days). Applying this file costs money: the human decides;
+# - paste DATABASE_URL by hand: Render's *internal* URL with its scheme changed to
+#   `postgresql+asyncpg://` (SD8). The validator in app/core/config.py accepts no
+#   other shape, and nothing rewrites it.
+#
+# Not set here: EXPORT_DIR (Render's filesystem is ephemeral, SD14) and PORT (Render
+# sets it; app.main binds it).
+
+services:
+  - type: web
+    name: borrelbeurs-web
+    runtime: image
+    image:
+      url: ghcr.io/martijnboot/borrelbeurs:REPLACE_WITH_FIRST_DEPLOY_SHA
+    region: frankfurt
+    plan: starter
+    # One writer (ADR 0003): a second instance would only ever wait in standby.
+    numInstances: 1
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: APP_ENV
+        value: production
+      # Render's proxy is the only way in; see SD9 for the accepted risk.
+      - key: TRUSTED_PROXY_IPS
+        value: "*"
+      - key: LOG_LEVEL
+        value: INFO
+
+databases:
+  - name: borrelbeurs-db
+    databaseName: borrelbeurs
+    user: borrelbeurs
+    region: frankfurt
+    plan: basic-256mb
+    postgresMajorVersion: "16"

@@ -111,3 +111,37 @@ state lock.
 
 Shutdown is not close: "Sluit app" leaves the run `live`, and the next boot rehydrates it
 with the gap rule (SD14).
+
+## Addendum (Phase 8, SD4, SD15)
+
+Date: 2026-10-11
+
+**Decision 4 now reads "waits in standby".** A booting instance that cannot take the advisory
+lock no longer exits. It serves `/healthz` (200, `status: standby`) and answers `/readyz` and
+`/api/*` with 503 `standby`, closes a WebSocket with 1013, retries the lock every second, and
+logs `lock_wait` on entry and every 30 s. Once it holds the lock it boots as before: migrate,
+rehydrate, tick. The reason is Render's overlap on a deploy (see "Why the advisory lock"): the
+new instance used to exit and be restarted by the platform; now it waits for the old one to go.
+`/healthz` could not answer at all while the lifespan retried, because uvicorn binds no socket
+until the lifespan yields, so the wait runs in a task after the lifespan has yielded.
+
+Single-writer holds, because **a standby never writes**: it holds no run, runs no ticker, no
+export worker and no migration, and the lock is still the only path to any of them. A boot
+failure after standby (a failed migration, `schema ahead of image`) is logged `boot_failed` and
+exits 3, the code uvicorn uses for a startup failure. A lost lock still exits 70. A database
+that is unreachable is not standby: it fails as before, exit 3.
+
+**The app clock.** Every runtime and API caller shares one `AppClock` (`app/runtime/clock.py`)
+that wraps the system clock: `wall_ms()` is the system wall time plus an offset, and
+`raise_to(t)` only ever raises that offset. Every commit stamps `max(app_now, last_commit)`
+(`commit_stamp_ms`), so stamps never go back, whatever the system clock does.
+
+**A backward step beyond the budget is an offset plus a zero-shift gap.** Within the ~30 s
+catch-up budget the ticker holds stamps at the last commit, as decision 3 says. When the wall
+clock is further behind the last commit than the budget, the ticker raises the offset so its
+time continues from the last commit, writes one `gap` tick with the same prices and no anchor
+shift (no time evolved), logs `clock_stepped_back`, and re-anchors, so prices keep evolving at
+the interval instead of freezing for the size of the step. At boot, a wall clock behind the
+stored last commit by any amount raises the offset to it and writes no gap. The offset is not
+persisted: each boot recomputes it from the last commit. It never shrinks while the process
+runs, so a clock set back by an hour costs that hour of offset until the next restart.

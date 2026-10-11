@@ -152,3 +152,71 @@ def test_an_existing_asset_is_served(spa_client: TestClient) -> None:
 
 def test_the_fallback_is_for_get_only(spa_client: TestClient) -> None:
     assert spa_client.post("/koers", headers={"origin": BASE_URL}).status_code in {404, 405}
+
+
+# --- Cache-Control (Phase 8 T2: AC27) -----------------------------------------
+#
+# A deploy must reach every phone on its next load: `index.html` names the hashed
+# bundles, so it is never cached, and the hashed bundles never change, so they are
+# cached for good. The upload route `/assets/{id}` sets its own (app/api/assets.py).
+
+NO_STORE = "no-store"
+IMMUTABLE = "public, max-age=31536000, immutable"
+
+
+@pytest.mark.parametrize("path", ["/", "/login", "/koers"])
+def test_index_html_is_never_cached(spa_client: TestClient, path: str) -> None:
+    response = spa_client.get(path)
+
+    assert (response.status_code, response.content) == (200, INDEX)
+    assert response.headers["cache-control"] == NO_STORE
+
+
+def test_a_revalidated_index_html_keeps_no_store(spa_client: TestClient) -> None:
+    """The 304 branch builds a new response; the header must survive it."""
+    etag = spa_client.get("/").headers["etag"]
+
+    response = spa_client.get("/", headers={"if-none-match": etag})
+
+    assert response.status_code == 304
+    assert response.headers["cache-control"] == NO_STORE
+
+
+def test_a_hashed_asset_is_cached_for_good(spa_client: TestClient) -> None:
+    response = spa_client.get("/assets/x.js")
+
+    assert (response.status_code, response.content) == (200, ASSET)
+    assert response.headers["cache-control"] == IMMUTABLE
+
+
+def test_other_root_files_are_left_alone(
+    api_env: str, clock: FakeClock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_bytes(INDEX)
+    (dist / "favicon.svg").write_bytes(b"<svg/>")
+    monkeypatch.setattr(app.main, "WEB_DIST", dist)
+    with TestClient(create_app(clock=clock, run_migrations=False), base_url=BASE_URL) as client:
+        response = client.get("/favicon.svg")
+
+    assert response.status_code == 200
+    assert "cache-control" not in response.headers
+
+
+def test_the_built_frontend_carries_both_headers(
+    api_env: str, clock: FakeClock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AC27 on the real `pnpm build` output, which `check.sh` builds before this step."""
+    dist = app.main.WEB_DIST
+    bundles = sorted((dist / "assets").glob("*.js")) if dist.is_dir() else []
+    if not bundles:
+        pytest.skip("web/dist is not built; scripts/check.sh builds it before this step")
+    with TestClient(create_app(clock=clock, run_migrations=False), base_url=BASE_URL) as client:
+        index = client.get("/settings")
+        bundle = client.get(f"/assets/{bundles[0].name}")
+
+    assert index.status_code == 200
+    assert index.headers["cache-control"] == NO_STORE
+    assert bundle.status_code == 200
+    assert bundle.headers["cache-control"] == IMMUTABLE

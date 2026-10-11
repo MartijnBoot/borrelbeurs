@@ -39,17 +39,35 @@ from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from pathlib import Path
 from typing import Final, Protocol
 
 import xlsxwriter
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.config import Settings
-from app.db.exports import ExportSnapshot, claim_next, fail, finish, read_snapshot
+from app.db import models
+from app.db.exports import (
+    ExportJob,
+    ExportSnapshot,
+    claim_next,
+    export_file,
+    fail,
+    finish,
+    read_snapshot,
+)
+from app.db.runs import current_run
 from app.db.session import create_heavy_read_engine
+from app.hostdir import prune, write_atomic
+from app.jobs.naming import HostKind, auto_pattern, host_filename
 from app.runtime.clock import Clock
 
 logger = logging.getLogger(__name__)
+
+# Phase 8 PD6, PD7: a row-less auto export every 15 minutes, the newest 8 kept per slug.
+AUTO_EXPORT_INTERVAL_MS: Final = 15 * 60_000
+AUTO_KEEP: Final = 8
 
 SALES_HEADERS: Final = (
     "ts_iso",
@@ -302,8 +320,56 @@ async def build_next(
         else:
             if recorded:
                 logger.info("export_done", extra={**log, "bytes": len(built.data)})
+                if settings.export_dir is not None:
+                    await _copy_to_host(engine, settings.export_dir, job, built.data)
     if not recorded:
         logger.warning("export_dropped", extra=log)
+    return True
+
+
+async def _copy_to_host(engine: AsyncEngine, directory: Path, job: ExportJob, data: bytes) -> None:
+    """Phase 8 SD14: the finished file, also on the host. A failure is logged and the
+    row stays `done`: the database copy is the one that counts (ADR 0004)."""
+    log = {"export_id": job.export_id, "run_id": job.run_id, "kind": job.kind}
+    try:
+        async with engine.connect() as conn:
+            row, run_name, _ = await export_file(conn, job.export_id)
+        kind: HostKind = "final" if job.kind == "final" else "manual"
+        name = host_filename(run_name, job.run_id, row.created_at_ms, kind)
+        await asyncio.to_thread(write_atomic, directory, name, data)
+    except Exception as error:
+        logger.error("export_host_write_failed", extra={**log, "error": repr(error)})
+
+
+async def auto_export(
+    *, engine: AsyncEngine, builder: Builder, settings: Settings, clock: Clock
+) -> bool:
+    """PD6: the live run, built through the same builder, written to the host only.
+
+    Skipped -- never queued -- without an `EXPORT_DIR`, without a live run, or while
+    an export is `queued` or `running`, so it never starts ahead of one. Whether it
+    wrote a file.
+    """
+    directory = settings.export_dir
+    if directory is None:
+        return False
+    async with engine.connect() as conn:
+        run = await current_run(conn)
+        busy = (
+            await conn.execute(
+                select(exists().where(models.Export.status.in_(("queued", "running"))))
+            )
+        ).scalar_one()
+    if run is None or run.status != "live" or busy:
+        reason = "export in flight" if busy else "no live run"
+        logger.info("auto_export_skipped", extra={"reason": reason})
+        return False
+    now_ms = clock.wall_ms()
+    built = await builder.build(settings, run.run_id, now_ms)
+    name = host_filename(run.name, run.run_id, now_ms, "auto")
+    await asyncio.to_thread(write_atomic, directory, name, built.data)
+    await asyncio.to_thread(prune, directory, auto_pattern(run.name, run.run_id), AUTO_KEEP)
+    logger.info("auto_export_done", extra={"run_id": run.run_id, "bytes": len(built.data)})
     return True
 
 
@@ -317,13 +383,30 @@ async def run_worker(
 ) -> None:
     """Drain the queue, then sleep until `wakeup`; forever, until cancelled.
 
-    Without a `builder` it owns a `BuildProcess`, terminated when it is cancelled.
+    With an `EXPORT_DIR` it also wakes every `AUTO_EXPORT_INTERVAL_MS` for the auto
+    export (Phase 8 PD6), checked before the queue is drained: an export already
+    queued then skips it. Without a `builder` it owns a `BuildProcess`, terminated
+    when it is cancelled.
     """
     process = BuildProcess()
+    auto_due = clock.monotonic() + AUTO_EXPORT_INTERVAL_MS / 1000
     try:
         while True:
             wakeup.clear()
             try:
+                if settings.export_dir is not None and clock.monotonic() >= auto_due:
+                    auto_due = clock.monotonic() + AUTO_EXPORT_INTERVAL_MS / 1000
+                    try:
+                        await auto_export(
+                            engine=engine,
+                            builder=builder or process,
+                            settings=settings,
+                            clock=clock,
+                        )
+                    except Exception:
+                        # A full disk or a locked folder: the next 15 minutes try again,
+                        # and the queued exports below are drained regardless.
+                        logger.exception("auto_export_failed")
                 while await build_next(
                     engine=engine, builder=builder or process, settings=settings, clock=clock
                 ):
@@ -331,6 +414,20 @@ async def run_worker(
             except Exception:
                 # The database itself failed; the rows stay as they are until the next wake-up.
                 logger.exception("export_worker_failed")
-            await wakeup.wait()
+            if settings.export_dir is None:
+                await wakeup.wait()
+            else:
+                await _wake_or_due(wakeup, clock, auto_due)
     finally:
         process.close()
+
+
+async def _wake_or_due(wakeup: asyncio.Event, clock: Clock, due: float) -> None:
+    """Return on `wakeup` or once the clock reaches `due`, whichever comes first."""
+    woken = asyncio.ensure_future(wakeup.wait())
+    sleeping = asyncio.ensure_future(clock.sleep_until(due))
+    try:
+        await asyncio.wait({woken, sleeping}, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        woken.cancel()
+        sleeping.cancel()

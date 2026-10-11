@@ -406,3 +406,15 @@ class Theme(Base):
     promo_asset_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("asset.asset_id", name="theme_promo_asset_id_fkey")
     )
+
+
+class SchemaCompat(Base):
+    """The oldest code revision that still runs against this schema (Phase 8 SD3).
+    A single row, `id = 1`, seeded `'0011'` by its migration; boot reads it with
+    raw SQL (`app/db/schema_compat.py`), and only a contract migration writes it."""
+
+    __tablename__ = "schema_compat"
+    __table_args__ = (CheckConstraint("id = 1", name="schema_compat_id_check"),)
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, autoincrement=False)
+    min_code_revision: Mapped[str] = mapped_column(Text)

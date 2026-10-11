@@ -9,17 +9,21 @@ real ticker on the real clock.
   acknowledged order, mid tick (twice, at different moments), and while idle --
   then restarted. Every acknowledged order is present, at most one tick was
   lost, and `version` / `rng_counter` continue from the last committed row.
-- **AC18**: a second instance against the held lock exits non-zero within 5 s,
-  logs the lock, and never migrates (the alembic version of a database one
-  revision behind is unchanged). And `pg_terminate_backend` on the first
+- **AC12** (Phase 8, was AC18's fail-fast): a second instance against the held
+  lock waits in standby, logs `lock_wait`, and never migrates (the alembic
+  version of a database one revision behind is unchanged). A boot failure once
+  it gets the lock exits 3 (AC8). And `pg_terminate_backend` on the first
   instance's lock connection makes it exit non-zero.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -27,10 +31,11 @@ from sqlalchemy import pool, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.db.advisory_lock import ADVISORY_LOCK_KEY
-from tests.integration.conftest import RunAlembic
+from tests.integration.conftest import RunAlembic, head_and_previous
 from tests.integration.realapp.harness import (
     Client,
     mint_key,
+    order_until_acked,
     seed_live_run,
     spawn_app,
     start_app,
@@ -48,6 +53,16 @@ async def _query(url: str, sql: str) -> list[tuple[Any, ...]]:
         await engine.dispose()
 
 
+async def _write(url: str, *statements: str) -> None:
+    engine = create_async_engine(url, poolclass=pool.NullPool)
+    try:
+        async with engine.begin() as conn:
+            for statement in statements:
+                await conn.execute(text(statement))
+    finally:
+        await engine.dispose()
+
+
 def _rows(url: str, sql: str) -> list[tuple[Any, ...]]:
     return asyncio.run(_query(url, sql))
 
@@ -58,31 +73,6 @@ def _committed(url: str) -> tuple[int, int, int]:
         url, "SELECT version, rng_counter, wall_ts_ms FROM engine_state"
     )
     return int(version), int(rng), int(wall)
-
-
-def _order_until_acked(client: Client, key: str) -> dict[str, Any] | None:
-    """One order of drink one at its live price; on a 409, once more with the returned prices.
-
-    `/api/state` carries no version, so the quote is version 0 at the live price:
-    charged under SD18's equal-price rule whatever its age, or 409 with the
-    current version and prices to retry with.
-    """
-    state = client.state()
-    drink = int(next(iter(state["prices"])))
-    price = state["prices"][str(drink)]["price_cents"]
-    quote = 0
-    for _ in range(3):
-        status, body = client.order(
-            key, quote, [{"drink_id": drink, "qty": 1, "unit_price_cents": price}]
-        )
-        if status in (200, 201):
-            receipt: dict[str, Any] = body
-            return receipt
-        if status != 409:
-            raise AssertionError((status, body))
-        quote = body["error"]["version"]
-        price = next(p["price_cents"] for p in body["error"]["prices"] if p["drink_id"] == drink)
-    return None
 
 
 def test_a_killed_app_loses_no_acknowledged_order_and_at_most_one_tick(
@@ -105,7 +95,7 @@ def test_a_killed_app_loses_no_acknowledged_order_and_at_most_one_tick(
                 def stream(client: Client = client, n: int = n) -> None:
                     for k in range(50):
                         try:
-                            receipt = _order_until_acked(client, f"k-stream-{n}-{k:03d}")
+                            receipt = order_until_acked(client, f"k-stream-{n}-{k:03d}")
                         except Exception:
                             return
                         if receipt is not None:
@@ -118,7 +108,7 @@ def test_a_killed_app_loses_no_acknowledged_order_and_at_most_one_tick(
                 app.kill()
                 worker.join(timeout=30)
             elif point == "after-ack":
-                receipt = _order_until_acked(client, f"k-ack-{n:04d}")
+                receipt = order_until_acked(client, f"k-ack-{n:04d}")
                 assert receipt is not None
                 acked.append(receipt)
                 before_kill = _committed(database_url)
@@ -175,32 +165,105 @@ def test_a_killed_app_loses_no_acknowledged_order_and_at_most_one_tick(
     assert time.monotonic() - started < 600
 
 
-def test_a_second_instance_exits_fast_logs_the_lock_and_never_migrates(
+def _get(base: str, path: str) -> tuple[int, Any]:
+    try:
+        with urllib.request.urlopen(f"{base}{path}", timeout=2) as response:
+            return response.status, json.loads(response.read())
+    except urllib.error.HTTPError as error:
+        return error.code, json.loads(error.read())
+
+
+def test_a_second_instance_waits_in_standby(
     database_url: str, empty_database: str, alembic: RunAlembic, tmp_path: Path
 ) -> None:
-    """AC18: lock before migrate. The first instance holds the lock on `empty_database`,
-    migrated to head; a second, pointed at the same database after it is downgraded one
-    revision, must refuse before touching the schema."""
+    """AC12 (Phase 8 SD4; was AC18's fail-fast): lock before migrate. The first instance
+    holds the lock on `empty_database`, migrated to head; a second, pointed at the same
+    database after it is downgraded one revision, stays alive in standby without
+    touching the schema, while the first ticks on alone."""
     assert alembic(empty_database, "upgrade", "head").returncode == 0
     first = start_app(empty_database, tmp_path / "first.stderr")
+    second = None
     try:
         # The first instance holds the lock; the schema is now one revision behind.
         downgraded = alembic(empty_database, "downgrade", "-1")
         assert downgraded.returncode == 0, downgraded.stderr
         before = _rows(empty_database, "SELECT version_num FROM alembic_version")
-        assert before == [("0009",)]
-        started = time.monotonic()
+        assert before == [(head_and_previous()[1],)]
+        ticks_before = _rows(empty_database, "SELECT count(*) FROM price_tick")
         second = spawn_app(empty_database, tmp_path / "second.stderr")
-        code = second.wait(timeout=15)
-        elapsed = time.monotonic() - started
+        time.sleep(5)
+        alive = second.proc.poll() is None
+        health = _get(second.base, "/healthz")
+        ready = _get(second.base, "/readyz")[0]
+        first_health = _get(first.base, "/healthz")
         after = _rows(empty_database, "SELECT version_num FROM alembic_version")
+        ticks_after = _rows(empty_database, "SELECT count(*) FROM price_tick")
     finally:
+        if second is not None:
+            second.kill()
         first.kill()
 
-    assert code != 0
-    assert elapsed < 5 + 3  # 5 s per AC18, plus interpreter start-up
-    assert "advisory lock" in second.stderr()
+    assert alive, second.stderr()
+    assert health[0] == 200 and health[1]["status"] == "standby"
+    assert ready == 503
+    assert first_health[1]["status"] == "ok"
+    assert "lock_wait" in second.stderr()
     assert after == before
+    # No live run in `empty_database`: the first instance idles and nobody writes ticks.
+    assert ticks_after == ticks_before
+
+
+def test_a_boot_failure_after_standby_exits_3_and_is_never_ready(
+    empty_database: str, alembic: RunAlembic, tmp_path: Path
+) -> None:
+    """AC8 after standby (PD1): the second instance waits, the first dies, and the schema
+    it then finds is ahead of its image and incompatible: `boot_failed`, exit 3 -- the
+    code uvicorn uses for a startup failure -- and `/readyz` never 200."""
+    assert alembic(empty_database, "upgrade", "head").returncode == 0
+    first = start_app(empty_database, tmp_path / "first.stderr")
+    second = None
+    readies: list[int] = []
+    try:
+        asyncio.run(
+            _write(
+                empty_database,
+                "UPDATE alembic_version SET version_num = 'ci_ahead_fixture'",
+                "UPDATE schema_compat SET min_code_revision = 'ci_ahead_fixture'",
+            )
+        )
+        second = spawn_app(empty_database, tmp_path / "second.stderr")
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and _health_status(second.base) != "standby":
+            time.sleep(0.2)
+        first.kill()
+        deadline = time.monotonic() + 30
+        while second.proc.poll() is None and time.monotonic() < deadline:
+            readies.append(_status(second.base, "/readyz"))
+            time.sleep(0.2)
+        code = second.wait(timeout=5)
+    finally:
+        if second is not None and second.proc.poll() is None:
+            second.kill()
+        if first.proc.poll() is None:
+            first.kill()
+
+    assert code == 3, second.stderr()
+    assert 200 not in readies
+    assert "schema ahead of image" in second.stderr()
+
+
+def _status(base: str, path: str) -> int:
+    try:
+        return _get(base, path)[0]
+    except (urllib.error.URLError, ConnectionError, TimeoutError):
+        return 0
+
+
+def _health_status(base: str) -> str | None:
+    try:
+        return str(_get(base, "/healthz")[1]["status"])
+    except (urllib.error.URLError, ConnectionError, TimeoutError):
+        return None
 
 
 def test_a_dropped_lock_connection_makes_the_app_exit_non_zero(

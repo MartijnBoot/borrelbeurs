@@ -11,6 +11,9 @@ The two answer different questions and must not be collapsed into one endpoint:
   has booted there is no ticker to judge and the answer is 200, as in Phase 0.
 - `/readyz` -- *should traffic be sent here?* 503 unless boot completed and a
   `SELECT 1` answers within a second.
+
+Every `/healthz` answer names its `build_sha` (Phase 8 AC6), so a deploy can tell
+the image it asked for from the one still running.
 """
 
 from __future__ import annotations
@@ -41,9 +44,18 @@ class NotReady(AppError):
 async def healthz(request: Request) -> JSONResponse:
     """Liveness: the ticker loop turned within three intervals."""
     state = request.app.state
+    build_sha = _build_sha(request)
     ticker = getattr(state, "ticker", None)
     if ticker is None:
-        return JSONResponse({"status": "ok", "last_tick_age_ms": None, "last_commit_age_ms": None})
+        return JSONResponse(
+            {
+                # Alive and waiting for the lock (Phase 8 SD5): 200, never restarted for it.
+                "status": "standby" if getattr(state, "standby", False) else "ok",
+                "build_sha": build_sha,
+                "last_tick_age_ms": None,
+                "last_commit_age_ms": None,
+            }
+        )
     clock = state.clock
     last = ticker.last_iteration_monotonic
     if last is None:
@@ -55,11 +67,18 @@ async def healthz(request: Request) -> JSONResponse:
     return JSONResponse(
         {
             "status": "ok" if alive else "stale",
+            "build_sha": build_sha,
             "last_tick_age_ms": tick_age_ms,
             "last_commit_age_ms": commit_age_ms,
         },
         status_code=200 if alive else 503,
     )
+
+
+def _build_sha(request: Request) -> str:
+    """Phase 8 AC6: the image's commit; `unknown` until the lifespan has read settings."""
+    settings = getattr(request.app.state, "settings", None)
+    return "unknown" if settings is None else str(settings.build_sha)
 
 
 @router.get("/readyz")

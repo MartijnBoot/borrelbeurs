@@ -75,3 +75,31 @@ migration.
 - **Revisit this when** a second replica is ever wanted, or when a deployment pipeline exists
   that can run a gated migration step for *every* target including the offline one. Either
   removes the grounds for departing from §5.6.
+
+## Addendum (Phase 8, SD3, SD4)
+
+Date: 2026-10-11
+
+**`schema_compat` is the expand/contract mechanism this ADR assumed.** One additive migration
+(`0011_schema_compat`) adds a singleton table, `schema_compat(min_code_revision)`, seeded
+`0011`. Every later migration declares `min_code_revision` at module level: `"unchanged"` for
+an expand-only change, or the revision it sets in the table for a contract change. A meta test
+fails a migration that does neither.
+
+**Boot rule.** Under the lock and before migrating, boot reads `alembic_version` and
+`schema_compat` and decides: a database revision the image knows, or none at all, **migrates**;
+a revision it does not know, whose `min_code_revision` it does know, is **ahead but
+compatible** and boots without migrating, logging `schema_ahead`; one whose
+`min_code_revision` it does not know either is **refused**: `boot_failed`, reason `schema ahead
+of image`, exit 3, nothing written.
+
+**The rollback floor is `0011`.** No image older than the one that introduced `0011` can boot
+against a database at `0011` or later, and there is no downgrade-and-roll-back path. The
+fallback for anything older is v1 (`docs/runbooks/rollback.md`, `v1-fallback.md`).
+
+**The overlap paragraph above is superseded by standby** (ADR 0003, Phase 8 addendum). A new
+instance no longer boots and migrates while the old one is still draining; it waits in standby
+and migrates only once it holds the lock, after the old one has gone. The old instance never
+runs against a schema the new one migrated, so the few seconds of overlap this ADR accepted no
+longer exist. Expand/contract remains mandatory for the rollback case instead: the previous
+image must still boot against the newer schema.

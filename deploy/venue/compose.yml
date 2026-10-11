@@ -1,0 +1,96 @@
+# BorrelBeurs at the venue (Phase 8 SD11, SD13; plan PD14).
+#
+# The laptop at a borrel: no internet, a travel router, phones on its Wi-Fi. This
+# file runs the app image CI built and tested, from the bundle's `images.tar` --
+# never a build, never a pull (`pull_policy: never`). The dev compose file at the
+# repository root stays a dev tool.
+#
+# Everything is named `borrelbeurs-venue-*`, so this stack never meets the dev
+# stack's `borrelbeurs-db`, its volume or port 5432, or another local Postgres.
+# Postgres publishes no port at all: only `app` and `backup` reach it, on this
+# stack's own network.
+#
+# Values come from `.env` beside this file (`start.cmd` passes it with
+# `--env-file`); `.env.example` documents each one.
+name: borrelbeurs-venue
+
+services:
+  db:
+    # The digest the dev compose file and CI pin (tests/meta/test_venue_stack.py).
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    container_name: borrelbeurs-venue-db
+    pull_policy: never
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: borrelbeurs
+      POSTGRES_PASSWORD: borrelbeurs
+      POSTGRES_DB: borrelbeurs
+      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # restore.cmd runs restore.sh in here, on the newest (or a named) dump.
+      - ./restore.sh:/scripts/restore.sh:ro
+      - ${BB_DATA_DIR:?set BB_DATA_DIR in .env}/backups:/backups:ro
+    networks:
+      - venue
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U borrelbeurs -d borrelbeurs"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  app:
+    image: ghcr.io/martijnboot/borrelbeurs:${BB_IMAGE_SHA:?set BB_IMAGE_SHA in .env}
+    container_name: borrelbeurs-venue-app
+    pull_policy: never
+    # "Sluit app" exits 0 and stays stopped; a lost lock (70) or a failed boot (3)
+    # is restarted (SD11).
+    restart: on-failure
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://borrelbeurs:borrelbeurs@db:5432/borrelbeurs
+      JWT_SECRET: ${JWT_SECRET:?run start.cmd once to generate JWT_SECRET}
+      APP_ENV: venue
+      SESSION_COOKIE_SECURE: "false"
+      EXPORT_DIR: /exports
+      LOG_LEVEL: INFO
+    ports:
+      - "${BB_HTTP_PORT:-80}:8000"
+    volumes:
+      - ${BB_DATA_DIR:?set BB_DATA_DIR in .env}/exports:/exports
+    networks:
+      - venue
+
+  backup:
+    # The same Postgres image, so the bundle holds exactly two images (SD13).
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    container_name: borrelbeurs-venue-backup
+    pull_policy: never
+    restart: unless-stopped
+    # Runs with the app stopped: it needs only the database (SD13).
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["sh", "/scripts/backup.sh"]
+    environment:
+      PGHOST: db
+      PGUSER: borrelbeurs
+      PGPASSWORD: borrelbeurs
+      PGDATABASE: borrelbeurs
+      BB_BACKUP_INTERVAL_S: ${BB_BACKUP_INTERVAL_S:-300}
+    volumes:
+      - ./backup.sh:/scripts/backup.sh:ro
+      - ${BB_DATA_DIR:?set BB_DATA_DIR in .env}/backups:/backups
+    networks:
+      - venue
+
+volumes:
+  db-data:
+    name: borrelbeurs-venue-db-data
+
+networks:
+  venue:
+    name: borrelbeurs-venue-net

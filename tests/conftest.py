@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import pytest
 
+import tests.engine.golden  # noqa: F401  # pins numpy's SIMD dispatch before numpy loads
 from app.core.config import Settings, get_settings
 
 

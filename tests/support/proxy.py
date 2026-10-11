@@ -62,6 +62,10 @@ class BlackholeProxy:
                     continue  # swallowed: no answer, no error
                 sink.write(data)
                 await sink.drain()
+        # One side closed: pass it on, as a real connection would -- a client closing
+        # cleanly waits for the server's end. Dark, nothing is passed on, not even that.
+        if not self.silent:
+            sink.close()
 
 
 async def proxied(database_url: str) -> tuple[BlackholeProxy, str]:

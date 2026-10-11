@@ -42,7 +42,15 @@ go-live gate (see [plans/rebuild-route.md](../plans/rebuild-route.md), Phase 8).
 | DB | Docker Postgres | Render managed Postgres, same major version |
 | Compute | Docker Compose | Render, **1 instance** (see [ADR 0003](0003-single-writer-owns-time.md)) |
 | Secrets | `.env.local` | Render environment variables |
-| Deploys | n/a | On merge to main |
+| Deploys | n/a | Manual: the `deploy` workflow, dispatched with a SHA (Phase 8 SD6) |
+
+*Amended in Phase 8.* Merging to `main` builds, checks and pushes one image to GHCR by full
+commit SHA, and deploys nothing, so a merge mid-borrel cannot redeploy a live event (ADR 0009).
+Render runs that image; the `deploy` workflow takes a SHA, refuses one that is not in GHCR,
+calls Render's deploy hook, and smoke-tests the result. The event laptop runs the same image
+from an offline bundle under `APP_ENV=venue`: plain-HTTP session cookie, API docs hidden, no
+proxy trusted. It sits behind a dedicated travel router with no uplink and a fixed address for
+the laptop (Phase 8 SD1, SD2). `production` still refuses an insecure cookie.
 
 ## 4. Regions and residency
 
@@ -74,7 +82,7 @@ days, so the $7 paid tier is the realistic steady state). Local $0.
 | Risk | Impact | Mitigation | Owner |
 |---|---|---|---|
 | Pricing maths changes silently during the engine refactor | Prices misbehave at a live borrel; nobody notices until it is too late | Golden fixtures captured from v1 *before* refactoring, live config first. Phase 1 gate | MB |
-| Render's free Postgres expires at 90 days | Data loss | Move to the paid tier before the first real event, or keep the offline deployment authoritative | MB |
+| Render's free Postgres expires at 90 days | Data loss | Move to the paid tier before the first real event, or keep the offline deployment authoritative. Tiers are the human's cost decision (Phase 8 SD10): a paid Starter web service and paid Postgres before any live borrel on Render | MB |
 | Postgres image absent from the local store at an offline venue | `docker compose up` fails at the event | Bundle both images in the `docker save` workflow; rehearse the offline boot | MB |
 | Venue laptop clock skew | Tick scheduling misbehaves | Schedule on monotonic time, stamp with wall time, clamp catch-up ([ADR 0003](0003-single-writer-owns-time.md)) | MB |
 | v1 access keys remain in git history | Old keys usable until rotated | Rotate keys; fresh repo leaves the history behind | MB |

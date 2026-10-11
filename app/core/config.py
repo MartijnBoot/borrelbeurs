@@ -25,7 +25,9 @@ a property of the process rather than of the working directory.
 
 from __future__ import annotations
 
+import ipaddress
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -33,7 +35,9 @@ from pydantic import Field, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-AppEnv = Literal["local", "ci", "production"]
+# `venue` is the laptop at a borrel (Phase 8 SD1): plain http on the travel
+# router's LAN, so it may switch the cookie's `Secure` off, and it hides the docs.
+AppEnv = Literal["local", "ci", "venue", "production"]
 
 # The one DSN scheme this application can actually open a connection with.
 # ADR 0004 fixes the engine (Postgres, local and hosted); the async driver
@@ -107,11 +111,51 @@ class Settings(BaseSettings):
     # scan a whole run; the live path keeps `database_timeout_seconds`.
     heavy_read_timeout_seconds: float = Field(default=60.0, gt=0)
 
+    # Optional. The commit the image was built from (Phase 8 SD7); the Dockerfile
+    # bakes it in, `/healthz` and the start log report it.
+    build_sha: str = "unknown"
+
+    # Optional. The peers allowed to set `X-Forwarded-For` (Phase 8 SD9): a
+    # comma-separated list of addresses and networks, or `*`. Empty -- the
+    # default, and the venue's -- means the header is never read, whatever
+    # uvicorn's own `FORWARDED_ALLOW_IPS` says.
+    trusted_proxy_ips: str = ""
+
+    # Optional. Where the export worker copies finished exports and writes the
+    # 15-minute auto export (Phase 8 SD14). Unset means no host copy at all.
+    export_dir: Path | None = None
+
     @field_validator("log_level", mode="before")
     @classmethod
     def _normalise_log_level(cls, value: object) -> object:
         """Accept `debug` as readily as `DEBUG`; the case carries no meaning."""
         return value.upper() if isinstance(value, str) else value
+
+    @field_validator("trusted_proxy_ips")
+    @classmethod
+    def _check_trusted_proxy_ips(cls, value: str) -> str:
+        """`*`, or addresses and networks, normalised to `a,b,c`.
+
+        uvicorn keeps an entry it cannot parse as a literal that never matches a
+        peer, so a typo would silently trust no one; here it fails the boot.
+        """
+        if value.strip() in ("", "*"):
+            return value.strip()
+        entries = [entry.strip() for entry in value.split(",")]
+        for entry in entries:
+            try:
+                ipaddress.ip_network(entry) if "/" in entry else ipaddress.ip_address(entry)
+            except ValueError:
+                raise ValueError(
+                    "must be `*` or a comma-separated list of IP addresses and networks"
+                ) from None
+        return ",".join(entries)
+
+    @field_validator("export_dir", mode="before")
+    @classmethod
+    def _empty_export_dir_is_none(cls, value: object) -> object:
+        """`EXPORT_DIR=` means "no host copy", never `Path("")`, the working directory."""
+        return None if isinstance(value, str) and not value.strip() else value
 
     @field_validator("database_url")
     @classmethod

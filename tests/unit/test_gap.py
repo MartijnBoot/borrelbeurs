@@ -161,3 +161,14 @@ def test_apply_gap_rule_moves_the_anchors_by_exactly_gap_shift_ms(gap: int) -> N
     else:
         assert shifted is not None
         assert shifted.last_idle_ms - state.last_idle_ms == shift
+
+
+@pytest.mark.parametrize("gap", [-1, -BUDGET, -3_600_000])
+def test_a_clock_that_went_backwards_is_no_gap(gap: int) -> None:
+    """Phase 8 SD15: a backward step is the ticker's (an offset and a zero-shift gap
+    row), never a negative shift of the anchors here."""
+    _, state, last_wall = _traded()
+    kwargs = {"last_wall_ts_ms": last_wall, "now_ms": last_wall + gap, "budget_ms": BUDGET}
+
+    assert gap_shift_ms(**kwargs) is None
+    assert apply_gap_rule(state, **kwargs) is None

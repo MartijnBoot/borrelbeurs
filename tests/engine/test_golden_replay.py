@@ -11,6 +11,7 @@ differing event; never adjust the engine or the fixture to fit.
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 import numpy as np
@@ -25,6 +26,11 @@ ALSO = ("cum_orders", "flow_ema", "t_round", "rng_counter")
 
 Records = list[dict[str, Any]]
 
+LINUX_ONLY = pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="the golden numbers are captured on Linux; run scripts/golden_linux.sh",
+)
+
 
 def _first_divergence(scenario: str, want: Records, got: Records, key: str) -> str | None:
     for k, (w, g) in enumerate(zip(want, got, strict=True)):
@@ -38,6 +44,7 @@ def _first_divergence(scenario: str, want: Records, got: Records, key: str) -> s
     return None
 
 
+@LINUX_ONLY
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda s: s.name)
 def test_ac1_the_engine_replays_the_golden_fixture_exactly(scenario: Scenario) -> None:
     doc = capture.load_fixture(scenario.name)

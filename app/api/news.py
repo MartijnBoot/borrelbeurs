@@ -20,6 +20,7 @@ from app.api.deps import ALL_ROLES, Principal, clock_of, refuse_while_draining, 
 from app.core.errors import AppError
 from app.db.news import NewsItem, NewsLevel, create_news, soft_delete_news
 from app.realtime.messages import NewsItemData
+from app.runtime.clock import commit_stamp_ms
 from app.runtime.holder import MarketHolder, MarketView, NewsChanged, Outcome
 
 router = APIRouter(prefix="/news", tags=["news"])
@@ -65,7 +66,7 @@ async def add_item(
 
     async def step(view: MarketView) -> Outcome[NewsItem]:
         assert view.run_id is not None and view.state is not None
-        ts_ms = clock.wall_ms()
+        ts_ms = commit_stamp_ms(clock, view)
         async with holder.engine.begin() as conn:
             news_id = await create_news(
                 conn, view.run_id, ts_ms=ts_ms, level=body.level, text=body.text

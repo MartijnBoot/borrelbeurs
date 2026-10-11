@@ -39,6 +39,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
+from alembic.script import ScriptDirectory
 from sqlalchemy import make_url, pool, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -93,6 +94,17 @@ def _create(base_url: str) -> tuple[str, str]:
     return database, scratch_url(base_url, database)
 
 
+def head_and_previous() -> tuple[str, str]:
+    """The migration head and the revision before it, read from the scripts, so a test
+    "one revision behind" needs no edit when a migration lands."""
+    script = ScriptDirectory(str(REPO_ROOT / "db" / "migrations"))
+    head = script.get_current_head()
+    assert head is not None
+    previous = script.get_revision(head).down_revision
+    assert isinstance(previous, str)
+    return head, previous
+
+
 def run_alembic(url: str, *args: str) -> subprocess.CompletedProcess[str]:
     """`python -m alembic -c db/alembic.ini <args>` against `url`, in a child process."""
     return subprocess.run(
@@ -118,8 +130,17 @@ def scratch_database(settings: Settings) -> Iterator[str]:
         _drop(settings.database_url, database)
 
 
+# Migration-owned, not test data: `0011` seeds its one row and boot reads it
+# (Phase 8 SD3). Emptied, a test's boot would see a schema of unknown safety.
+NOT_TRUNCATED = frozenset({"schema_compat"})
+
+
 async def _truncate_all(url: str) -> None:
-    tables = ", ".join(f'"{table.name}"' for table in Base.metadata.sorted_tables)
+    tables = ", ".join(
+        f'"{table.name}"'
+        for table in Base.metadata.sorted_tables
+        if table.name not in NOT_TRUNCATED
+    )
     engine = create_async_engine(url, poolclass=pool.NullPool)
     try:
         async with engine.begin() as connection:

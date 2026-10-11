@@ -1,4 +1,7 @@
-"""Boot and shutdown of the runtime (Phase 3 T20: SD11, SD16; AC18 in-process half, AC18c, AC4).
+"""Boot and shutdown of the runtime (Phase 3 T20: SD11, SD16; AC18c, AC4).
+
+Phase 8 T6 (SD4, AC12): a held lock is standby, no longer a boot failure -- the
+in-process AC18 fail-fast test is replaced by the standby tests at the end.
 
 Phase 7 T11 (AC6, PD9): boot fails the exports a stopped process left
 unfinished before it starts the export worker.
@@ -8,8 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
@@ -22,12 +24,14 @@ from app.core.config import Settings, get_settings
 from app.db.advisory_lock import ADVISORY_LOCK_KEY, acquire, release, watchdog
 from app.db.exports import interrupt_unfinished
 from app.db.runs import add_drink, create_draft_run, go_live
+from app.db.schema_compat import DbState, read_db_state
 from app.db.session import create_engine
 from app.jobs.export_xlsx import run_worker
 from app.runtime.boot import BootFailure, start_runtime
+from app.runtime.clock import AppClock
 from app.runtime.rehydrate import rehydrate
 from app.runtime.ticker import Ticker
-from tests.integration.conftest import RunAlembic
+from tests.integration.conftest import RunAlembic, head_and_previous
 from tests.support.clock import FakeClock
 
 T0 = 1_759_312_800_000
@@ -75,37 +79,6 @@ async def _go_live(settings: Settings, url: str) -> int:
         await engine.dispose()
 
 
-def test_a_held_lock_fails_boot_fast_naming_the_lock_and_never_migrates(
-    on: str, settings: Settings, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    """AC18 (in-process half), SD11: lock before migrate; fail within 5 s."""
-    migrated: list[bool] = []
-    monkeypatch.setattr(boot, "upgrade_to_head", lambda: migrated.append(True))
-
-    async def scenario() -> float:
-        holder_engine = create_engine(_settings(settings, on))
-        held = await acquire(holder_engine)
-        assert held is not None
-        app = FastAPI()
-        started = time.monotonic()
-        try:
-            with pytest.raises(BootFailure, match="advisory lock"):
-                async with start_runtime(
-                    app, _settings(settings, on), clock=FakeClock(T0), run_migrations=True
-                ):
-                    pass
-            return time.monotonic() - started
-        finally:
-            await release(held)
-            await holder_engine.dispose()
-
-    with caplog.at_level(logging.ERROR, logger="app.runtime.boot"):
-        elapsed = asyncio.run(scenario())
-    assert elapsed < 5
-    assert migrated == []
-    assert any("advisory lock" in str(r.__dict__.get("reason", "")) for r in caplog.records)
-
-
 def test_boot_runs_in_sd11s_order_and_shutdown_releases_the_lock(
     on: str, settings: Settings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -136,7 +109,7 @@ def test_boot_runs_in_sd11s_order_and_shutdown_releases_the_lock(
         app = FastAPI()
         app.state.ready = False
         async with start_runtime(
-            app, _settings(settings, on), clock=FakeClock(T0), run_migrations=True
+            app, _settings(settings, on), clock=AppClock(FakeClock(T0)), run_migrations=True
         ):
             await asyncio.sleep(0)
             order.append("ready" if app.state.ready else "not-ready")
@@ -186,7 +159,7 @@ def test_boot_fails_the_exports_a_stopped_process_left_unfinished(
                 )
             app = FastAPI()
             async with start_runtime(
-                app, _settings(settings, on), clock=FakeClock(T0), run_migrations=False
+                app, _settings(settings, on), clock=AppClock(FakeClock(T0)), run_migrations=False
             ):
                 await asyncio.sleep(0.2)  # the worker's first scan finds nothing to build
             async with engine.connect() as conn:
@@ -215,7 +188,7 @@ def test_with_no_live_run_the_app_is_ready_and_the_holder_empty(
     async def scenario() -> tuple[bool, bool, int]:
         app = FastAPI()
         async with start_runtime(
-            app, _settings(settings, on), clock=FakeClock(T0), run_migrations=False
+            app, _settings(settings, on), clock=AppClock(FakeClock(T0)), run_migrations=False
         ):
             return app.state.ready, app.state.holder.is_empty, app.state.tick_interval_ms
 
@@ -234,7 +207,7 @@ def test_boot_builds_a_heavy_read_engine_with_its_own_connections_and_timeout(
 
     async def scenario() -> tuple[bool, bool, str, str]:
         app = FastAPI()
-        async with start_runtime(app, bounded, clock=FakeClock(T0), run_migrations=False):
+        async with start_runtime(app, bounded, clock=AppClock(FakeClock(T0)), run_migrations=False):
             engine, heavy = app.state.engine, app.state.heavy_engine
             async with heavy.connect() as conn:
                 slept = await conn.execute(text("SELECT pg_sleep(6)::text"))
@@ -272,7 +245,7 @@ def test_a_live_run_is_rehydrated_and_its_tick_interval_used(on: str, settings: 
             await engine.dispose()
         app = FastAPI()
         async with start_runtime(
-            app, _settings(settings, on), clock=FakeClock(T0), run_migrations=False
+            app, _settings(settings, on), clock=AppClock(FakeClock(T0)), run_migrations=False
         ):
             assert app.state.holder.run_id == run_id
             return app.state.holder.run_id, app.state.tick_interval_ms
@@ -293,7 +266,7 @@ def test_a_failing_migration_fails_boot_and_releases_the_lock(
         app = FastAPI()
         with pytest.raises(BootFailure, match="migration failed"):
             async with start_runtime(
-                app, _settings(settings, on), clock=FakeClock(T0), run_migrations=True
+                app, _settings(settings, on), clock=AppClock(FakeClock(T0)), run_migrations=True
             ):
                 pass
         assert app.state.ready is False
@@ -312,15 +285,20 @@ def test_a_failing_migration_fails_boot_and_releases_the_lock(
 def test_boot_migrates_a_database_one_revision_behind_to_head(
     empty_database: str, settings: Settings, alembic: RunAlembic, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Plan R9: the real `to_thread` migration path, against a real schema one behind."""
-    assert alembic(empty_database, "upgrade", "0009").returncode == 0
+    """Plan R9: the real `to_thread` migration path, against a real schema one behind.
+    Phase 8 AC8: the SD3 rule finds that revision known, and migrates as before."""
+    head, previous = head_and_previous()
+    assert alembic(empty_database, "upgrade", previous).returncode == 0
     monkeypatch.setenv("DATABASE_URL", empty_database)
     get_settings.cache_clear()
 
     async def scenario() -> str:
         app = FastAPI()
         async with start_runtime(
-            app, _settings(settings, empty_database), clock=FakeClock(T0), run_migrations=True
+            app,
+            _settings(settings, empty_database),
+            clock=AppClock(FakeClock(T0)),
+            run_migrations=True,
         ):
             pass
         engine = create_async_engine(empty_database, poolclass=pool.NullPool)
@@ -335,7 +313,7 @@ def test_boot_migrates_a_database_one_revision_behind_to_head(
             await engine.dispose()
 
     try:
-        assert asyncio.run(scenario()) == "0010"
+        assert asyncio.run(scenario()) == head
     finally:
         get_settings.cache_clear()
 
@@ -350,7 +328,7 @@ def test_a_lost_lock_connection_calls_on_lock_lost(on: str, settings: Settings) 
         async with start_runtime(
             app,
             _settings(settings, on),
-            clock=clock,
+            clock=AppClock(clock),
             run_migrations=False,
             on_lock_lost=lambda: lost.append("lost"),
         ):
@@ -394,7 +372,7 @@ def test_a_diverged_state_calls_on_lock_lost(on: str, settings: Settings) -> Non
         async with start_runtime(
             app,
             _settings(settings, on),
-            clock=clock,
+            clock=AppClock(clock),
             run_migrations=False,
             on_lock_lost=lambda: lost.append("lost"),
         ):
@@ -408,3 +386,341 @@ def test_a_diverged_state_calls_on_lock_lost(on: str, settings: Settings) -> Non
         return lost
 
     assert asyncio.run(scenario()) == ["lost"]
+
+
+# --- Phase 8 T3: the SD3 boot rule (PD2; AC8, AC9 in-process half, AC10) ---------
+#
+# Each case gets its own `empty_database` migrated to head, then made to look like a
+# schema a newer image left: `alembic_version` stamped to a revision these scripts do
+# not know. The session's scratch database is never stamped.
+
+AHEAD_FIXTURE = "ci_ahead_fixture"
+FLOOR = "0011"
+
+
+async def _execute(url: str, *statements: str) -> list[tuple[Any, ...]]:
+    """Run statements in one transaction; return the rows of the last."""
+    engine = create_async_engine(url, poolclass=pool.NullPool)
+    try:
+        async with engine.begin() as conn:
+            rows: list[tuple[Any, ...]] = []
+            for statement in statements:
+                result = await conn.execute(text(statement))
+                rows = [tuple(row) for row in result] if result.returns_rows else []
+            return rows
+    finally:
+        await engine.dispose()
+
+
+async def _row_counts(url: str) -> dict[str, int]:
+    """Every table in the schema, `alembic_version` and `schema_compat` included."""
+    tables = await _execute(
+        url,
+        "SELECT table_name FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_type = 'BASE TABLE'",
+    )
+    counts = {}
+    for (table,) in tables:
+        ((count,),) = await _execute(url, f'SELECT count(*) FROM "{table}"')
+        counts[str(table)] = int(count)
+    return counts
+
+
+@pytest.fixture
+def at_head(
+    empty_database: str, alembic: RunAlembic, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[str]:
+    """A database of its own, migrated to head, that `get_settings()` points at."""
+    migrated = alembic(empty_database, "upgrade", "head")
+    assert migrated.returncode == 0, migrated.stderr
+    monkeypatch.setenv("DATABASE_URL", empty_database)
+    get_settings.cache_clear()
+    yield empty_database
+    get_settings.cache_clear()
+
+
+def test_read_db_state_sees_the_revision_and_the_floor(at_head: str) -> None:
+    """`0011` seeds the rollback floor; the state is read with plain SQL."""
+
+    async def scenario() -> DbState:
+        engine = create_async_engine(at_head, poolclass=pool.NullPool)
+        try:
+            async with engine.connect() as conn:
+                return await read_db_state(conn)
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(scenario()) == DbState(
+        db_revision=head_and_previous()[0], min_code_revision=FLOOR
+    )
+
+
+def test_read_db_state_on_an_empty_database_is_all_none(empty_database: str) -> None:
+    """No `alembic_version` at all: a fresh database, which boot migrates."""
+
+    async def scenario() -> DbState:
+        engine = create_async_engine(empty_database, poolclass=pool.NullPool)
+        try:
+            async with engine.connect() as conn:
+                return await read_db_state(conn)
+        finally:
+            await engine.dispose()
+
+    assert asyncio.run(scenario()) == DbState(db_revision=None, min_code_revision=None)
+
+
+def test_a_schema_ahead_but_declared_compatible_boots_without_migrating(
+    at_head: str, settings: Settings, caplog: pytest.LogCaptureFixture
+) -> None:
+    """AC9 (in-process): an unknown revision whose `min_code_revision` this image knows.
+    The real `upgrade_to_head` is left in place: called, it would fail on the unknown
+    revision, so a boot that comes up ready did not call it."""
+    asyncio.run(_execute(at_head, f"UPDATE alembic_version SET version_num = '{AHEAD_FIXTURE}'"))
+
+    async def scenario() -> bool:
+        app = FastAPI()
+        async with start_runtime(
+            app, _settings(settings, at_head), clock=AppClock(FakeClock(T0)), run_migrations=True
+        ):
+            return bool(app.state.ready)
+
+    with caplog.at_level(logging.WARNING, logger="app.runtime.boot"):
+        ready = asyncio.run(scenario())
+
+    assert ready
+    (ahead,) = [r for r in caplog.records if r.getMessage() == "schema_ahead"]
+    assert ahead.levelno == logging.WARNING
+    assert ahead.__dict__["db_revision"] == AHEAD_FIXTURE
+    assert ahead.__dict__["min_code_revision"] == FLOOR
+    assert asyncio.run(_execute(at_head, "SELECT version_num FROM alembic_version")) == [
+        (AHEAD_FIXTURE,)
+    ]
+
+
+@pytest.mark.parametrize(
+    "incompatible",
+    [
+        pytest.param(
+            f"UPDATE schema_compat SET min_code_revision = '{AHEAD_FIXTURE}'", id="unknown-floor"
+        ),
+        pytest.param("DELETE FROM schema_compat", id="row-missing"),
+        pytest.param("DROP TABLE schema_compat", id="table-missing"),
+    ],
+)
+def test_a_schema_ahead_and_incompatible_is_refused_having_written_nothing(
+    at_head: str, settings: Settings, caplog: pytest.LogCaptureFixture, incompatible: str
+) -> None:
+    """AC10: refused under the lock, before anything is migrated, rehydrated or ticked --
+    with a live run present, so a boot that went on would have written a tick."""
+    asyncio.run(_go_live(settings, at_head))
+    asyncio.run(
+        _execute(
+            at_head, f"UPDATE alembic_version SET version_num = '{AHEAD_FIXTURE}'", incompatible
+        )
+    )
+    before = asyncio.run(_row_counts(at_head))
+    clock = FakeClock(T0 + 60_000)
+
+    async def scenario() -> FastAPI:
+        app = FastAPI()
+        with pytest.raises(BootFailure, match="schema ahead of image"):
+            async with start_runtime(
+                app, _settings(settings, at_head), clock=AppClock(clock), run_migrations=True
+            ):
+                pass  # pragma: no cover - the boot above is expected to raise
+        return app
+
+    with caplog.at_level(logging.ERROR, logger="app.runtime.boot"):
+        app = asyncio.run(scenario())
+
+    assert getattr(app.state, "ready", False) is False
+    (failed,) = [r for r in caplog.records if r.getMessage() == "boot_failed"]
+    assert failed.__dict__["reason"] == "schema ahead of image"
+    assert failed.__dict__["db_revision"] == AHEAD_FIXTURE
+    assert asyncio.run(_row_counts(at_head)) == before
+    assert before["price_tick"] >= 1  # the go-live's tick, and no other
+    assert asyncio.run(_execute(at_head, "SELECT version_num FROM alembic_version")) == [
+        (AHEAD_FIXTURE,)
+    ]
+
+
+# --- Phase 8 T5: rehydrating behind the last commit (SD15, PD4) -------------------
+
+HOUR = 3_600_000
+
+
+def test_booting_with_the_wall_clock_behind_the_last_commit_raises_the_app_clock(
+    on: str, settings: Settings
+) -> None:
+    """SD15: boot lifts the app clock to the stored commit, writing no gap (no time
+    evolved), so the first tick is stamped after it -- not an hour of frozen ticks."""
+
+    async def scenario() -> tuple[int, int, list[tuple[Any, ...]]]:
+        await _go_live(settings, on)  # its last commit is at T0
+        fake = FakeClock(T0 - HOUR)
+        clock = AppClock(fake)
+        app = FastAPI()
+        async with start_runtime(app, _settings(settings, on), clock=clock, run_migrations=False):
+            offset_ms = clock.offset_ms
+            for _ in range(200):
+                if fake.sleepers >= 2:
+                    break
+                await asyncio.sleep(0.005)
+            fake.advance(1_000)
+            for _ in range(200):
+                await asyncio.sleep(0.005)
+                if app.state.ticker.last_iteration_monotonic is not None:
+                    break
+            rows = await _execute(on, "SELECT source, wall_ts_ms FROM price_tick ORDER BY version")
+        return offset_ms, clock.wall_ms(), rows
+
+    offset_ms, now, rows = asyncio.run(scenario())
+    assert offset_ms == HOUR
+    assert now == T0 + 1_000
+    assert [source for source, _ in rows] == ["reset", "tick"]
+    assert rows[1][1] == T0 + 1_000
+
+
+# --- Phase 8 T6: standby instead of exit (SD4; AC12, AC8 after standby; PD1) -------
+
+
+async def _until(condition: Callable[[], bool], *, seconds: float = 30.0) -> None:
+    """Poll in real time: the standby task's retries and migration do real I/O."""
+    for _ in range(int(seconds / 0.01)):
+        if condition():
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError("condition never held")
+
+
+def test_a_held_lock_puts_boot_in_standby_and_releasing_it_hands_over(
+    empty_database: str,
+    settings: Settings,
+    alembic: RunAlembic,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """AC12 in process: while another holder has the lock nothing is migrated, ticked or
+    written, and `lock_wait` is logged on entry and every 30 s; once it is released the
+    instance takes it, migrates, rehydrates and becomes ready."""
+    head, previous = head_and_previous()
+    assert alembic(empty_database, "upgrade", previous).returncode == 0
+    monkeypatch.setenv("DATABASE_URL", empty_database)
+    get_settings.cache_clear()
+    url = empty_database
+
+    async def scenario() -> tuple[list[tuple[Any, ...]], list[tuple[Any, ...]], str]:
+        holder_engine = create_engine(_settings(settings, url))
+        held = await acquire(holder_engine)
+        assert held is not None
+        fake = FakeClock(T0)
+        app = FastAPI()
+        try:
+            async with start_runtime(
+                app, _settings(settings, url), clock=AppClock(fake), run_migrations=True
+            ):
+                assert app.state.standby is True
+                assert app.state.ready is False
+                for _ in range(30):
+                    await _until(lambda: fake.sleepers == 1)
+                    fake.advance(1_000)
+                await _until(lambda: fake.sleepers == 1)
+                while_waiting = await _execute(url, "SELECT version_num FROM alembic_version")
+                ticks_while_waiting = await _execute(url, "SELECT count(*) FROM price_tick")
+                await release(held)
+                held = None
+                fake.advance(1_000)
+                await _until(lambda: bool(app.state.ready))
+                assert app.state.standby is False
+            ((after,),) = await _execute(url, "SELECT version_num FROM alembic_version")
+            return while_waiting, ticks_while_waiting, str(after)
+        finally:
+            if held is not None:
+                await release(held)
+            await holder_engine.dispose()
+
+    with caplog.at_level(logging.INFO, logger="app.runtime.boot"):
+        while_waiting, ticks, after = asyncio.run(scenario())
+    get_settings.cache_clear()
+
+    assert while_waiting == [(previous,)]
+    assert ticks == [(0,)]
+    assert after == head
+    waits = [r for r in caplog.records if r.getMessage() == "lock_wait"]
+    assert [r.levelno for r in waits] == [logging.WARNING, logging.WARNING]
+    assert [r.__dict__["waited_s"] for r in waits] == [0, 30]
+
+
+def test_a_boot_failure_after_standby_takes_the_boot_failed_exit(
+    on: str, settings: Settings, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """AC8 after standby: there is no lifespan left to raise out of, so the task logs
+    `boot_failed` and calls `on_boot_failed` -- production's `os._exit(3)` -- unready."""
+
+    def broken() -> None:
+        raise RuntimeError("migration 0042 exploded")
+
+    monkeypatch.setattr(boot, "upgrade_to_head", broken)
+    exits: list[str] = []
+
+    async def scenario() -> bool:
+        holder_engine = create_engine(_settings(settings, on))
+        held = await acquire(holder_engine)
+        assert held is not None
+        fake = FakeClock(T0)
+        app = FastAPI()
+        try:
+            async with start_runtime(
+                app,
+                _settings(settings, on),
+                clock=AppClock(fake),
+                run_migrations=True,
+                on_boot_failed=lambda: exits.append("boot failed"),
+            ):
+                await _until(lambda: fake.sleepers == 1)
+                await release(held)
+                fake.advance(1_000)
+                await _until(lambda: bool(exits))
+                return bool(app.state.ready)
+        finally:
+            await holder_engine.dispose()
+
+    with caplog.at_level(logging.ERROR, logger="app.runtime.boot"):
+        ready = asyncio.run(scenario())
+
+    assert exits == ["boot failed"]
+    assert ready is False
+    reasons = [r.__dict__.get("reason") for r in caplog.records if r.getMessage() == "boot_failed"]
+    assert reasons == ["migration failed"]
+
+
+def test_shutdown_during_standby_stops_the_wait_and_writes_nothing(
+    on: str, settings: Settings
+) -> None:
+    """PD1: the lifespan's exit cancels the standby task; there is no lock to release."""
+
+    async def scenario() -> tuple[bool, bool]:
+        holder_engine = create_engine(_settings(settings, on))
+        held = await acquire(holder_engine)
+        assert held is not None
+        fake = FakeClock(T0)
+        app = FastAPI()
+        try:
+            async with start_runtime(
+                app, _settings(settings, on), clock=AppClock(fake), run_migrations=False
+            ):
+                await _until(lambda: fake.sleepers == 1)
+            still_held = await _execute(
+                on,
+                "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted"
+                f" AND objid = {ADVISORY_LOCK_KEY}"
+                " AND database = (SELECT oid FROM pg_database WHERE datname = current_database())",
+            )
+            return bool(app.state.ready), still_held == [(1,)]
+        finally:
+            await release(held)
+            await holder_engine.dispose()
+
+    ready, only_the_holders_lock = asyncio.run(scenario())
+    assert ready is False
+    assert only_the_holders_lock
