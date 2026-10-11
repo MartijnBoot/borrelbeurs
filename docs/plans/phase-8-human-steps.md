@@ -55,7 +55,8 @@ one for the mid-run deploy and for the rollback rehearsals.
 
 - n: `1110f9349cd976fc468885af67940618d8e243ca` (CI run `38151806487`, `push` green, in GHCR;
   re-check with `docker manifest inspect ghcr.io/martijnboot/borrelbeurs:<sha>`)
-- n+1: _the commit that merges the `render.yaml` pin (H1 step 1)_
+- n+1: `98518edb387e23018f20b0917f782eab69dfb564` (PR #11, the `render.yaml` pin; CI run
+  `38157418553`, `push` green, in GHCR)
 
 ---
 
@@ -83,7 +84,9 @@ date, and the repository's visibility now.
 and the test output above. Tick the old line in `docs/plans/manual-checklist.md` ("rotate the v1
 access keys") only if the human asks.
 
-- Notes:
+- Notes: **Open, deferred to last.** Tests green (13 passed). v1 runs as one Render service
+  (baked-in keys, still accepted) plus a backup repo. Plan: stop the service and make the repo
+  private once v2 is running (after H1). Evidence still owed: both actions done, date, visibility.
 
 ---
 
@@ -127,7 +130,20 @@ order and the evidence. Applying the Blueprint **costs money** (SD10): the human
 
 **Record:** `render-deploy`. Add the overlap finding and anything that broke.
 
-- Notes:
+- Notes: 2026-10-11. Steps 1–4 done: pin merged (n+1 = `98518ed…`), Blueprint applied (web +
+  db up, first boot on image n), `DATABASE_URL` set, Auto Sync confirmed off. Evidence: web
+  log shows Render's health check getting `GET /healthz 200` every 5 s. Step 5 done (human
+  report): smoke key printed without error (so the DB is reachable); secrets `BB_SMOKE_KEY`,
+  `RENDER_DEPLOY_HOOK_URL` and variable `RENDER_URL` set. Names not seen by the agent. Step 6 run
+  with sha n: deploy OK (`/healthz` build_sha = n, readyz, login, me, runs/current pass) but
+  the smoke step FAILED at `theme.css` (6 of 7). **Defect D-H1-1:** Cloudflare in front of Render
+  returns `etag: W/"theme-0-blauw"` (weak, lowercase header name); `scripts/smoke.py:38` regex
+  `^"theme-(\d+)-([a-z]+)"$` rejects the `W/` prefix, and its error message looks up `ETag`
+  only, so it printed `None`. Evidence: human's `curl.exe -s -D - -o NUL <url>/theme.css`.
+  No state changed (fails before the PUT). Related, minor: `app/api/theme.py:115` compares
+  `if-none-match` exactly, so behind Cloudflare it never answers 304. Not a failure, a
+  follow-up. The deploy workflow checks out the deployed SHA, so a fixed smoke.py only takes
+  effect from a SHA that contains it: re-running with n or n+1 fails the same way.
 
 ---
 

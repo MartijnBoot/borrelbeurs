@@ -1090,3 +1090,46 @@ T22 has no AC of its own (its criterion is A1's change table), and T19's text ke
 `v1-fallback.md` as history.
 
 Audited by: MartijnBoot (human, Gate B, A1 re-audit)  Date: 2026-10-11
+
+---
+
+## Amendment A2 (2026-10-11): the smoke test accepts a weak ETag — T23
+
+**Found by H1 step 6** (defect D-H1-1, [phase-8-human-steps.md](phase-8-human-steps.md)).
+On Render, Cloudflare sits in front of the app and rewrites `ETag: "theme-0-blauw"` to
+`etag: W/"theme-0-blauw"`: weak, and with a lowercase name. PD13 and T10 assumed the strong form
+reaches the client; T10's test runs against the app directly, so it could not see this. The
+deploy itself worked (`/healthz` named the SHA), but `smoke.py` failed at step 6 and the
+workflow ended red, so AC28's "smoke passes" is not yet met on Render. **The app is right; the
+smoke check is too strict.** Nothing in the spec changes.
+
+### T23 — The smoke test reads the ETag as a proxy delivers it
+
+- **Implements:** SD12, AC28 (as T10 did); PD13 refined, not replaced.
+- **Expected output:** in `scripts/smoke.py`:
+  - a function that takes the response headers and returns `(revision, preset)`: it finds
+    `ETag` without regard to the case of the name, strips a leading `W/`, then applies the
+    existing `"theme-<rev>-<preset>"` match; it raises `SmokeFailed` otherwise;
+  - the failure message names the ETag value it actually received (`theme.css: 200, ETag
+    'W/"..."'`), not only the `ETag`-cased lookup, which printed `None` here.
+- **Verification (failing test first):**
+  - `tests/unit/test_smoke_etag.py`: strong `"theme-3-blauw"` → `(3, "blauw")`; weak
+    `W/"theme-3-blauw"` → the same; header name `etag` and `ETag` and `ETAG` all work; a missing
+    header, `"theme-x-blauw"`, and `"other"` raise `SmokeFailed`, and the message contains the
+    received value;
+  - `uv run pytest tests/integration/test_smoke_script.py -v` still passes (strong form);
+  - `./scripts/check.sh`.
+- **Not in T23 (follow-up, recorded):** `app/api/theme.py:115` compares `if-none-match` exactly,
+  so behind Cloudflare the app never answers 304. Harmless (the CSS is resent); leave as it is.
+- **Depends on:** T10 (merged).
+- **Autonomy note:**
+  - **May decide alone:** the function's name and whether it sits above `main`.
+  - **Must stop and ask if:** the fix seems to need a change under `app/` (it must not), or a
+    new dependency.
+- **After it merges (human, H1 step 6 again):** CI pushes n+2, which contains the fixed
+  `smoke.py`. The deploy workflow checks out the SHA it deploys, so only **n+2** can pass; run
+  **deploy** with n+2 and expect seven passing steps. **n+2 is then the image for H1's mid-run
+  deploy (step 8), and n+1 the previous image for H3.** The first deployed image stays n.
+- **Graph:** `T23←T10` · `H1←T23` (step 6 onward).
+
+Re-audit A2: _pending, the human's call._
