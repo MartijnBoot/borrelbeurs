@@ -1,0 +1,77 @@
+# BorrelBeurs -- deploy one pushed image to Render (Phase 8 SD6, AC28; plan PD11).
+#
+# Manual only: merging to `main` pushes an image (ci.yml) but deploys nothing, so a
+# merge mid-borrel never redeploys a live event (ADR 0009). Run it from the Actions
+# tab with the full commit SHA of an image CI has pushed:
+#
+# 1. refuse a SHA that is not 40 lower-hex characters, or not in GHCR;
+# 2. call Render's deploy hook with that image;
+# 3. smoke-test Render until /healthz reports that SHA (scripts/smoke.py, SD12).
+#
+# Needs, created by the human (H1, docs/runbooks/deploy.md): the secrets
+# RENDER_DEPLOY_HOOK_URL and BB_SMOKE_KEY (an admin key labelled `smoke`), and the
+# variable RENDER_URL. This workflow creates nothing and pushes nothing.
+
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Full 40-character commit SHA of an image in GHCR"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+# One deploy at a time, and never one cancelled halfway through.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    env:
+      # Inputs reach the shell through the environment, never spliced into a script.
+      SHA: ${{ inputs.sha }}
+      IMAGE_REPO: ghcr.io/martijnboot/borrelbeurs
+    steps:
+      - name: Validate the SHA
+        run: |
+          if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::sha must be 40 lower-hex characters, got '$SHA'"
+            exit 1
+          fi
+          echo "IMAGE=$IMAGE_REPO:$SHA" >> "$GITHUB_ENV"
+
+      - name: Log in to GHCR (read)
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Refuse an image that is not in GHCR
+        run: docker manifest inspect "$IMAGE" > /dev/null
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha }}
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Trigger Render's deploy hook
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          encoded="$(python -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["IMAGE"], safe=""))')"
+          curl --fail --silent --show-error --output /dev/null -X POST "$HOOK&imgURL=$encoded"
+
+      - name: Smoke-test the deployed SHA
+        env:
+          BB_SMOKE_KEY: ${{ secrets.BB_SMOKE_KEY }}
+          RENDER_URL: ${{ vars.RENDER_URL }}
+        run: python scripts/smoke.py "$RENDER_URL" --expect-sha "$SHA" --wait-seconds 600
