@@ -95,13 +95,18 @@ class Stack:
         }
         return [arg for name, value in values.items() for arg in ("-e", f"{name}={value}")]
 
-    def run_cli(self, *args: str, image: str | None = None) -> subprocess.CompletedProcess[str]:
-        """A one-off `docker run` of the image on the drill network: a CLI, alembic."""
+    def run_cli(
+        self, *args: str, image: str | None = None, mounts: tuple[str, ...] = ()
+    ) -> subprocess.CompletedProcess[str]:
+        """A one-off `docker run` of the image on the drill network: a CLI, alembic.
+
+        `mounts` are `-v` specs, for a host file the CLI reads (a v1 config)."""
         return docker(
             "run",
             "--rm",
             "--network",
             self.network,
+            *(arg for mount in mounts for arg in ("-v", mount)),
             *self.env(),
             image or self.image,
             *args,
@@ -112,8 +117,12 @@ class Stack:
         out = docker("exec", self.db, "psql", "-U", DB_USER, "-d", DB_NAME, "-tAc", sql)
         return out.stdout.strip()
 
-    def start_app(self, *, image: str | None = None, name: str = "app", **env: str) -> App:
-        """Start the app detached on a random host port; do not wait for it."""
+    def start_app(
+        self, *, image: str | None = None, name: str = "app", restart: str = "no", **env: str
+    ) -> App:
+        """Start the app detached on a random host port; do not wait for it.
+
+        `restart` is docker's `--restart` policy: `on-failure` is the venue's (SD11)."""
         container = f"bb-drill-{name}-{self.suffix}"
         port = free_port()
         docker(
@@ -123,6 +132,8 @@ class Stack:
             container,
             "--network",
             self.network,
+            "--restart",
+            restart,
             "--publish",
             f"127.0.0.1:{port}:8000",
             *self.env(**env),
