@@ -4,7 +4,8 @@
 # Three jobs: `check` runs the identical script a developer runs locally --
 # scripts/check.sh is not restated here, it is called -- so AC4 ("local and
 # CI agree") is structurally true rather than a promise someone has to keep.
-# `secret-scan` and `docker` are independent and run in parallel with it.
+# `secret-scan` and `image` are independent and run in parallel with it; `image-drill`
+# and `venue` follow `image`, and `push` (main only) follows them all (Phase 8 PD10).
 
 name: CI
 
@@ -24,7 +25,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # A merge must never cancel the push job of the run before it (Phase 8 PD10).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
@@ -119,15 +121,147 @@ jobs:
           # organization's repositories, and this one is on a personal
           # account (plan:299, docs/plans/manual-checklist.md T12).
 
-  docker:
-    name: docker
+  # Phase 8 (PD10, SD6): the image is built once, here, checked, and handed on as an
+  # artifact. The drills and the push use that artifact, never a rebuild.
+  image:
+    name: image
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # Build only, never push (plan:285) -- promoting a built image is
-      # Phase 8's job (plan:433-435). Tagged by commit so the artifact a
-      # later phase promotes is traceable to the exact source it was built
-      # from.
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Build the image
-        run: docker build -f docker/Dockerfile -t "borrelbeurs:${{ github.sha }}" .
+        run: docker build -f docker/Dockerfile --build-arg BUILD_SHA=${{ github.sha }} -t borrelbeurs:ci .
+
+      # AC2, AC3: no forbidden path, and the size line goes into the log.
+      - name: Check the contents and size
+        run: python scripts/ci/check_image.py borrelbeurs:ci --max-mb 300
+
+      # AC4, SD20: fixable CRITICAL/HIGH fail the job; the SBOM is written either way.
+      - name: Scan, and write the SBOM
+        run: bash scripts/ci/scan_image.sh borrelbeurs:ci sbom.cdx.json
+
+      - name: Upload the SBOM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.cdx.json
+          if-no-files-found: ignore
+
+      # AC7 (ADR 0006): what the image serves references nothing off-origin.
+      - name: Check the built assets in the image
+        run: |
+          id="$(docker create borrelbeurs:ci)"
+          docker cp "$id:/app/web/dist" "$RUNNER_TEMP/dist"
+          docker rm "$id"
+          python scripts/check_built_assets.py "$RUNNER_TEMP/dist"
+
+      - name: Save the image
+        run: docker save --output image.tar borrelbeurs:ci
+
+      - name: Upload the image
+        uses: actions/upload-artifact@v4
+        with:
+          name: image
+          path: image.tar
+          retention-days: 7
+
+  # AC9, AC10, AC17, AC18 against the built image (tests/image).
+  image-drill:
+    name: image-drill
+    needs: image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python
+        run: uv python install
+
+      - name: Install Python dependencies (frozen)
+        run: uv sync --frozen
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: image
+
+      - name: Load the image
+        run: docker load --input image.tar
+
+      - name: Boot drill and kill drill
+        run: uv run pytest tests/image/test_boot_image.py tests/image/test_kill_drill.py --image borrelbeurs:ci -v
+
+  # AC19-AC24: the bundle, run as the venue laptop runs it. The laptop needs Docker's
+  # containerd image store (start.cmd checks it): `docker load` on the classic store
+  # drops the pinned Postgres digest. The runner is switched to it first.
+  venue:
+    name: venue
+    needs: image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python
+        run: uv python install
+
+      - name: Install Python dependencies (frozen)
+        run: uv sync --frozen
+
+      - name: Use Docker's containerd image store
+        run: |
+          echo '{"features": {"containerd-snapshotter": true}}' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+          docker info --format '{{json .DriverStatus}}' | grep -q io.containerd.snapshotter
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: image
+
+      - name: Load the image
+        run: docker load --input image.tar
+
+      # CI=true: the drill removes both images and reloads them from the bundle's tar.
+      - name: Venue drill
+        run: uv run pytest tests/image/test_venue.py --image borrelbeurs:ci -v
+
+  # Only a merge to `main`, and only once everything above is green (SD6). The image
+  # pushed is the artifact that was tested. `latest` is never pushed.
+  push:
+    name: push
+    needs: [check, secret-scan, image, image-drill, venue]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: image
+
+      - name: Load the image
+        run: docker load --input image.tar
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Push by full SHA
+        run: |
+          docker tag borrelbeurs:ci "ghcr.io/martijnboot/borrelbeurs:${{ github.sha }}"
+          docker push "ghcr.io/martijnboot/borrelbeurs:${{ github.sha }}"
