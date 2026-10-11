@@ -31,12 +31,6 @@ RUN pnpm build
 FROM python:3.11-slim@sha256:e41613d42d4891e4930f79523f93f81bbc7632584ec65e36ab055f41a800b41e AS runtime
 WORKDIR /app
 
-# The commit this image is built from (Phase 8 SD7): CI passes `github.sha`;
-# `/healthz` and the start log report it, so a deploy can tell which image runs.
-ARG BUILD_SHA=unknown
-ENV BUILD_SHA=$BUILD_SHA
-LABEL org.opencontainers.image.revision=$BUILD_SHA
-
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:${PATH}"
@@ -73,6 +67,14 @@ COPY --from=web-build /web/dist ./web/dist
 # directory and no shell, not root.
 RUN useradd --uid 1001 --no-create-home --shell /usr/sbin/nologin appuser
 USER 1001
+
+# The commit this image is built from (Phase 8 SD7): CI passes `github.sha`;
+# `/healthz` and the start log report it, so a deploy can tell which image runs.
+# Declared after the dependency install: an ARG is an environment variable of every
+# later RUN, so earlier it would rebuild that ~200 MB layer for every commit.
+ARG BUILD_SHA=unknown
+ENV BUILD_SHA=$BUILD_SHA
+LABEL org.opencontainers.image.revision=$BUILD_SHA
 
 # `/healthz` is 200 while the ticker loop turns (and in standby), and 503 once
 # it has not turned for three intervals (app/api/health.py) -- the liveness a

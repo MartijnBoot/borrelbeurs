@@ -125,8 +125,15 @@ async def migrate(engine: AsyncEngine) -> None:
     if decision is Decision.AHEAD:
         logger.warning("schema_ahead", extra=revisions)
         return
+    # A thread cannot be interrupted, so a cancelled boot (SIGTERM while a standby
+    # migrates) waits it out: the lock the caller then releases must outlive Alembic.
+    migration = asyncio.ensure_future(asyncio.to_thread(upgrade_to_head))
     try:
-        await asyncio.to_thread(upgrade_to_head)
+        await asyncio.shield(migration)
+    except asyncio.CancelledError:
+        with contextlib.suppress(Exception):
+            await migration
+        raise
     except Exception as error:
         logger.error("boot_failed", extra={"reason": "migration failed"})
         raise BootFailure(f"migration failed: {type(error).__name__}") from error

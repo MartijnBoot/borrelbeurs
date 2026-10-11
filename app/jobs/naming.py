@@ -38,6 +38,11 @@ def host_filename(run_name: str, run_id: int, at_ms: int, kind: HostKind) -> str
     return f"borrel-{slug(run_name, run_id)}-{stamp(at_ms)}-{kind}.xlsx"
 
 
-def auto_pattern(run_name: str, run_id: int) -> str:
-    """The glob of one slug's auto exports, for pruning (runs sharing a slug share them)."""
-    return f"borrel-{slug(run_name, run_id)}-*-auto.xlsx"
+def auto_pattern(run_name: str, run_id: int) -> re.Pattern[str]:
+    """One slug's auto exports, for pruning (runs sharing a slug share them).
+
+    The stamp is matched exactly, not globbed: `*` would let slug `borrel` also take
+    the files of a run called `Borrel Oktober`, whose names sort after it and so would
+    outlive the live run's newest.
+    """
+    return re.compile(rf"borrel-{re.escape(slug(run_name, run_id))}-\d{{8}}-\d{{4}}-auto\.xlsx")

@@ -396,9 +396,17 @@ async def run_worker(
             try:
                 if settings.export_dir is not None and clock.monotonic() >= auto_due:
                     auto_due = clock.monotonic() + AUTO_EXPORT_INTERVAL_MS / 1000
-                    await auto_export(
-                        engine=engine, builder=builder or process, settings=settings, clock=clock
-                    )
+                    try:
+                        await auto_export(
+                            engine=engine,
+                            builder=builder or process,
+                            settings=settings,
+                            clock=clock,
+                        )
+                    except Exception:
+                        # A full disk or a locked folder: the next 15 minutes try again,
+                        # and the queued exports below are drained regardless.
+                        logger.exception("auto_export_failed")
                 while await build_next(
                     engine=engine, builder=builder or process, settings=settings, clock=clock
                 ):

@@ -193,7 +193,13 @@ def test_the_standby_instance_takes_over_with_one_writer_and_no_lost_order(
     assert len(tick_stamps) == len(set(tick_stamps))
 
     stored = {int(row[0]) for row in _rows(database_url, 'SELECT order_id FROM "order"')}
-    assert {r["order_id"] for r in result["acked"]} <= stored
+    acked_ids = [r["order_id"] for r in result["acked"]]
+    assert set(acked_ids) <= stored
+    # Idempotency: a key retried on B after A committed it answers with A's order, never a
+    # second one -- each key is acknowledged once, and the only order stored without an
+    # acknowledgement is the one in flight when the stream stopped.
+    assert len(set(acked_ids)) == len(acked_ids), "two keys acknowledged the same order"
+    assert len(stored) <= len(acked_ids) + 1, (len(stored), len(acked_ids))
 
     # One writer at a time: A's rows (committed before it exited), then B's, never mixed.
     writers = ["A" if created <= result["a_exited_db"] else "B" for *_, created in ticks]

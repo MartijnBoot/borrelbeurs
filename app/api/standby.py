@@ -4,7 +4,7 @@ An instance that boots while another holds the advisory lock serves in standby: 
 binds, `/healthz` says `standby`, and it takes over once the lock frees. Until then
 it has no holder, hub or theme, so nothing that needs them may run:
 
-- every `http` request under `/api` is 503 with the one error envelope, code
+- every `http` request under `/api`, and `/theme.css`, is 503 with the one error envelope, code
   `standby` -- ahead of authentication and the origin check, so every client is
   told the same thing;
 - `/ws` is accepted and closed at once with 1013, "try again later", before
@@ -24,6 +24,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from app.core.errors import AppError, handle_app_error
 
 CLOSE_TRY_AGAIN_LATER: Final = 1013
+THEME_CSS: Final = "/theme.css"  # reads `app.state.theme`, which a standby has not built
 
 
 class Standby(AppError):
@@ -45,7 +46,9 @@ class StandbyGate:
                 await send({"type": "websocket.close", "code": CLOSE_TRY_AGAIN_LATER})
                 return
             if scope["type"] == "http" and (
-                scope["path"] == "/api" or scope["path"].startswith("/api/")
+                scope["path"] == "/api"
+                or scope["path"].startswith("/api/")
+                or scope["path"] == THEME_CSS
             ):
                 response = await handle_app_error(
                     Request(scope), Standby("this instance is waiting to take over")

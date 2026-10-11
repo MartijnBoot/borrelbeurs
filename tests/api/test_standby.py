@@ -79,9 +79,10 @@ def test_healthz_reports_standby_and_readyz_is_not_ready(standby_client: TestCli
         ("POST", "/api/auth/login"),
         ("GET", "/api/auth/me"),
         ("GET", "/api/nope"),
+        ("GET", "/theme.css"),  # needs the theme a standby has not built: 503, not a 500
     ],
 )
-def test_every_api_request_is_503_standby(
+def test_every_api_request_and_the_theme_is_503_standby(
     standby_client: TestClient, method: str, path: str
 ) -> None:
     response = standby_client.request(method, path, json={})

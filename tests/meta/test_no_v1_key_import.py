@@ -6,7 +6,7 @@ repository published them. v2 keys are `bb_<key_id>_<secret>`, minted by
 (`tests/api/test_v1_keys.py`). This guards the other half: that nothing under
 `app/`, `db/` or `scripts/` ever learns to import one.
 
-- No file names `keys.json`.
+- No file names `keys.json` -- except the image check, whose denylist names it to forbid it.
 - No `ADMIN_TOKEN` (v1's shared admin secret; Phase 3 removed it, AC6d).
 - A key row is created only by `issue_key` (`app/api/security.py`): `insert(AuthKey)`
   lives in `app/db/keys.py: create_key`, and `create_key`, `set_secret_hash` and
@@ -35,6 +35,9 @@ ALLOWED_CALLERS: dict[str, frozenset[tuple[Path, str]]] = {
 }
 INSERT_ALLOWED = frozenset({(KEYS_REPO, "create_key")})
 
+# Files that name `keys.json` in order to forbid it: the image check's denylist (T11).
+KEYS_JSON_NAMED_TO_FORBID = frozenset({Path("scripts") / "ci" / "check_image.py"})
+
 
 class Finding(NamedTuple):
     path: Path
@@ -56,7 +59,7 @@ def _name(node: ast.expr) -> str | None:
 def find_v1_key_paths(source: str, path: Path) -> list[Finding]:
     """Every way into the key table, or reference to v1's key files, in `source`."""
     found: list[Finding] = []
-    if "keys.json" in source:
+    if "keys.json" in source and path not in KEYS_JSON_NAMED_TO_FORBID:
         line = source[: source.index("keys.json")].count("\n") + 1
         found.append(Finding(path, line, "names `keys.json`, v1's key file"))
     if path.suffix != ".py":

@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
+import pytest
 from sqlalchemy import insert, select, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -271,3 +272,31 @@ def test_a_failed_host_write_leaves_the_export_done(
                 assert (await get_export(conn, export_id)).status == "done"
 
     _scenario(body)
+
+
+def test_a_failed_auto_export_is_its_own_event_and_the_worker_carries_on(
+    settings: Settings,
+    database_url: str,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A full disk is `auto_export_failed`, not `export_worker_failed` (the database)."""
+    blocked = tmp_path / "not-a-directory"
+    blocked.write_bytes(b"a file where the folder should be")
+
+    async def body() -> None:
+        async with _worker(settings, database_url, blocked) as (worker, engine):
+            run_id = await _run(engine, live=True)
+            await worker.advance(AUTO_EXPORT_INTERVAL_MS)
+            export_id = await worker.queue(run_id, "manual")
+            worker.wakeup.set()
+            await worker.idle()
+            async with engine.connect() as conn:
+                assert (await get_export(conn, export_id)).status == "done"
+
+    with caplog.at_level("ERROR"):
+        _scenario(body)
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert "auto_export_failed" in messages
+    assert "export_worker_failed" not in messages
