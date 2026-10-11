@@ -94,8 +94,8 @@ compatible** and boots without migrating, logging `schema_ahead`; one whose
 of image`, exit 3, nothing written.
 
 **The rollback floor is `0011`.** No image older than the one that introduced `0011` can boot
-against a database at `0011` or later, and there is no downgrade-and-roll-back path. The
-fallback for anything older is v1 (`docs/runbooks/rollback.md`, `v1-fallback.md`).
+against a database at `0011` or later, and there is no downgrade-and-roll-back path
+(`docs/runbooks/rollback.md`).
 
 **The overlap paragraph above is superseded by standby** (ADR 0003, Phase 8 addendum). A new
 instance no longer boots and migrates while the old one is still draining; it waits in standby

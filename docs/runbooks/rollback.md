@@ -9,8 +9,10 @@ Once a database is at revision `0011` or later, **no image older than the one th
 the floor boots against a schema ahead of it when its migrations declare themselves compatible
 (`schema_ahead` in the log) and refuses to boot when they do not (`boot_failed`,
 `schema ahead of image`, exit 3, nothing written). Rolling back is therefore "run the previous
-SHA" and nothing else; it never touches the database. For anything older than the floor the
-fallback is v1: `v1-fallback.md`.
+SHA" and nothing else; it never touches the database. The floor excludes nothing yet: the image
+that introduced `0011` was the first to serve a real database. Once a later migration takes a
+step older images cannot read, the way out past it is a newer image or a restore of the last
+dump taken before that step (`restore.md`).
 
 ## Render
 
@@ -32,6 +34,7 @@ fallback is v1: `v1-fallback.md`.
 ## When it fails
 
 - `boot_failed` / `schema ahead of image`: the previous image is below the floor for this
-  database. Use a newer image, or `v1-fallback.md`.
+  database. Use a newer image, or restore the last dump taken before that schema step
+  (`restore.md`).
 - The image is missing: `start.cmd` loads `images.tar` from its own folder; use the previous
   bundle.
