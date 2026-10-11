@@ -57,6 +57,8 @@ one for the mid-run deploy and for the rollback rehearsals.
   re-check with `docker manifest inspect ghcr.io/martijnboot/borrelbeurs:<sha>`)
 - n+1: `98518edb387e23018f20b0917f782eab69dfb564` (PR #11, the `render.yaml` pin; CI run
   `38157418553`, `push` green, in GHCR)
+- n+2: `7524a8c3555804791db902a5299acd2cf2ac3bc3` (PR #12, T23 smoke fix; CI run
+  `38164925732`, `push` green, in GHCR). First image whose `smoke.py` can pass on Render.
 
 ---
 
@@ -144,6 +146,11 @@ order and the evidence. Applying the Blueprint **costs money** (SD10): the human
   `if-none-match` exactly, so behind Cloudflare it never answers 304. Not a failure, a
   follow-up. The deploy workflow checks out the deployed SHA, so a fixed smoke.py only takes
   effect from a SHA that contains it: re-running with n or n+1 fails the same way.
+  Fixed by T23 (PR #12), n+2 = `7524a8c…`. **Step 6 retry with n+2 (run `38166029986`,
+  2026-10-11 18:58 UTC) failed earlier**: the deploy hook returned HTTP 409, before smoke ran.
+  Probable cause: the human had suspended `borrelbeurs-web` (not confirmed; suspension time
+  vs 18:58 not given). To resume: resume the service, wait for Live, re-run deploy with n+2;
+  if 409 persists, read the service's Events tab before a third try.
 
 ---
 
