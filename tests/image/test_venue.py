@@ -108,14 +108,20 @@ def bundle(request: pytest.FixtureRequest) -> Bundle:
     built = Bundle(path, f"ghcr.io/martijnboot/borrelbeurs:{sha}", match.group(0))
     if os.environ.get("CI") == "true":
         # Only what the bundle carries: never locally, where the dev database runs it.
+        # Every name of each image goes, `--image` included -- `rmi` of one of several
+        # names only untags -- so the stack below can run only what `docker load` adds.
         docker(
             "rmi",
             "--force",
+            image,
             built.app_image,
             built.postgres_image,
             "postgres:16-alpine",
             check=False,
         )
+        for ref in (built.app_image, built.postgres_image):
+            gone = docker("image", "inspect", ref, check=False)
+            assert gone.returncode != 0, f"{ref} is still present before the load"
         docker("load", "--input", str(path / "images.tar"), timeout=900)
     return built
 
