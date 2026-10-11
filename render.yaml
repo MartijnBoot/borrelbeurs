@@ -23,7 +23,7 @@ services:
     name: borrelbeurs-web
     runtime: image
     image:
-      url: ghcr.io/martijnboot/borrelbeurs:REPLACE_WITH_FIRST_DEPLOY_SHA
+      url: ghcr.io/martijnboot/borrelbeurs:1110f9349cd976fc468885af67940618d8e243ca
     region: frankfurt
     plan: starter
     # One writer (ADR 0003): a second instance would only ever wait in standby.
