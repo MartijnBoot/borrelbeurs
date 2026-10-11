@@ -3,6 +3,10 @@
 Voor de penningmeester. Alles staat in deze map; dubbelklik de `.cmd`-bestanden.
 Docker Desktop moet draaien (walvis-icoon rechtsonder).
 
+Eénmalig (de beheerder doet dit vóór de borrel): in Docker Desktop, Settings → General,
+**Use containerd for pulling and storing images** aan, daarna Apply. Zonder dit vindt de
+database geen image zonder internet en meldt `start.cmd` dat hier.
+
 ## Starten
 
 1. Laptop aan, aan de lader, verbonden met het wifi van de reisrouter.

@@ -15,6 +15,16 @@ if "%BB_IMAGE_SHA%"=="" (
   pause & exit /b 1
 )
 
+rem docker load keeps the pinned Postgres digest only on the containerd image store;
+rem on the classic store compose could not find it offline (pull_policy: never).
+docker info --format "{{json .DriverStatus}}" 2>nul | findstr /c:"io.containerd.snapshotter" >nul
+if errorlevel 1 (
+  echo Docker Desktop gebruikt de oude opslag voor images. Zet in Docker Desktop
+  echo Settings - General: "Use containerd for pulling and storing images" aan,
+  echo kies Apply, en start dit bestand opnieuw. Zie LEESMIJ.md.
+  pause & exit /b 1
+)
+
 rem The images ship in the bundle; load them only when Docker does not have them.
 docker image inspect "ghcr.io/martijnboot/borrelbeurs:%BB_IMAGE_SHA%" >nul 2>&1
 if errorlevel 1 (

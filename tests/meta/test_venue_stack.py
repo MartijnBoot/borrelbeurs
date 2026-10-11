@@ -152,3 +152,12 @@ def test_the_detector_notices_drift(
         except AssertionError:
             failures += 1
     assert failures, f"no check noticed {after.strip()!r}"
+
+
+def test_start_requires_the_containerd_image_store() -> None:
+    """`docker load` on the classic store drops the pinned Postgres digest, so compose
+    (`pull_policy: never`) finds no image offline; start.cmd must refuse that store."""
+    data = (VENUE / "start.cmd").read_bytes()
+    check = data.find(b"io.containerd.snapshotter")
+    load = data.find(b"docker load -i")
+    assert -1 < check < load, "start.cmd must check the image store before it loads images"
