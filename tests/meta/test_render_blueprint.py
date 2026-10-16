@@ -121,9 +121,19 @@ def test_deploy_takes_no_more_than_it_needs() -> None:
     assert re.search(r"group: deploy\s*$", concurrency, re.M)
     assert re.search(r"cancel-in-progress: false\s*$", concurrency, re.M)
     # The input reaches a shell only through `env:`, never spliced into a script: the
-    # only lines naming it are the env entry and checkout's `ref:`.
+    # only line naming it is the env entry.
     uses = [line.strip() for line in text.splitlines() if "inputs.sha" in line]
-    assert uses == ["SHA: ${{ inputs.sha }}", "ref: ${{ inputs.sha }}"], uses
+    assert uses == ["SHA: ${{ inputs.sha }}"], uses
+
+
+def test_deploy_runs_the_smoke_of_its_own_commit() -> None:
+    """A3 (T24): checkout takes the workflow's own commit, not the deployed SHA, so a
+    rollback to an old SHA still runs `main`'s smoke; `--expect-sha` pins the image."""
+    text = _deploy()
+    checkout = re.search(r"- uses: actions/checkout@\S+\n((?:[ ]{8,}.*\n)*)", text)
+    assert checkout, "deploy.yml has no checkout step"
+    assert not re.search(r"^\s+ref:.*inputs\.sha", checkout.group(1), re.M), checkout.group(1)
+    assert not re.search(r"^\s+ref:.*inputs\.sha", text, re.M)
 
 
 def test_deploy_checks_ghcr_then_triggers_then_smoke_tests() -> None:

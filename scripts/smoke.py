@@ -5,8 +5,9 @@
 Phase 8 SD12. Seven steps, one line each, exit 0 when all pass and 1 at the first
 that fails:
 
-1. `/healthz` is 200 -- and, with `--expect-sha`, reports that `build_sha`. Polled
-   until `--wait-seconds` runs out, so it can follow a deploy that is still rolling;
+1. `/healthz` is 200 with status `ok` -- not `standby` -- and, with `--expect-sha`,
+   reports that `build_sha`. Polled until `--wait-seconds` runs out, so it can follow a
+   deploy that is still rolling;
 2. `/readyz` is 200 (polled within the same budget);
 3. log in with the admin key, sending the same-origin `Origin` a browser would;
 4. `/api/auth/me` is the admin role;
@@ -41,6 +42,32 @@ TIMEOUT_S = 10
 
 class SmokeFailed(Exception):
     """A step failed; the message says which and why, never with the key in it."""
+
+
+def theme_preset(headers: dict[str, str]) -> tuple[int, str]:
+    """The theme's `(revision, preset)` from `/theme.css`'s ETag, as a proxy delivers it.
+
+    Cloudflare in front of Render sends `etag: W/"theme-0-blauw"`: weak, and a lowercase name.
+    """
+    etag = next((value for name, value in headers.items() if name.lower() == "etag"), None)
+    match = ETAG.match(etag.removeprefix("W/")) if etag is not None else None
+    if match is None:
+        raise SmokeFailed(f"theme.css: ETag {etag!r}")
+    return int(match.group(1)), match.group(2)
+
+
+def serving(status: int, body: Any, expect_sha: str | None) -> bool:
+    """`/healthz` says this instance serves, as the build asked for.
+
+    A standby instance answers 200 with its `build_sha` too (SD4, SD5); on Render the new
+    one does for about a minute while the old one still holds the lock.
+    """
+    return (
+        status == 200
+        and isinstance(body, dict)
+        and body.get("status") == "ok"
+        and (expect_sha is None or body.get("build_sha") == expect_sha)
+    )
 
 
 class Session:
@@ -95,10 +122,9 @@ def run(base: str, key: str, *, expect_sha: str | None, wait_seconds: float) -> 
     session = Session(base)
     deadline = time.monotonic() + wait_seconds
 
-    def healthy(status: int, body: Any) -> bool:
-        return status == 200 and (expect_sha is None or body.get("build_sha") == expect_sha)
-
-    health = _poll(session, "/healthz", deadline, healthy)
+    health = _poll(
+        session, "/healthz", deadline, lambda status, body: serving(status, body, expect_sha)
+    )
     print(f"ok   healthz      status={health['status']} build_sha={health.get('build_sha')}")
 
     _poll(session, "/readyz", deadline, lambda status, _: status == 200)
@@ -123,10 +149,9 @@ def run(base: str, key: str, *, expect_sha: str | None, wait_seconds: float) -> 
         raise SmokeFailed(f"runs/current: {status} {_code(body)}")
 
     status, headers, _ = session.request("GET", "/theme.css")
-    match = ETAG.match(headers.get("ETag", headers.get("etag", "")))
-    if status != 200 or match is None:
-        raise SmokeFailed(f"theme.css: {status}, ETag {headers.get('ETag')!r}")
-    revision, preset = int(match.group(1)), match.group(2)
+    if status != 200:
+        raise SmokeFailed(f"theme.css: {status}")
+    revision, preset = theme_preset(headers)
     status, body = session.json("PUT", "/api/theme", {"preset": preset})
     if status != 200 or body.get("preset") != preset or body.get("revision") != revision + 1:
         raise SmokeFailed(f"theme: {status} {_code(body)}")
