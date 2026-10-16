@@ -8,6 +8,10 @@
 # 2. call Render's deploy hook with that image;
 # 3. smoke-test Render until /healthz reports that SHA (scripts/smoke.py, SD12).
 #
+# The smoke script comes from this workflow's own commit (`main`), not from the SHA
+# being deployed: it talks to Render only over HTTP, and `--expect-sha` pins the
+# image. So a rollback to an older SHA still runs today's smoke (plan amendment A3).
+#
 # Needs, created by the human (H1, docs/runbooks/deploy.md): the secrets
 # RENDER_DEPLOY_HOOK_URL and BB_SMOKE_KEY (an admin key labelled `smoke`), and the
 # variable RENDER_URL. This workflow creates nothing and pushes nothing.
@@ -55,8 +59,6 @@ jobs:
         run: docker manifest inspect "$IMAGE" > /dev/null
 
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.sha }}
 
       - name: Install Python
         uses: actions/setup-python@v5

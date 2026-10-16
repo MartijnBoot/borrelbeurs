@@ -143,6 +143,8 @@ of them at approval.
     Render sends SIGTERM to the old one. The old one drains and releases the lock (Phase 3
     SD10), and the new one takes over. The cost is a few seconds in which the API answers 503;
     the bar retries with the same `Idempotency-Key` (Phase 3 SD20).
+    *Measured on Render (H1, 2026-10-16): ~60 s, set by Render's delay before SIGTERM; the
+    app's handover is ~1 s. Amendment A3.*
   - **ADR conflict:** this changes ADR 0003 decision 4 ("fails fast and loudly if it cannot
     acquire it"). Single-writer still holds, because a standby never writes, but the decision
     text changes. **An ADR 0003 addendum is required and the human must accept it at

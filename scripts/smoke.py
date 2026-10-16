@@ -5,8 +5,9 @@
 Phase 8 SD12. Seven steps, one line each, exit 0 when all pass and 1 at the first
 that fails:
 
-1. `/healthz` is 200 -- and, with `--expect-sha`, reports that `build_sha`. Polled
-   until `--wait-seconds` runs out, so it can follow a deploy that is still rolling;
+1. `/healthz` is 200 with status `ok` -- not `standby` -- and, with `--expect-sha`,
+   reports that `build_sha`. Polled until `--wait-seconds` runs out, so it can follow a
+   deploy that is still rolling;
 2. `/readyz` is 200 (polled within the same budget);
 3. log in with the admin key, sending the same-origin `Origin` a browser would;
 4. `/api/auth/me` is the admin role;
@@ -53,6 +54,20 @@ def theme_preset(headers: dict[str, str]) -> tuple[int, str]:
     if match is None:
         raise SmokeFailed(f"theme.css: ETag {etag!r}")
     return int(match.group(1)), match.group(2)
+
+
+def serving(status: int, body: Any, expect_sha: str | None) -> bool:
+    """`/healthz` says this instance serves, as the build asked for.
+
+    A standby instance answers 200 with its `build_sha` too (SD4, SD5); on Render the new
+    one does for about a minute while the old one still holds the lock.
+    """
+    return (
+        status == 200
+        and isinstance(body, dict)
+        and body.get("status") == "ok"
+        and (expect_sha is None or body.get("build_sha") == expect_sha)
+    )
 
 
 class Session:
@@ -107,10 +122,9 @@ def run(base: str, key: str, *, expect_sha: str | None, wait_seconds: float) -> 
     session = Session(base)
     deadline = time.monotonic() + wait_seconds
 
-    def healthy(status: int, body: Any) -> bool:
-        return status == 200 and (expect_sha is None or body.get("build_sha") == expect_sha)
-
-    health = _poll(session, "/healthz", deadline, healthy)
+    health = _poll(
+        session, "/healthz", deadline, lambda status, body: serving(status, body, expect_sha)
+    )
     print(f"ok   healthz      status={health['status']} build_sha={health.get('build_sha')}")
 
     _poll(session, "/readyz", deadline, lambda status, _: status == 200)
