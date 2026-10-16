@@ -151,6 +151,42 @@ order and the evidence. Applying the Blueprint **costs money** (SD10): the human
   Probable cause: the human had suspended `borrelbeurs-web` (not confirmed; suspension time
   vs 18:58 not given). To resume: resume the service, wait for Live, re-run deploy with n+2;
   if 409 persists, read the service's Events tab before a third try.
+  **Step 6 third try with n+2 (run `38949649203`, 2026-10-16 18:44 UTC)**: hook OK, smoke
+  FAILED at login (`503 standby`, 3 of 7). Human's Render log of the new instance: boot
+  18:44:57 into `lock_wait`; "service is live" ~18:45:04 (Render routes to it, since a standby's
+  `/healthz` is 200, SD5); `lock_wait` at 30 s and 60 s; `lock_acquired` 18:46:05 (`waited_s`
+  67). So Render **did overlap** the two instances (answers step 9). **Defect D-H1-2:**
+  `smoke.py` accepts `/healthz` 200 with the right `build_sha` even when `status=standby`, and
+  its `/readyz` 200 did not come from the new instance (no `/readyz` line in its log, and a
+  standby answers 503): during the overlap Render balanced the smoke's requests across both
+  instances, so the old one answered `/readyz`. Every deploy races this way until smoke waits
+  for `status=ok`. **Finding F-H1-1:** the standby window was ~60 s of 503 on `/api` and
+  `/theme.css` (a browser at 18:45:40 got 503s), not the "few seconds" SD4 expected. The cause is
+  still open: when Render sent SIGTERM to the old instance and how long it took to drain.
+  Handover log (human, 18:45:40–18:48 UTC; the old instance is the one health-checked from
+  `10.216.26.9`): old `Shutting down` 18:46:04.487, `runtime_stopped` .594, process finished
+  .595 (drain 0.1 s); new `lock_acquired` 18:46:05.186, alembic with no upgrade run (schema
+  already at head), `runtime_started` 18:46:05.646 (`run_id` 1). **SIGTERM to new instance
+  running: 1.2 s.** So F-H1-1 is all Render's: it kept the old instance up **~60 s** after the
+  new one went live (18:45:04 → 18:46:04) before SIGTERM, and both took traffic in that window.
+  A standby `/healthz` must stay 200 (SD5, or every deploy deadlocks), so this window comes with
+  the design on Render. Follow-up: see if Render lets that delay be set; otherwise SD4's
+  "few seconds" text should say "~60 s, with the bar retrying".
+  Contiguous versions across the handover: not shown by these logs (no version lines); still
+  open for step 9. Human's `curl.exe -s <RENDER_URL>/healthz` (2026-10-16, laptop): `status`
+  `ok`, `build_sha` n+2 (`7524a8c…`), `last_tick_age_ms` 273, `last_commit_age_ms` 281. **Step 6
+  status:** n+2 deployed and serving; the green deploy run with seven smoke steps is still owed
+  (blocked by D-H1-2).
+  Human's log 19:32–19:41 UTC (no deploy since `38949649203`, so n+2): instance serving; run 1
+  current; admin login, `/ws` accepted, two `POST /api/runs/1/drinks` 201 (19:36), bar login
+  and four `POST /api/orders` 201 (19:38–19:39). **Step 7 done**: the human confirms the orders
+  came from a phone.
+  `GET /theme.css` answered **304** at 19:34, so the "never 304 behind Cloudflare" follow-up
+  above is not reproduced. **Finding F-H1-2:** `lock_hold_ms` WARNING (threshold 50 ms, SD22)
+  on a few ticks a minute, 53–225 ms. That is the latency of Render's database, not a failure;
+  the record notes it as a tuning follow-up. **Plan gap:** step 8 says "deploy n+1", but Render
+  already runs n+2, which is newer, so deploying n+1 would be a rollback. Step 8 needs a newer
+  SHA (n+3), and only a SHA with the D-H1-2 fix can give a green smoke step.
 
 ---
 
