@@ -39,11 +39,14 @@ nothing, so a merge during a live event never redeploys it (SD6, ADR 0009).
    `python scripts/smoke.py $RENDER_URL --expect-sha <sha> --wait-seconds 600`.
 3. A new instance boots while the old one still holds the lock. It waits in standby
    (`lock_wait` in its log; `/healthz` says `standby`), then takes over when the old one exits.
-   For a few seconds the API answers 503. Phones reconnect by themselves.
+   On Render the API answers 503 for about a minute (Render keeps the old instance up ~60 s
+   before stopping it); phones retry and reconnect by themselves.
 
 ## Verify
 
 - The workflow run is green, and its last step printed seven passing smoke steps.
+- Smoke waits for that window to end: its first step passes only once `/healthz` says `ok`,
+  not `standby`.
 - `curl -s $RENDER_URL/healthz` shows `"build_sha": "<sha>"` and status `ok`.
 
 ## When a step fails

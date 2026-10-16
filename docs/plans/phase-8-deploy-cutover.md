@@ -1133,3 +1133,89 @@ smoke check is too strict.** Nothing in the spec changes.
 - **Graph:** `T23←T10` · `H1←T23` (step 6 onward).
 
 Re-audit A2 (2026-10-11): accepted by the human ("accept"). Audited by: MartijnBoot (human, Gate B, A2 re-audit)  Date: 2026-10-11
+
+---
+
+## Amendment A3 (2026-10-16): the smoke test waits out a standby, and runs from `main` — T24
+
+**Found by H1 step 6, third try** (defect D-H1-2 and finding F-H1-1,
+[phase-8-human-steps.md](phase-8-human-steps.md); deploy run `38949649203`). The deploy of n+2
+worked: Render now serves n+2 with `status: ok`. The workflow still ended red:
+
+1. **Smoke accepts a standby.** On Render the new instance boots into standby (SD4), and its
+   `/healthz` is 200 with the new `build_sha` by design (SD5). `smoke.py` treats that as healthy,
+   so it goes straight to log in and gets `503 standby`. Its `/readyz` 200 came from the *old*
+   instance, because Render sends traffic to both while they overlap. Every deploy on Render
+   races this way.
+2. **Render's overlap is ~60 s, not "a few seconds".** The new instance was live at 18:45:04,
+   but Render sent SIGTERM to the old one only at 18:46:04. The app's own handover then took
+   1.2 s (old drained in 0.1 s; new `lock_acquired` → `runtime_started` in 0.5 s, `run_id` 1).
+   The cost SD4 names ("a few seconds in which the API answers 503") is ~60 s on Render.
+   The app is right; the platform holds the old instance.
+3. **A rollback can never go green.** `deploy.yml` checks out the SHA it deploys and runs
+   *that* commit's `smoke.py`. Rolling back to n, n+1 or n+2 runs a smoke without this fix (and,
+   for n and n+1, without T23's), so H3's Render rollback would end red every time. The fix has
+   to reach old SHAs. `smoke.py` talks to the server only over HTTP, so it does not need to come
+   from the image it tests.
+
+**No spec decision changes.** SD4's mechanism stands; only its stated cost is wrong (item 2).
+T24 records that as a one-line note under SD4. **Accepting A3 accepts that note**: it changes
+the spec's text, so it is the human's call at re-audit.
+
+### T24 — Smoke waits for a serving instance; the deploy runs `main`'s smoke
+
+- **Implements:** SD12, AC28 (as T10 and T23 did); PD11 refined (which commit's `smoke.py` runs).
+- **Expected output:**
+  - `scripts/smoke.py`: step 1 polls `/healthz` until 200, the expected `build_sha` (when given)
+    **and `status == "ok"`**, within the same `--wait-seconds` budget. A timeout names the last
+    status it saw (`/healthz: 200 {... "status": "standby" ...}`). Step 2 (`/readyz`) stays
+    polled within the same budget. No other step changes. Seven steps, same output lines.
+  - `.github/workflows/deploy.yml`: checkout uses the workflow's own commit (drop
+    `ref: ${{ inputs.sha }}`), so the smoke from `main` runs against whichever SHA is deployed.
+    `--expect-sha "$SHA"` still pins the image. Its header comment says so.
+  - `docs/runbooks/deploy.md` step 3: "For a few seconds the API answers 503" becomes "On Render
+    the API answers 503 for about a minute (Render keeps the old instance up ~60 s before stopping
+    it); phones retry and reconnect by themselves". A line under Verify: smoke waits for that
+    window to end.
+  - `docs/specs/phase-8-deploy-cutover.md`, SD4: one note after "The cost is a few seconds...":
+    *"Measured on Render (H1, 2026-10-16): ~60 s, set by Render's delay before SIGTERM; the
+    app's handover is ~1 s. Amendment A3."* Nothing else in the spec.
+- **Verification (failing test first):**
+  - `tests/unit/test_smoke_health.py` (new): the predicate behind step 1 accepts
+    `200 {"status":"ok","build_sha":X}` with expect X; refuses `status` `standby` and `stale`,
+    a different SHA, and a non-200; with no `--expect-sha`, still refuses `standby`.
+  - `tests/integration/test_smoke_script.py`, new case: start a first app, then a second in
+    standby on the same database (as `test_real_process.py:176` does); smoke against the
+    **second** with `--wait-seconds 3` fails at `/healthz` and the output says `standby`; stop
+    the first; smoke against the second with `--wait-seconds 30` passes all seven steps.
+  - `tests/meta/test_render_blueprint.py`: the `inputs.sha` line check becomes `["SHA: ${{
+    inputs.sha }}"]` only (the input still never reaches a script outside `env:`), and a new
+    assertion that checkout has no `ref:` naming the input.
+  - `./scripts/check.sh`.
+- **Not in T24 (follow-ups, recorded in the H1 record):**
+  - F-H1-1: whether Render lets the pre-SIGTERM delay be set (a dashboard or Blueprint setting
+    the human looks up). If it does, a later change; if not, A3's note is the answer.
+  - F-H1-2: `lock_hold_ms` warnings, 53–225 ms on a few ticks a minute on Render's
+    `basic-256mb` Postgres. Tuning the 50 ms threshold (SD22) or the plan is a later decision.
+  - A2's follow-up ("behind Cloudflare the app never answers 304") is withdrawn: the H1 log shows
+    `GET /theme.css` 304 at 19:34 UTC.
+  - The scheduled CI run of 2026-10-12 (`38257678855`) failed in `secret-scan`; not read yet.
+- **Depends on:** T10, T17, T23 (merged).
+- **Autonomy note:**
+  - **May decide alone:** the predicate's name; whether the timeout message quotes the whole
+    body or only `status` and `build_sha`.
+  - **Must stop and ask if:** the fix seems to need a change under `app/` (it must not: standby
+    and `/healthz` are right), a new dependency, or a change to the workflow beyond the checkout
+    line and its comment.
+- **After it merges (human, H1):** CI pushes **n+3** (T24's merge commit). Because the workflow now
+  runs `main`'s smoke, any SHA can go green:
+  - **step 6 (again):** run **deploy** with **n+2**, which Render already serves, and expect seven
+    passing steps. This is step 6's evidence, for the image that is running;
+  - **step 8:** with a borrel running and a phone ordering, run **deploy** with **n+3**: the
+    mid-run deploy. Expect ~60 s of 503 on the phone, then orders again, and a green run;
+  - **step 9:** from step 8's logs: `lock_wait`, the handover, and contiguous versions (AC29);
+  - **H3** rolls back on Render from n+3 to **n+2**: the previous image, and one whose own
+    commit already has T23. The first deployed image stays n.
+- **Graph:** `T24←T10,T17,T23` · `H1←T24` (step 6 again, 8, 9) · `H3←T24`.
+
+Re-audit A3 (2026-10-16): accepted by the human ("accept"), including the SD4 spec note. Audited by: MartijnBoot (human, Gate B, A3 re-audit)  Date: 2026-10-16

@@ -7,16 +7,27 @@ workflow runs it, with the key in `BB_SMOKE_KEY`. Its output must never hold the
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
+import time
+import urllib.error
 import urllib.request
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
-from tests.integration.realapp.harness import REPO_ROOT, AppProcess, Client, mint_key, start_app
+from tests.integration.realapp.harness import (
+    READY_TIMEOUT_S,
+    REPO_ROOT,
+    AppProcess,
+    Client,
+    mint_key,
+    spawn_app,
+    start_app,
+)
 
 SHA = "0123456789abcdef0123456789abcdef01234567"
 SMOKE = REPO_ROOT / "scripts" / "smoke.py"
@@ -83,6 +94,45 @@ def test_a_wrong_build_fails_once_the_wait_runs_out(app: AppProcess, database_ur
     assert result.returncode == 1
     assert result.stdout.splitlines()[-1].startswith("FAIL /healthz")
     assert key not in result.stdout + result.stderr
+
+
+def _wait_for_standby(standby: AppProcess) -> None:
+    deadline = time.monotonic() + READY_TIMEOUT_S
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(f"{standby.base}/healthz", timeout=2) as response:
+                if json.loads(response.read())["status"] == "standby":
+                    return
+        except (urllib.error.URLError, ConnectionError, TimeoutError):
+            pass
+        time.sleep(0.1)
+    raise AssertionError(f"the second instance never reached standby:\n{standby.stderr()}")
+
+
+def test_smoke_waits_out_a_standby_instance(
+    app: AppProcess, database_url: str, tmp_path: Path
+) -> None:
+    """T24 (A3, D-H1-2): on Render the new instance answers `/healthz` 200 with the new SHA
+    while it waits in standby (SD4, SD5). Smoke must wait for `ok`, not log in to a 503."""
+    key = mint_key(database_url, "admin")
+    second = spawn_app(database_url, tmp_path / "second.stderr")
+    try:
+        _wait_for_standby(second)
+
+        waiting = _smoke(second.base, key, "--expect-sha", SHA, "--wait-seconds", "3")
+
+        app.kill()
+        served = _smoke(second.base, key, "--expect-sha", SHA, "--wait-seconds", "30")
+    finally:
+        second.kill()
+
+    assert waiting.returncode == 1, waiting.stdout + waiting.stderr
+    last = waiting.stdout.splitlines()[-1]
+    assert last.startswith("FAIL /healthz") and "standby" in last, last
+    assert served.returncode == 0, served.stdout + served.stderr + second.stderr()
+    assert len(served.stdout.splitlines()[:7]) == 7
+    assert served.stdout.splitlines()[-1] == "smoke: all steps passed"
+    assert key not in waiting.stdout + waiting.stderr + served.stdout + served.stderr
 
 
 def test_a_bar_key_fails_at_the_me_step(app: AppProcess, database_url: str) -> None:
