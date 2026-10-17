@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-LIVE_CONFIG = REPO_ROOT / "legacy" / "v1" / "config" / "exchange_config.json"
+LIVE_CONFIG = REPO_ROOT / "tests" / "fixtures" / "v1" / "config" / "exchange_config.json"
 READY_TIMEOUT_S = 60.0
 WATCHDOG_S = 300.0
 

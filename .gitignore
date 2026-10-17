@@ -6,7 +6,7 @@ static/earnings
 config/keys.json
 config/.jwt_secret
 
-# T2 moved v1 to legacy/v1/, so the same files now have a different path.
+# T2 moved v1 to legacy/v1/ (removed since; tag v2-rebuild-complete), so the same files had a different path.
 # Unanchored, so a re-add stays ignored in either place.
 keys.json
 .jwt_secret
@@ -49,13 +49,6 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
-
-# Swarm driver run logs (scripts/swarm.ps1)
-.swarm-logs/
-
-# Swarm task worktrees. Unused since ADR 0010 (builders work on a branch in the primary
-# checkout); kept so a stray worktree can never be committed.
-/.worktrees/
 
 # dev.ps1 state: pids and server logs
 .dev/

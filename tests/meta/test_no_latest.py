@@ -5,7 +5,7 @@ tag names a different image on the venue laptop, on Render and in CI from one da
 the next; `docker save` bundles whatever it pointed at last.
 
 Scanned: `.github/workflows/`, `render.yaml` (once T17 adds it), `deploy/`, `docker/`
-and `scripts/`. Never `legacy/`, which is v1 as it was. Two kinds of reference:
+and `scripts/`. Never `tests/fixtures/v1/`, which is v1 as it was. Two kinds of reference:
 
 - the value of an `image:` / `url:` key or a Dockerfile `FROM` must carry a tag or a
   digest (`${VAR}` tags count: the compose file requires the variable);

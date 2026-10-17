@@ -34,7 +34,7 @@ Deliberately **not** covered here:
   different walk (module-level statements only) and its own allowlist — built
   as `tests/meta/test_import_side_effects.py` (T4b) rather than bolted onto
   this one.
-- `legacy/v1/**` (frozen v1 reference) and `exchange/**` (the pure engine,
+- `tests/fixtures/v1/**` (frozen v1 files) and `exchange/**` (the pure engine,
   entering the gate in Phase 1). Both are excluded from ruff and mypy as well
   (`pyproject.toml:52`, `pyproject.toml:63`); this is plan D13, settled.
 
@@ -42,7 +42,7 @@ T4b's other predicate lives here instead: a second `BaseSettings` subclass
 anywhere under `app/` or `db/` would read the environment exactly as validly
 as `Settings` does, with no `os.environ` reference in its own source for the
 walk above to ever see (T4's Gate C, 2026-09-27 — the `second-basesettings`
-gap; see `docs/plans/rebuild-progress.md`). That is a question about the
+gap; see the rebuild ledger at tag `v2-rebuild-complete`). That is a question about the
 *shape* of a class over the same roots this file already scans, not about
 module-level statements, so it belongs here rather than in
 `test_import_side_effects.py`.

@@ -2,7 +2,7 @@
 
 The server owns the theme: it renders `/theme.css` and sends the active preset's
 tokens over the WebSocket, so the client holds no preset table (SD6). Every
-value below is ported verbatim from v1's `legacy/v1/static/theme.js` (`THEMES`,
+value below is ported verbatim from v1's `static/theme.js` (`THEMES`,
 `THEME_META`); `tests/unit/test_theme_manifest.py` parses that file and fails on
 any transcription error.
 

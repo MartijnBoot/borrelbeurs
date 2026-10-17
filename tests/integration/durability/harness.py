@@ -60,7 +60,7 @@ from app.runtime.history import HistoryRing, TickEntry
 from exchange import EngineState, MarketSpec, Params, advance, schedule_jump
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-LIVE_CONFIG_PATH = REPO_ROOT / "legacy" / "v1" / "config" / "exchange_config.json"
+LIVE_CONFIG_PATH = REPO_ROOT / "tests" / "fixtures" / "v1" / "config" / "exchange_config.json"
 STEP_MS = 1_000
 JUMP_DRINK = 2
 JUMP_MS = 120_000

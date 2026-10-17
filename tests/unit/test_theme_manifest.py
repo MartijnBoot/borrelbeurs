@@ -21,7 +21,7 @@ from app.runtime.theme import (
     resolve,
 )
 
-THEME_JS = Path(__file__).resolve().parents[2] / "legacy" / "v1" / "static" / "theme.js"
+THEME_JS = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "v1" / "static" / "theme.js"
 # SD6's split: new token -> the v1 token whose value it takes.
 SPLIT = {
     "--candle-up": "--up",

@@ -52,7 +52,8 @@ _NAME_INDEX = "drink_name_live"
 _ONE_LIVE_INDEX = "run_one_live"
 
 # A new run's params when no run exists yet: v1's saved settings
-# (legacy/v1/config/exchange_config.json), not its engine defaults (`Params()`).
+# (v1 `config/exchange_config.json`, copied to tests/fixtures/v1/), not its engine
+# defaults (`Params()`).
 # The user's choice, 2026-10-17; tests/unit/test_default_params.py pins it.
 DEFAULT_PARAMS = Params(
     lambda_orders=1.5,

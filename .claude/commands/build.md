@@ -15,8 +15,7 @@ rule; it only saves me typing the next command.
 ## Preconditions — check these and stop if any fails
 
 - The plan exists and its audit checklist is filled in with a name and date — either mine or
-  `plan-auditor`'s PASS, per [ADR 0009](../../docs/adr/0009-autonomous-swarm-delivery.md). **No
-  implementation before an audited plan.**
+  `plan-auditor`'s PASS. **No implementation before an audited plan.**
 - Task $2 exists in that plan (single-task mode).
 - The working tree is clean, and you are on a feature branch — not `main`.
 

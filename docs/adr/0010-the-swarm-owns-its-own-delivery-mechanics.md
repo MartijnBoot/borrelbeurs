@@ -1,6 +1,11 @@
 # ADR 0010: The swarm owns its own delivery mechanics; worktree isolation becomes serial branch isolation
 
-Date: 2026-09-22 · Status: Accepted · Amends: [ADR 0009](0009-autonomous-swarm-delivery.md) §5
+Date: 2026-09-22 · Status: **Superseded (2026-10-17)**, with ADR 0009; was Accepted · Amends:
+[ADR 0009](0009-autonomous-swarm-delivery.md) §5
+
+Superseded because the swarm was stopped on 2026-09-28 and the
+delivery mechanics it owned were removed; see tag `v2-rebuild-complete`. Work now runs by hand
+([.claude/README.md](../../.claude/README.md)).
 
 ## Context
 

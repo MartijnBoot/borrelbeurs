@@ -1,6 +1,6 @@
 """R16 — importing this codebase must never touch the filesystem.
 
-`legacy/v1/backend/config.py:11-13` is precisely how this goes wrong:
+v1's `backend/config.py:11-13` (tag v2-rebuild-complete) is precisely how this goes wrong:
 `os.makedirs(STATIC_DIR, exist_ok=True)` sitting at module level means merely
 *importing* the module creates three directories -- in a test, in a build, in
 a container being inspected. `app/core/config.py:5-11` promises the rewrite
@@ -33,8 +33,8 @@ Two name sets, not one:
   loader reading an `.ini` file (and potentially attaching a `FileHandler` to
   a logger) is exactly the kind of import-time surprise this file exists for.
 
-**Why this depends on T5 and T7**, per the decision log
-(`docs/plans/rebuild-progress.md`): T5 gives the guard a real `app/` to point
+**Why this depends on T5 and T7**, per the decision log (the rebuild ledger,
+tag `v2-rebuild-complete`): T5 gives the guard a real `app/` to point
 at, and T7 gives it a real `db/migrations/env.py` -- Alembic's own stock
 template calls `fileConfig(config.config_file_name)` at module level, which
 this guard would otherwise flag. Written blind, the exemption below would

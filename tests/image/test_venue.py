@@ -49,7 +49,7 @@ from tests.integration.realapp.harness import Client, order_until_acked
 
 PROJECT = "borrelbeurs-venue"
 PREFIX = f"{PROJECT}-"
-LIVE_CONFIG = REPO_ROOT / "legacy" / "v1" / "config" / "exchange_config.json"
+LIVE_CONFIG = REPO_ROOT / "tests" / "fixtures" / "v1" / "config" / "exchange_config.json"
 INTERVAL_S = 5
 
 

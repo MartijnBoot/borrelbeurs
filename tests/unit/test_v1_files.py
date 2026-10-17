@@ -26,8 +26,8 @@ from app.cli.v1_files import (
 from exchange import Params
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-LIVE_CONFIG_PATH = REPO_ROOT / "legacy" / "v1" / "config" / "exchange_config.json"
-LIVE_NEWS_PATH = REPO_ROOT / "legacy" / "v1" / "static" / "news.json"
+LIVE_CONFIG_PATH = REPO_ROOT / "tests" / "fixtures" / "v1" / "config" / "exchange_config.json"
+LIVE_NEWS_PATH = REPO_ROOT / "tests" / "fixtures" / "v1" / "static" / "news.json"
 
 
 def _live() -> dict[str, Any]:

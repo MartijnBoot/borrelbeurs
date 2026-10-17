@@ -39,7 +39,9 @@ Event = dict[str, Any]
 
 # What runs in production (spec: "Scenario 1 is first deliberately").
 LIVE_CONFIG: dict[str, Any] = json.loads(
-    (REPO_ROOT / "legacy" / "v1" / "config" / "exchange_config.json").read_text(encoding="utf-8")
+    (REPO_ROOT / "tests" / "fixtures" / "v1" / "config" / "exchange_config.json").read_text(
+        encoding="utf-8"
+    )
 )
 # An empty document: `ExchangeState.from_persist` fills in v1's own defaults
 # (engine.py:154-163), which include `demand_enabled: true`.

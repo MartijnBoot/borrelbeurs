@@ -1,12 +1,15 @@
-# The phased rebuild route
+# The rebuild route — finished, and the invariants that still stand
 
-Nine phases. Each is a set of vertical slices; each slice is one PR sized to the
-way-of-working Section Definition of Done (§4.6) — reviewable in under 30 minutes, roughly
-≤400 changed lines across ≤10 files.
+**The route is complete.** All nine phases met their exit criteria, with Phase 8's offline run,
+rollback rehearsal and mock borrel waived by the owner (2026-10-17); the evidence is in
+[../rebuild-review.md](../rebuild-review.md). The per-phase plans and the build ledger were removed
+afterwards and live on at tag `v2-rebuild-complete`. This page stays as the record of the order and
+why, and because the [cross-phase invariants](#cross-phase-invariants) still bind every change.
 
-Per-phase specs live in [../specs/](../specs/). Per-phase implementation plans
-(`phase-N.md` in this folder) are written one phase at a time, in a fresh session, and
-audited by a human before any code — see [Working the loop](#working-the-loop).
+Each phase was a set of vertical slices; each slice one PR sized to the way-of-working Section
+Definition of Done (§4.6) — reviewable in under 30 minutes, roughly ≤400 changed lines across
+≤10 files. Per-phase specs live in [../specs/](../specs/). New work gets its own spec and plan
+(`phase-N-*.md` in this folder), audited before any code — see [Working the loop](#working-the-loop).
 
 ## Order, and why
 
@@ -64,23 +67,18 @@ Per way-of-working §4.2, and supported by the commands in [`.claude/commands/`]
   /review     fresh-context review of the diff          (AI, separate context)
 ```
 
-**In practice the route is driven as one long-running swarm**, per
-[ADR 0009](../adr/0009-autonomous-swarm-delivery.md): `./scripts/swarm.ps1` re-invokes the
-`/rebuild` orchestrator, which dispatches `phase-planner` → `plan-auditor` per phase and then a
-`task-builder` → `task-verifier` → `fresh-eyes-reviewer` triad per ready task, up to three
-concurrently, each in its own worktree. The audit and review gates still have to pass; they are
-signed by fresh-context agents rather than by the human, and the human reads a phase digest
-afterwards. The commands above remain the manual path for driving one step by hand.
+Phases 0–7 were driven by an autonomous agent loop (ADR 0009 in [../adr/](../adr/), since
+superseded); from 2026-09-28 every step runs by hand, one session each, with the commands
+above.
 
 Rules that hold throughout:
 
 - **No code before a spec. No implementation before an audited plan.**
 - **A fresh context between spec, plan, implementation and review.** The interview context is
-  noise for planning; the planning context biases review. Under the swarm that separation is
-  one agent per step; by hand it is one session per step.
+  noise for planning; the planning context biases review. One session per step.
 - **Never let the context that wrote the code be its only reviewer.**
 - **Everything with a consequence a `git revert` cannot undo stays with the human** — the
-  hard-stop list in [`.claude/commands/rebuild.md`](../../.claude/commands/rebuild.md).
+  hard-stop list in [`CLAUDE.md`](../../CLAUDE.md).
 - Per §4.1, use the most capable model for the engine work, specs, planning and review; bulk
   implementation of an approved plan does not need it.
 

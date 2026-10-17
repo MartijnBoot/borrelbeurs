@@ -1,6 +1,6 @@
 """AC32 (Phase 8 T9, D-42): a v1 key grants nothing in v2.
 
-v1 keys are free strings of 1-256 characters (`legacy/v1/backend/auth.py:40-48`),
+v1 keys are free strings of 1-256 characters (v1 `backend/auth.py:40-48`, tag v2-rebuild-complete),
 and `borrelbeurs-v1` published some. v2 parses a key as `bb_<key_id>_<secret>`
 before it looks anything up or hashes anything (Phase 3 SD7), so every v1-shaped
 key is a 401 having cost no database lookup and no argon2 verify. No production
