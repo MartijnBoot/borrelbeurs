@@ -3,8 +3,9 @@
 Basis: [rebuild-route.md](rebuild-route.md) (exit criteria, cross-phase invariants, out of scope) ·
 [Phase 8 spec](../specs/phase-8-deploy-cutover.md) "Follow-up, after cutover: remove `legacy/v1/`" ·
 [defect-register.md](../specs/defect-register.md)
-Status: **Draft.** Needs the owner's answers to D1–D7. After that it needs a PASS from `/audit`
-before any C-task is built (CLAUDE.md: no task without a PASS audit).
+Status: **Decisions recorded** (D1–D7, owner, 2026-10-17; D5 deferred to R7 and triage). Still
+needs a PASS from `/audit`, on this plan plus any amendment R8's triage adds, before any C-task
+is built (CLAUDE.md: no task without a PASS audit).
 
 ---
 
@@ -47,15 +48,15 @@ for "the repo as the rebuild left it". Prose that cites a deleted file can then 
 
 ## Decisions for the owner
 
-| # | Question | Recommendation |
-|---|---|---|
-| D1 | Is Phase 8 closed with its waivers? H2 (offline) is deferred, H3 (rollback) skipped, H4 (key rotation) not done. | **Yes.** The review records them as *waived by the owner*, not as *met*. |
-| D2 | What happens to the build-process docs: the per-phase plans (`phase-0…8-*.md`, ~7.6k lines), `rebuild-progress.md` (frozen swarm ledger, 125 KB), `manual-checklist.md` and `phase-8-human-steps.md`? | **Delete them, with history kept by the tag.** No later work reads them. `.claude/` agents read `phase-N-*.md` by pattern for *new* phases only. |
-| D3 | What happens to the specs and the defect register? | **Keep them.** Code comments cite their IDs (`SD14`, `AC6`, `D-20`). They are the living "why". |
-| D4 | Remove `legacy/v1/` now, as the Phase 8 spec's follow-up plans? This lifts CLAUDE.md's "never edit `legacy/v1/`" for this one task. | **Yes, in C5**, after its test fixtures are copied into `tests/`. |
-| D5 | Keep the v1-migration code: `app/cli/import_v1.py`, `app/cli/v1_files.py`, the v1 key import (Phase 8 T9) and their tests? | **Decide after R7.** R7 reports what each costs in lines and whether anything else calls it. If you might import v1's settings once more, keep `import_v1`. |
-| D6 | Remove the swarm machinery: `scripts/swarm.ps1`, `/rebuild`, `docs/plans/digests/`, `.swarm-logs/` and `/.worktrees/` in `.gitignore`. Also mark ADR 0009 and 0010 *Superseded*. | **Yes.** The swarm was stopped for good on 2026-09-28. The ADR status lines need your approval of the text. |
-| D7 | This work has no spec. Is this plan, with your answers to D1–D6, its spec? | **Yes**, then run `/audit` on it. A separate `/spec` interview adds little to a removal job. |
+| # | Question | Recommendation | Owner's answer (2026-10-17) |
+|---|---|---|---|
+| D1 | Is Phase 8 closed with its waivers? H2 (offline) is deferred, H3 (rollback) skipped, H4 (key rotation) not done. | **Yes.** The review records them as *waived by the owner*, not as *met*. | **Yes.** Phase 8 is closed; R1 records H2–H4 as waived by the owner. |
+| D2 | What happens to the build-process docs: the per-phase plans (`phase-0…8-*.md`, ~7.6k lines), `rebuild-progress.md` (frozen swarm ledger, 125 KB), `manual-checklist.md` and `phase-8-human-steps.md`? | **Delete them, with history kept by the tag.** No later work reads them. `.claude/` agents read `phase-N-*.md` by pattern for *new* phases only. | **Delete all but `phase-8-human-steps.md`, which stays.** C4 must exclude it from its `phase-{0..8}-*.md` glob. |
+| D3 | What happens to the specs and the defect register? | **Keep them.** Code comments cite their IDs (`SD14`, `AC6`, `D-20`). They are the living "why". | **Keep them.** |
+| D4 | Remove `legacy/v1/` now, as the Phase 8 spec's follow-up plans? This lifts CLAUDE.md's "never edit `legacy/v1/`" for this one task. | **Yes, in C5**, after its test fixtures are copied into `tests/`. | **Yes, in C5.** |
+| D5 | Keep the v1-migration code: `app/cli/import_v1.py`, `app/cli/v1_files.py`, the v1 key import (Phase 8 T9) and their tests? | **Decide after R7.** R7 reports what each costs in lines and whether anything else calls it. If you might import v1's settings once more, keep `import_v1`. | **Deferred to R7.** Decided at R8 triage. |
+| D6 | Remove the swarm machinery: `scripts/swarm.ps1`, `/rebuild`, `docs/plans/digests/`, `.swarm-logs/` and `/.worktrees/` in `.gitignore`. Also mark ADR 0009 and 0010 *Superseded*. | **Yes.** The swarm was stopped for good on 2026-09-28. The ADR status lines need your approval of the text. | **Yes, in C3.** The ADR status text is still a hard stop for approval. |
+| D7 | This work has no spec. Is this plan, with your answers to D1–D6, its spec? | **Yes**, then run `/audit` on it. A separate `/spec` interview adds little to a removal job. | **Yes.** `/audit` runs on the plan plus any A1 from triage. |
 
 ---
 
@@ -238,10 +239,10 @@ commit.** Note that `bundle/` is rebuilt by `scripts/make_bundle.sh`.
 ### C4 — Completed build-process docs (D2)
 
 - **Delete:**
-  - `docs/plans/phase-{0..8}-*.md`;
+  - `docs/plans/phase-{0..8}-*.md`, except `phase-8-human-steps.md` (D2);
   - `docs/plans/rebuild-progress.md`;
-  - `docs/plans/manual-checklist.md`;
-  - `docs/plans/phase-8-human-steps.md`.
+  - `docs/plans/manual-checklist.md`.
+- **Keep:** `phase-8-human-steps.md` (D2: the H1 rehearsal record and the waiver notes).
 - **Keep:** `rebuild-route.md`. `.claude/agents` read its invariants table, so it is
   load-bearing. Retitle its intro as the record of a finished route plus the standing invariants.
 - **`.github/workflows/ci.yml`:** it cites `manual-checklist`. Fix the comment.
