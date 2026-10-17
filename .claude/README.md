@@ -22,12 +22,12 @@ New work runs by hand, one fresh session per step; clear whatever you happened t
 | Command | Purpose | Model |
 |---|---|---|
 | `/backlog` | Brainstorm a feature idea into `docs/backlog.md`; order it; promote it to `/spec` | opus |
-| `/analyse` | Fan out `codebase-analyst` agents over a slice of the code | opus |
+| `/analyse` | Fan out `codebase-analyst` agents over a slice of the code | sonnet |
 | `/spec` | Interview, then write a phase spec | opus |
 | `/plan` | Read-only exploration → an auditable, schedulable task plan | opus |
-| `/audit` | Traceability table + the checklist, walked with you | opus |
+| `/audit` | Traceability table + the checklist, walked with you | sonnet |
 | `/build` | Implement one task, or a whole plan, from an audited plan | opus |
-| `/verify` | Run the gate, report actual output | sonnet |
+| `/verify` | Run the gate, report actual output | haiku |
 | `/review` | Fresh-context review against spec and plan | opus |
 | `/human` | Guide you through a plan's human-only steps (`phase-N-human-steps.md`) | sonnet |
 

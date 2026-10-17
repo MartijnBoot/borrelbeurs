@@ -45,9 +45,10 @@ def apply_orders(
 ) -> tuple[EngineState, OrderDiagnostics]:
     """One order batch: v1's `post_order` pricing lines, then `single_step`, then `t_round + 1`.
 
-    `flow_ema` and `last_order_ts` lived in v1's API (legacy/v1/backend/api.py:355-361),
-    not its engine; they are pricing state, so they move here. `flow_ema` is
-    updated only by orders and never decays (D-23, ADR 0012).
+    `flow_ema` and `last_order_ts` lived in v1's API (v1 backend/api.py:355-361,
+    tag v2-rebuild-complete), not its engine; they are pricing state, so they
+    move here. `flow_ema` is updated only by orders and never decays (D-23,
+    ADR 0012).
     """
     p = spec.params
     flow_ema = np.where(

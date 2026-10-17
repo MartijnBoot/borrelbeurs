@@ -3,8 +3,9 @@
 `legacy/v1/` was removed after cutover. The four files v2's tests still read --
 the live config, the news file, the theme source and the API the market-event
 and bar-price ports cite -- were copied first into `tests/fixtures/v1/`,
-unchanged. `SHA256SUMS` pins each one, the same pin
-`tests/engine/test_golden_capture.py` holds on `v1_reference/engine.py`: the
+unchanged. `SHA256SUMS` pins each one, and this file hard-codes the same
+digests -- the pin `tests/engine/test_golden_capture.py` holds on
+`v1_reference/engine.py`, so a fixture cannot be edited with its sum: the
 golden scenarios and the port tests mean something only while these are v1's
 bytes. `.gitattributes` turns line-ending conversion off, so `backend/api.py`'s
 CRLF blob is what every platform checks out and what its hash covers.
@@ -50,13 +51,17 @@ def test_every_v1_fixture_is_v1_byte_for_byte() -> None:
     )
 
 
-def test_the_pins_cover_the_four_files_the_tests_read() -> None:
-    names = {line.split(maxsplit=1)[1] for line in SUMS.read_text(encoding="utf-8").splitlines()}
-    assert names == {
-        "backend/api.py",
-        "config/exchange_config.json",
-        "static/news.json",
-        "static/theme.js",
+def test_sha256sums_holds_the_pins_written_here() -> None:
+    # Hard-coded, like V1_ENGINE_SHA256: editing a fixture and SHA256SUMS together must fail.
+    lines = SUMS.read_text(encoding="utf-8").splitlines()
+    pinned = {name: digest for digest, name in (line.split(maxsplit=1) for line in lines)}
+    assert pinned == {
+        "backend/api.py": "43816cde142f218a54f67d7d99ada876deef56198c0bd2f0205bd6f9f84e6fed",
+        "config/exchange_config.json": (
+            "6aff447c35d29693e0752ca8ceb4f12b05aad9de835035b850573698dd66413e"
+        ),
+        "static/news.json": "94aeb2d1f95b0496a43379e486d9aaa8fb6e26b3780f69fda4cfe4d0c3c34747",
+        "static/theme.js": "b8504258ea50f21e9fb92613d603ddf7b8e90d48c5c95b7de75b21267b212b8c",
     }
 
 

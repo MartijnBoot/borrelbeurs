@@ -1,7 +1,7 @@
 # Plan: Phase 8 — the human steps (H1–H4)
 
 Spec: [phase-8-deploy-cutover.md](../specs/phase-8-deploy-cutover.md), including Amendment A1 (no
-v1 fallback) · Parent plan: [phase-8-deploy-cutover.md](phase-8-deploy-cutover.md) · Status:
+v1 fallback) · Parent plan: `phase-8-deploy-cutover.md` (tag v2-rebuild-complete) · Status:
 **Not started** · Run it with `/human 8` (an agent walks you through it; you do the steps)
 
 These are the steps only a person can do: a Render dashboard, GitHub secrets, a laptop at a

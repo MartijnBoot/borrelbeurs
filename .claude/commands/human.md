@@ -16,7 +16,7 @@ Read the plan, its "Rules for the agent" section first, and obey it exactly. In 
 
 - One step at a time. Say what to do, what to paste back, then **wait**.
 - Do not do the step: no deploy workflow (CLAUDE.md), no secrets or variables, no dashboards,
-  nothing in `borrelbeurs-v1` (hard stop, ADR 0009).
+  nothing in `borrelbeurs-v1` (hard stop, CLAUDE.md).
 - Never connect to production, and never `curl` a deployed URL: ask me to run it and paste.
 - Never ask for, repeat or write key material, `DATABASE_URL` or a hook URL.
 - Run the plan's "Preconditions (agent checks)" yourself first and show the real output.

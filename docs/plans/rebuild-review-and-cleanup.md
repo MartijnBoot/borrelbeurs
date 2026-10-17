@@ -234,7 +234,8 @@ commit.** Note that `bundle/` is rebuilt by `scripts/make_bundle.sh`.
   - `docs/README.md` "Working on this".
 - Docstrings in `tests/meta/test_config_boundary.py:45` and `test_import_side_effects.py:37` cite
   `rebuild-progress.md`. Rewrite them to cite the tag.
-- **Allowed `git grep swarm` hits:** ADR 0009, ADR 0010, and `docs/specs/` (frozen history).
+- **Allowed `git grep swarm` hits:** ADR 0009, ADR 0010, and `docs/specs/` (frozen history);
+  added at `/review`: `.claude/README.md` "History", this plan, and `docs/rebuild-review.md`.
 
 ### C4 — Completed build-process docs (D2)
 
@@ -298,7 +299,11 @@ commit.** Note that `bundle/` is rebuilt by `scripts/make_bundle.sh`.
   - `README.md` drops its mention.
 - **Gate:** `engine-guardian` confirms that the golden replay and capture `--check` are
   unchanged. Scenarios now read the copied config, so the diff must be empty.
-- **Allowed `git grep legacy/v1` hits:** `docs/specs/`, `docs/adr/` (history).
+- **Allowed `git grep legacy/v1` hits:** `docs/specs/`, `docs/adr/` (history); added at
+  `/review`, prose that points at the tag (`CLAUDE.md`, `docs/README.md`, `.gitignore`,
+  `phase-8-human-steps.md`, `tests/meta/test_v1_fixtures.py`), this plan,
+  `docs/rebuild-review.md`, and `tests/unit/test_check_image.py` (a synthetic path the image
+  check must reject).
 
 ### C6 — v1-migration code (only if D5 says remove)
 
@@ -399,3 +404,12 @@ line is ticked on that instruction. Findings raised at the audit and accepted wi
 - [x] Nothing touches prod, secrets or infra it should not
 
 Audited by: MartijnBoot (human, `/audit` "accept all lines")  Date: 2026-10-17
+
+## Triage and approvals
+
+On 2026-10-17 the owner told the agent to perform the plan without further approval stops. So
+the "proposed" column of `docs/rebuild-review.md` stands as the R8 triage (D5: keep
+`import_v1`, so C6 was skipped), and the text-approval stops for the ADR 0009/0010 status lines
+(C3) and `CLAUDE.md` (C3, C5, C8) are waived by the owner. The `/review` of C3–C8 found the
+gaps fixed on `chore/cleanup-review-fixes`; the owner approved a docstring-only edit under
+`exchange/` there (two v1 citations), checked by `golden_linux.sh`.

@@ -40,9 +40,10 @@ def advance(
     """The next state: an order batch if `orders` is given, a scheduled tick if not.
 
     The step order is v1's API call sequence (plan D3). A tick is
-    `_snapshot_payload_unlocked` (legacy/v1/backend/api.py:775-777): idle,
-    jumps, Brownian. An order is `post_order` (api.py:352-392): the order step,
-    jumps, then that same tick sequence -- so jumps run twice (plan R10).
+    `_snapshot_payload_unlocked` (v1 backend/api.py:775-777, tag
+    v2-rebuild-complete): idle, jumps, Brownian. An order is `post_order`
+    (api.py:352-392): the order step, jumps, then that same tick sequence --
+    so jumps run twice (plan R10).
 
     `version` moves on every call; `tick_index` only on a tick (D9).
     `orders` must be N finite, non-negative numbers (D12); mapping drink names
