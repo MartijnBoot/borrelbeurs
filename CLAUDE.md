@@ -5,23 +5,33 @@ Guidance for Claude Code in this repo. Fuller context: [README.md](README.md),
 
 ## Project
 
-BorrelBeurs — a drink stock exchange for student borrels, rebuilt from v1 (v1's source is at
-tag `v2-rebuild-complete`, under `legacy/v1/`). FastAPI (`app/`) serving a Vite/React frontend (`web/`) from one origin,
-backed by **Postgres** (`db/`, Alembic), with the pure pricing engine (`exchange/`) underneath.
+BorrelBeurs — a drink stock exchange for student borrels. FastAPI (`app/`) serving a Vite/React
+frontend (`web/`) from one origin, backed by **Postgres** (`db/`, Alembic), with the pure pricing
+engine (`exchange/`) underneath. The v2 rebuild is finished; it runs on Render and offline at the
+venue.
+
+History lives at tag `v2-rebuild-complete`: v1's source (`legacy/v1/`), the per-phase plans and
+the build ledger. What is left in `docs/` is what still binds: specs, ADRs, design, runbooks, the
+route's invariants, the [rebuild review](docs/rebuild-review.md).
 
 ## Commands
 
 - `./scripts/setup.sh` — clone to running stack: env, deps, `docker compose up -d db`, migrate.
   Idempotent. Git Bash only; needs `docker`, `uv`, `pnpm`.
-- `./scripts/check.sh` — the gate: format, lint, types, unit, integration (Python and web),
-  stopping at the first failure. Needs the compose `db` running for the integration step. CI
-  will run this same script (T11). Run it before calling any task done.
+- `./scripts/check.sh` — the gate, 13 steps: format, lint, types, API-types drift, web build,
+  built-output references, unit, integration and e2e (Python and web), stopping at the first
+  failure. Needs the compose `db` running. CI runs this same script. Run it before calling any
+  task done. On Windows it skips the 12 golden tests — run `bash scripts/golden_linux.sh` too
+  whenever a change can reach the engine or its scenarios.
 - `uv run alembic -c db/alembic.ini revision -m "<msg>"` — new migration.
 - `uv run alembic -c db/alembic.ini upgrade head` / `downgrade -1` — apply / roll back.
 - `uv run pytest tests/unit tests/meta tests/engine` — fast tests, no database needed.
-- `uv run python -m tests.engine.golden.capture --check` — recapture the golden fixtures from
-  the v1 reference and diff them (`--write` regenerates them: a deliberate behaviour change only).
-- `uv run uvicorn app.main:app --reload --port 8000` — run the app.
+- `bash scripts/golden_linux.sh [--write]` — recapture the golden fixtures from the v1 reference
+  in the pinned Linux image, diff them, and run the engine tests (`--write` regenerates them: a
+  deliberate behaviour change only). The fixtures are Linux numbers: run directly on Windows,
+  `uv run python -m tests.engine.golden.capture --check` prints DIFFERS.
+- `uv run uvicorn app.main:app --reload --port 8000` — run the app. `./dev.ps1 up [-NoWeb]` /
+  `down` (PowerShell) starts Postgres, migrations, the API and Vite in the background.
 - `uv run python -m app.cli.import_v1 --config <path> [--news <path>] [--bar-prices <path>]` —
   import v1's files as a new draft run; prints its `run_id`.
 - `uv run python -m app.cli.keys create --role <display|bar|admin> --label <l>` / `list` /
@@ -37,6 +47,8 @@ backed by **Postgres** (`db/`, Alembic), with the pure pricing engine (`exchange
 
 ## Workflow
 
+- New work: `/backlog` → `/spec` → `/plan` → `/audit` → `/build` → `/verify` → `/review`, one
+  fresh session per step ([.claude/README.md](.claude/README.md)).
 - Work from an audited plan in `docs/plans/phase-N-*.md`. No task without a PASS audit — not
   yours to waive.
 - One task per branch, conventional commits (`feat(phase-0): T7 — ...`). `/build N` with no
