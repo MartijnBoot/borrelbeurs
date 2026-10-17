@@ -187,6 +187,15 @@ order and the evidence. Applying the Blueprint **costs money** (SD10): the human
   the record notes it as a tuning follow-up. **Plan gap:** step 8 says "deploy n+1", but Render
   already runs n+2, which is newer, so deploying n+1 would be a rollback. Step 8 needs a newer
   SHA (n+3), and only a SHA with the D-H1-2 fix can give a green smoke step.
+  **Step 6 done with n+3 (`fe5c063e…`), 2026-10-17**: deploy run `39016701680` green (hook
+  08:15:57 UTC, 1m46s), smoke from `main` with `--wait-seconds 600`: seven steps passed, the first
+  `/readyz` came 2 s after `runtime_started`, so D-H1-2 is closed. Human's Render log of that
+  deploy: new instance `lock_wait` 08:16:23, "service is live" 08:16:28, old `Shutting down`
+  08:17:27.434 (~59 s after live, same as F-H1-1), `runtime_stopped` .625, new `lock_acquired`
+  08:17:28.160 (`waited_s` 64), `runtime_started` .817 (handover 1.19 s). Render overlapped the two
+  instances again. No `/ws` or `/api/orders` in the window: **no borrel was running, so step 8 is
+  not done**; it needs n+4 deployed while phones are on run 1. No version lines in the logs, so
+  contiguous versions across the handover are still unshown (step 9).
 
 ---
 
