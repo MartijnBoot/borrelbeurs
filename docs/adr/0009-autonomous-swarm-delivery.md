@@ -3,6 +3,11 @@
 Date: 2026-09-21 · Status: Accepted · Amended 2026-09-22 by
 [ADR 0010](0010-the-swarm-owns-its-own-delivery-mechanics.md) (§5 and the hard-stop list)
 
+Status: **Superseded (2026-10-17)** — the swarm was stopped on 2026-09-28 and its machinery
+(`scripts/swarm.ps1`, `/rebuild`) removed; see tag `v2-rebuild-complete`. Work now runs by hand,
+one session per step ([.claude/README.md](../../.claude/README.md)); the hard-stop list lives in
+[CLAUDE.md](../../CLAUDE.md).
+
 ## Context
 
 The rebuild loop as designed (`docs/way-of-working.md` §4.2, and `/rebuild` as first written)

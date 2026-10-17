@@ -64,23 +64,18 @@ Per way-of-working §4.2, and supported by the commands in [`.claude/commands/`]
   /review     fresh-context review of the diff          (AI, separate context)
 ```
 
-**In practice the route is driven as one long-running swarm**, per
-[ADR 0009](../adr/0009-autonomous-swarm-delivery.md): `./scripts/swarm.ps1` re-invokes the
-`/rebuild` orchestrator, which dispatches `phase-planner` → `plan-auditor` per phase and then a
-`task-builder` → `task-verifier` → `fresh-eyes-reviewer` triad per ready task, up to three
-concurrently, each in its own worktree. The audit and review gates still have to pass; they are
-signed by fresh-context agents rather than by the human, and the human reads a phase digest
-afterwards. The commands above remain the manual path for driving one step by hand.
+Phases 0–7 were driven by an autonomous agent loop (ADR 0009 in [../adr/](../adr/), since
+superseded); from 2026-09-28 every step runs by hand, one session each, with the commands
+above.
 
 Rules that hold throughout:
 
 - **No code before a spec. No implementation before an audited plan.**
 - **A fresh context between spec, plan, implementation and review.** The interview context is
-  noise for planning; the planning context biases review. Under the swarm that separation is
-  one agent per step; by hand it is one session per step.
+  noise for planning; the planning context biases review. One session per step.
 - **Never let the context that wrote the code be its only reviewer.**
 - **Everything with a consequence a `git revert` cannot undo stays with the human** — the
-  hard-stop list in [`.claude/commands/rebuild.md`](../../.claude/commands/rebuild.md).
+  hard-stop list in [`CLAUDE.md`](../../CLAUDE.md).
 - Per §4.1, use the most capable model for the engine work, specs, planning and review; bulk
   implementation of an approved plan does not need it.
 

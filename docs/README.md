@@ -20,13 +20,7 @@
 
 The workflow is committed in [`.claude/`](../.claude/) — see [.claude/README.md](../.claude/README.md).
 
-The rebuild runs as one long-running swarm, per
-[adr/0009-autonomous-swarm-delivery.md](adr/0009-autonomous-swarm-delivery.md):
-
-    ./scripts/swarm.ps1   drive the route until it finishes or blocks
-    /rebuild [N]          one orchestrator run, resumed from plans/rebuild-progress.md
-
-The per-step commands remain the manual path, one fresh session each:
+New work runs by hand, one fresh session per step:
 
     /analyse <thing>   understand what is really there
     /spec <N>          interview -> docs/specs/phase-N.md
@@ -44,7 +38,6 @@ T1 has landed — this repository *is* T1's output. Plans for phases 1–8 are w
 a time, each audited before any code. `specs/phase-N.md` states a phase's scope, acceptance
 criteria and exit condition; `plans/phase-N.md` states the file-by-file task breakdown.
 
-Live state is [plans/rebuild-progress.md](plans/rebuild-progress.md); what each finished phase
-produced is in [plans/digests/](plans/digests/).
+Live state is [plans/rebuild-progress.md](plans/rebuild-progress.md).
 
 One change has already landed against v1: see [adr/0007-v1-authorization-hotfix.md](adr/0007-v1-authorization-hotfix.md).

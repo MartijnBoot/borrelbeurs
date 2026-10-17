@@ -75,3 +75,20 @@ backed by **Postgres** (`db/`, Alembic), with the pure pricing engine (`exchange
 - Never commit `.env*`, `config/keys.json`, real secrets or credentials.
 - Never edit `legacy/v1/` — read it for reference only.
 - Never use production credentials, or connect to production, from a dev or agent session.
+
+## Hard stops — the owner's, never an agent's
+
+Everything with a consequence a `git revert` cannot undo stays with the owner. Stop, state the
+question, the evidence and your recommended answer, and wait:
+
+- A spec ambiguity with two readings that produce different user-visible behaviour, or any
+  ambiguity at all in the pricing maths.
+- A golden fixture diverges, or `engine-guardian` reports a maths change.
+- A new third-party dependency is needed.
+- A decision that reverses or contradicts a product ADR (every ADR but 0009 and 0010), or changes
+  anything in `docs/design/`.
+- A credential, secret or external account is needed — `config/keys.json`, Render, GitHub
+  settings, anything you would have to be given rather than compute.
+- A cross-phase invariant is broken and cannot be restored inside the task that broke it.
+- Pushing, merging, opening a PR, deleting a remote branch, any history rewrite or force-push —
+  and anything at all touching the `borrelbeurs-v1` repository.

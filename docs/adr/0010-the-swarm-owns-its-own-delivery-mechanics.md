@@ -2,6 +2,10 @@
 
 Date: 2026-09-22 · Status: Accepted · Amends: [ADR 0009](0009-autonomous-swarm-delivery.md) §5
 
+Status: **Superseded (2026-10-17)**, with ADR 0009 — the swarm was stopped on 2026-09-28 and the
+delivery mechanics it owned were removed; see tag `v2-rebuild-complete`. Work now runs by hand
+([.claude/README.md](../../.claude/README.md)).
+
 ## Context
 
 Three consecutive swarm runs produced zero product commits. Nothing in the spec, the plan or

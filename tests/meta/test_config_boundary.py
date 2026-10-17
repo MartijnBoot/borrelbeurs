@@ -42,7 +42,7 @@ T4b's other predicate lives here instead: a second `BaseSettings` subclass
 anywhere under `app/` or `db/` would read the environment exactly as validly
 as `Settings` does, with no `os.environ` reference in its own source for the
 walk above to ever see (T4's Gate C, 2026-09-27 — the `second-basesettings`
-gap; see `docs/plans/rebuild-progress.md`). That is a question about the
+gap; see the rebuild ledger at tag `v2-rebuild-complete`). That is a question about the
 *shape* of a class over the same roots this file already scans, not about
 module-level statements, so it belongs here rather than in
 `test_import_side_effects.py`.
