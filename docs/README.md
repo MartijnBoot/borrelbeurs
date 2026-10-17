@@ -32,12 +32,7 @@ New work runs by hand, one fresh session per step:
 
 ## Status
 
-The architecture and the phase boundaries are settled. Phase 0's plan
-([plans/phase-0-foundations.md](plans/phase-0-foundations.md)) is written and audited, and its
-T1 has landed — this repository *is* T1's output. Plans for phases 1–8 are written one phase at
-a time, each audited before any code. `specs/phase-N.md` states a phase's scope, acceptance
-criteria and exit condition; `plans/phase-N.md` states the file-by-file task breakdown.
-
-Live state is [plans/rebuild-progress.md](plans/rebuild-progress.md).
+The rebuild is finished: all nine phases are on `main`. The per-phase plans and the build ledger
+were removed after the review and live on at tag `v2-rebuild-complete`.
 
 One change has already landed against v1: see [adr/0007-v1-authorization-hotfix.md](adr/0007-v1-authorization-hotfix.md).

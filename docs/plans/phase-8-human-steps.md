@@ -83,7 +83,7 @@ you keep as a backup, and any v1 still running accepts them.
 date, and the repository's visibility now.
 
 **Record:** `key-rotation`. Fields: where v1 ran, what was done to each, date, repository status,
-and the test output above. Tick the old line in `docs/plans/manual-checklist.md` ("rotate the v1
+and the test output above. Tick the old line in `docs/plans/manual-checklist.md` (tag `v2-rebuild-complete`; "rotate the v1
 access keys") only if the human asks.
 
 - Notes: **Open, deferred to last.** Tests green (13 passed). v1 runs as one Render service
@@ -291,7 +291,7 @@ a follow-up, not a pass.
 1. The four records exist under `docs/runbooks/rehearsals/`. The agent checks they name an image
    SHA and contain no key material (`grep -E "bb_[A-Za-z0-9]+_" docs/runbooks/rehearsals/*.md`
    finds nothing).
-2. Tick the exit line of Phase 8 in `docs/plans/manual-checklist.md` (deploy to Render, run
+2. Tick the exit line of Phase 8 in `docs/plans/manual-checklist.md` (tag `v2-rebuild-complete`; deploy to Render, run
    offline, rehearse a rollback, hold a mock borrel) **if the human asks**.
 3. Phase 8 is done. The follow-up the spec lists, removing `legacy/v1/`, is a separate task
    (spec, Amendment A1).

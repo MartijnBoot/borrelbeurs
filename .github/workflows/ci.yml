@@ -119,7 +119,7 @@ jobs:
           GITLEAKS_VERSION: 8.28.0
           # No GITLEAKS_LICENSE: that is only required for a GitHub
           # organization's repositories, and this one is on a personal
-          # account (plan:299, docs/plans/manual-checklist.md T12).
+          # account (Phase 0 plan T12, tag v2-rebuild-complete).
 
   # Phase 8 (PD10, SD6): the image is built once, here, checked, and handed on as an
   # artifact. The drills and the push use that artifact, never a rebuild.

@@ -1,12 +1,15 @@
-# The phased rebuild route
+# The rebuild route — finished, and the invariants that still stand
 
-Nine phases. Each is a set of vertical slices; each slice is one PR sized to the
-way-of-working Section Definition of Done (§4.6) — reviewable in under 30 minutes, roughly
-≤400 changed lines across ≤10 files.
+**The route is complete.** All nine phases met their exit criteria, with Phase 8's offline run,
+rollback rehearsal and mock borrel waived by the owner (2026-10-17); the evidence is in
+[../rebuild-review.md](../rebuild-review.md). The per-phase plans and the build ledger were removed
+afterwards and live on at tag `v2-rebuild-complete`. This page stays as the record of the order and
+why, and because the [cross-phase invariants](#cross-phase-invariants) still bind every change.
 
-Per-phase specs live in [../specs/](../specs/). Per-phase implementation plans
-(`phase-N.md` in this folder) are written one phase at a time, in a fresh session, and
-audited by a human before any code — see [Working the loop](#working-the-loop).
+Each phase was a set of vertical slices; each slice one PR sized to the way-of-working Section
+Definition of Done (§4.6) — reviewable in under 30 minutes, roughly ≤400 changed lines across
+≤10 files. Per-phase specs live in [../specs/](../specs/). New work gets its own spec and plan
+(`phase-N-*.md` in this folder), audited before any code — see [Working the loop](#working-the-loop).
 
 ## Order, and why
 
