@@ -34,7 +34,7 @@ Deliberately **not** covered here:
   different walk (module-level statements only) and its own allowlist — built
   as `tests/meta/test_import_side_effects.py` (T4b) rather than bolted onto
   this one.
-- `legacy/v1/**` (frozen v1 reference) and `exchange/**` (the pure engine,
+- `tests/fixtures/v1/**` (frozen v1 files) and `exchange/**` (the pure engine,
   entering the gate in Phase 1). Both are excluded from ruff and mypy as well
   (`pyproject.toml:52`, `pyproject.toml:63`); this is plan D13, settled.
 

@@ -3,7 +3,7 @@
 # Line endings are governed by .gitattributes (`* -text`: git converts nothing,
 # ever). This file must not fight that, so `end_of_line` is set only for trees
 # that are v2-native and already uniformly LF. It is deliberately NOT set at the
-# root, and deliberately unset under legacy/v1/, exchange/ and .claude/, which
+# root, and deliberately unset under tests/fixtures/v1/, exchange/ and .claude/, which
 # carry CRLF blobs imported from v1.
 #
 # Normalising those to LF stays possible; it is a deliberate, separate commit,
@@ -39,7 +39,7 @@ end_of_line = lf
 # --- imported from v1: leave every byte alone --------------------------------
 # Phase 1's golden fixtures rest on byte-identity with v1.
 
-[legacy/v1/**]
+[tests/fixtures/v1/**]
 charset = unset
 indent_style = unset
 indent_size = unset

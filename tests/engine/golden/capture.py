@@ -16,7 +16,7 @@ maths changes; only where its noise comes from.
 **The call sequences (plan D3)** are v1's API code with everything that never
 touches `y` left in, so the reference runs exactly as production did:
 
-- tick  = `_snapshot_payload_unlocked` (legacy/v1/backend/api.py:775-778):
+- tick  = `_snapshot_payload_unlocked` (v1 backend/api.py:775-778, tests/fixtures/v1/):
   idle, jumps, Brownian, `snapshot_if_due`.
 - order = `post_order` (api.py:355-392): `flow_ema`, `last_order_ts`,
   `single_step`, `t_round + 1`, totals, jumps, trim history -- then the tick

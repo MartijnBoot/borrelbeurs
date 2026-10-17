@@ -1,7 +1,7 @@
 """`exchange.steps.apply_orders`: v1's order path, bit for bit (Phase 1 plan T4).
 
 The order half of D3 is the `flow_ema` and `last_order_ts` updates from v1's
-`post_order` (legacy/v1/backend/api.py:355-361), then `single_step`
+`post_order` (v1 backend/api.py:355-361, tests/fixtures/v1/), then `single_step`
 (v1 engine.py:190-236), then `t_round + 1`. Every comparison with v1 is exact.
 
 **AC10, as measured here.** The plan's original AC10 check -- over 30 rounds of
@@ -109,7 +109,7 @@ def _v1_twin(spec: MarketSpec, state: EngineState, params: dict[str, Any]) -> An
 
 
 def _v1_post_order(st: Any, vec: FloatArray, now_ms: int) -> dict[str, Any]:
-    """legacy/v1/backend/api.py:355-367, the lines that touch pricing state."""
+    """v1 backend/api.py:355-367 (tests/fixtures/v1/), the lines that touch pricing state."""
     st.flow_ema = (1.0 - st.params.flow_beta) * st.flow_ema + st.params.flow_beta * vec
     for i, q in enumerate(vec):
         if q > 0:

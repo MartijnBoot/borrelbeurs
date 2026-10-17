@@ -10,7 +10,7 @@ here, so the import (SD15) either has a complete, valid plan or writes nothing:
 - **Unknown keys are errors.** v1 ignores them; here an unknown `params` key, an
   unknown top-level key, or a drink name in a bar-price map that is not in
   `names` (PD12) fails the import, so a typo cannot silently price a drink.
-- **Bar prices follow v1's precedence** (`legacy/v1/backend/api.py:167-190`,
+- **Bar prices follow v1's precedence** (v1 `backend/api.py:167-190`, tag v2-rebuild-complete;
   PD11): `p0`, overridden by the config's `bar_price` key, overridden by the
   sidecar.
 - **News levels are lowercased** and anything but the four levels is rejected

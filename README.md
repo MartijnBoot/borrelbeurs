@@ -40,9 +40,8 @@ tests, in that order, and it is the same script CI runs.
 | `docker/` | Dockerfile and build context |
 | `scripts/` | `setup.sh`, `check.sh`, `smoke.py`, `make_bundle.sh`, `ci/` (image checks, Trivy) |
 | `deploy/venue/` | The offline venue stack: compose file, `.cmd` wrappers, `LEESMIJ.md` |
-| `tests/` | `unit/`, `integration/`, `engine/` (golden fixtures), `meta/` (boundary checks) |
+| `tests/` | `unit/`, `integration/`, `engine/` (golden fixtures), `meta/` (boundary checks), `fixtures/v1/` (the v1 files the tests read, hash-pinned) |
 | `docs/` | Specs, ADRs, design notes and the rebuild plan |
-| `legacy/v1/` | v1, verbatim and frozen. Reference only — no gate reads it, nothing imports it |
 
 Start with [docs/README.md](docs/README.md). Architectural decisions are in
 [docs/adr/](docs/adr/); the rebuild route is [docs/plans/rebuild-route.md](docs/plans/rebuild-route.md).

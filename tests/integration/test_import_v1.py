@@ -32,8 +32,8 @@ from exchange import MarketSpec, Params
 from tests.engine.golden.replay import spec_from_config
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-LIVE_CONFIG_PATH = REPO_ROOT / "legacy" / "v1" / "config" / "exchange_config.json"
-LIVE_NEWS_PATH = REPO_ROOT / "legacy" / "v1" / "static" / "news.json"
+LIVE_CONFIG_PATH = REPO_ROOT / "tests" / "fixtures" / "v1" / "config" / "exchange_config.json"
+LIVE_NEWS_PATH = REPO_ROOT / "tests" / "fixtures" / "v1" / "static" / "news.json"
 TABLES = tuple(table.name for table in Base.metadata.sorted_tables)
 ARRAYS = ("p_min", "p_max", "p0", "a", "d", "s0", "c")
 

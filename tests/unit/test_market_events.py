@@ -17,7 +17,7 @@ from app.runtime.market_events import (
 )
 from tests.unit.test_gap import _traded
 
-V1_API = Path(__file__).resolve().parents[2] / "legacy" / "v1" / "backend" / "api.py"
+V1_API = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "v1" / "backend" / "api.py"
 
 BIER = DrinkRow(
     drink_id=7,

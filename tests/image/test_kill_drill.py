@@ -26,7 +26,7 @@ from app.db.mapping import cents_from_quantised
 from tests.image.conftest import REPO_ROOT, App, Stack, docker
 from tests.integration.realapp.harness import Client, order_until_acked
 
-LIVE_CONFIG = REPO_ROOT / "legacy" / "v1" / "config" / "exchange_config.json"
+LIVE_CONFIG = REPO_ROOT / "tests" / "fixtures" / "v1" / "config" / "exchange_config.json"
 CATCH_UP_BUDGET_S = 30.0  # app/runtime/gap.py DEFAULT_CATCH_UP_BUDGET_MS
 READY_AFTER_DB_S = 60.0  # AC18
 

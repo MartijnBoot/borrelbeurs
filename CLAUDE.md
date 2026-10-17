@@ -5,8 +5,8 @@ Guidance for Claude Code in this repo. Fuller context: [README.md](README.md),
 
 ## Project
 
-BorrelBeurs — a drink stock exchange for student borrels, rebuilt from v1 (frozen, reference
-only, in `legacy/v1/`). FastAPI (`app/`) serving a Vite/React frontend (`web/`) from one origin,
+BorrelBeurs — a drink stock exchange for student borrels, rebuilt from v1 (v1's source is at
+tag `v2-rebuild-complete`, under `legacy/v1/`). FastAPI (`app/`) serving a Vite/React frontend (`web/`) from one origin,
 backed by **Postgres** (`db/`, Alembic), with the pure pricing engine (`exchange/`) underneath.
 
 ## Commands
@@ -73,7 +73,7 @@ backed by **Postgres** (`db/`, Alembic), with the pure pricing engine (`exchange
   `Bash` — a `sed -i` on a superseded revision is not stopped by anything, so don't.
 - Never introduce a second database engine, or a second place that reads the process environment.
 - Never commit `.env*`, `config/keys.json`, real secrets or credentials.
-- Never edit `legacy/v1/` — read it for reference only.
+- Never edit `tests/fixtures/v1/` — v1's files, hash-pinned by `tests/meta/test_v1_fixtures.py`.
 - Never use production credentials, or connect to production, from a dev or agent session.
 
 ## Hard stops — the owner's, never an agent's

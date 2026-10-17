@@ -6,7 +6,7 @@ static/earnings
 config/keys.json
 config/.jwt_secret
 
-# T2 moved v1 to legacy/v1/, so the same files now have a different path.
+# T2 moved v1 to legacy/v1/ (removed since; tag v2-rebuild-complete), so the same files had a different path.
 # Unanchored, so a re-add stays ignored in either place.
 keys.json
 .jwt_secret

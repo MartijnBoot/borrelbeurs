@@ -4,7 +4,7 @@ v1 shipped `.dockerignore` entries the hard way: a leaked `config/keys.json` or
 a `.tar` save baked into a layer is the kind of mistake that is invisible until
 someone inspects the image, and by then it has shipped. Phase 0 plan T10 says
 to carry v1's list across rather than retype it, and to add the entries v2
-introduces (`.env*`, `node_modules`, `legacy/`, `docs/`, `tests/`, `.github/`,
+introduces (`.env*`, `node_modules`, `docs/`, `tests/`, `.github/`,
 `web/dist`). This guard pins that full list down so a future edit cannot drop
 an entry silently — the same drift problem
 `test_compose_matches_env_example.py` solves for the compose file, applied to
@@ -57,7 +57,6 @@ CARRIED_OVER_FROM_V1 = [
 ADDED_FOR_V2 = [
     "**/.env*",
     "**/node_modules",
-    "legacy/",
     "docs/",
     "tests/",
     ".github/",
@@ -146,9 +145,14 @@ def test_no_keys_json_is_tracked() -> None:
 
 
 def test_the_keys_file_detector_flags_any_depth() -> None:
-    paths = ["config/keys.json", "legacy/v1/config/keys.json", "docs/keys.json.md", "keys.jsonl"]
+    paths = [
+        "config/keys.json",
+        "tests/fixtures/v1/config/keys.json",
+        "docs/keys.json.md",
+        "keys.jsonl",
+    ]
 
-    assert keys_files(paths) == ["config/keys.json", "legacy/v1/config/keys.json"]
+    assert keys_files(paths) == ["config/keys.json", "tests/fixtures/v1/config/keys.json"]
 
 
 def test_no_tracked_file_holds_an_access_key() -> None:

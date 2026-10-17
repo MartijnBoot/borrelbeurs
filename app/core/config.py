@@ -4,7 +4,7 @@ Two rules hold here, and both are load-bearing.
 
 **Nothing happens at import.** Importing this module reads no variable, opens
 no file and creates no directory; the environment is touched only when
-`get_settings()` is called. v1's `legacy/v1/backend/config.py:11-13` `mkdir`s
+`get_settings()` is called. v1's `backend/config.py:11-13` (tag v2-rebuild-complete) `mkdir`s
 three directories at import time, which means merely importing it mutates the
 filesystem — in a test, in a build, in a container being inspected. This module
 must never acquire that habit.

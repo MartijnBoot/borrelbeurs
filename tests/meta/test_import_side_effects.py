@@ -1,6 +1,6 @@
 """R16 — importing this codebase must never touch the filesystem.
 
-`legacy/v1/backend/config.py:11-13` is precisely how this goes wrong:
+v1's `backend/config.py:11-13` (tag v2-rebuild-complete) is precisely how this goes wrong:
 `os.makedirs(STATIC_DIR, exist_ok=True)` sitting at module level means merely
 *importing* the module creates three directories -- in a test, in a build, in
 a container being inspected. `app/core/config.py:5-11` promises the rewrite

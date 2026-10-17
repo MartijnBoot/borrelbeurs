@@ -2,7 +2,7 @@
 
 A crash, bubble or correction jumps every active drink to its `p_min`, `p_max`
 or `p0`, and posts v1's auto news item: its Dutch text verbatim
-(`legacy/v1/backend/api.py:492-500`), its level lowercased to SD13's four.
+(v1 `backend/api.py:492-500`, tag v2-rebuild-complete), its level lowercased to SD13's four.
 
 An active event's `t_start_ms` / `t_end_ms` are wall-clock anchors like a
 jump's `t0_ms` / `t1_ms`, so the gap rule moves them by the same amount
