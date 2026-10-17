@@ -12,6 +12,11 @@ Read `docs/plans/rebuild-route.md`, `docs/specs/defect-register.md`, the relevan
 `docs/design/` documents, and any existing spec for this phase. Do not ask me things the
 repository already answers.
 
+If the argument is a backlog item (`B-nn`), read its entry in `docs/backlog.md`: its Problem,
+Idea and Not this are settled input, its Open questions are where the interview starts. Once
+the spec is written, set the item's status to `specced → docs/specs/<file>.md` and take it
+out of the backlog's `Order` table.
+
 ## Then interview me
 
 Use the `spec-interviewer` agent, or follow its rules directly:

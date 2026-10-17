@@ -49,6 +49,7 @@ override the swarm. Each step is a separate session; clear whatever you happened
 |---|---|---|
 | `/rebuild` | Drive the route autonomously; stop only on the hard-stop list | opus |
 | `/analyse` | Fan out `codebase-analyst` agents over a slice of the code | opus |
+| `/backlog` | Brainstorm a feature idea into `docs/backlog.md`; order it; promote it to `/spec` | opus |
 | `/spec` | Interview, then write a phase spec | opus |
 | `/plan` | Read-only exploration → an auditable, schedulable task plan | opus |
 | `/audit` | Traceability table + the checklist, walked with you | opus |
