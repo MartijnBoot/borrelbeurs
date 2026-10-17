@@ -7,6 +7,7 @@
 | [design/](design/) | The v2 target architecture, in detail. |
 | [specs/](specs/) | One spec per rebuild phase, plus the defect register. Acceptance criteria live here. |
 | [plans/](plans/) | The phased rebuild route and per-phase implementation plans. |
+| [backlog.md](backlog.md) | Feature ideas, ordered, before they become specs. Fed by `/backlog`. |
 
 ## Start here
 
