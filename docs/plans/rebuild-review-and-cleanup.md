@@ -3,9 +3,9 @@
 Basis: [rebuild-route.md](rebuild-route.md) (exit criteria, cross-phase invariants, out of scope) ·
 [Phase 8 spec](../specs/phase-8-deploy-cutover.md) "Follow-up, after cutover: remove `legacy/v1/`" ·
 [defect-register.md](../specs/defect-register.md)
-Status: **Decisions recorded** (D1–D7, owner, 2026-10-17; D5 deferred to R7 and triage). Still
-needs a PASS from `/audit`, on this plan plus any amendment R8's triage adds, before any C-task
-is built (CLAUDE.md: no task without a PASS audit).
+Status: **Audited — PASS** (owner, `/audit`, 2026-10-17; see [Audit](#audit)). The PASS covers
+this plan as written. Any amendment R8's triage adds (`A1`) needs its own `/audit` before its
+tasks are built. Decisions D1–D7 recorded 2026-10-17; D5 deferred to R7 and triage.
 
 ---
 
@@ -348,3 +348,54 @@ What they cover:
 - The C-tasks the owner approved are merged, each with a pasted green `check.sh`.
 - `git grep` for each removed path shows only the allowed hits.
 - The golden check is unchanged from P2.
+
+---
+
+## Audit
+
+There is no spec (D7), so the criteria are D1–D7 and "Done when".
+
+| Criterion | Tasks |
+|---|---|
+| D1 Phase 8 closed with waivers | R1 |
+| D2 build-process docs deleted, `phase-8-human-steps.md` kept | C4 |
+| D3 specs and register kept | none needed (C4, C5 keep them) |
+| D4 remove `legacy/v1/` | C5 |
+| D5 v1-migration code | R7, R8 triage, C6 |
+| D6 swarm machinery | C3 |
+| D7 plan is the spec | this audit |
+| Done when: review triaged | P2, R1–R8 |
+| Done when: C-tasks merged, `git grep` clean, golden unchanged | C3–C8, P2 baseline |
+
+Human audit, 2026-10-17. The owner answered "accept all lines" for the whole checklist, so every
+line is ticked on that instruction. Findings raised at the audit and accepted with it:
+
+- **Scope of this PASS.** It covers P, R and C as written. Triage (R8) was not done at the time,
+  so `A1` does not exist yet and gets its own `/audit`. C6 depends on D5, and C7's dead-code half
+  depends on triage. Both are bounded by R7's lists and the owner's R8 decisions.
+- **P1–P3 and R1–R8 ran before this audit** (tag `v2-rebuild-complete`, `docs/rebuild-review.md`
+  on `docs/rebuild-review`). They are read-only or local, and the audit accepts them as done.
+- **Tasks that map to no D:** P1, C1, C2 and C8. They are accepted as serving the Approach and
+  "Done when".
+- **C4 and C5 are over the 10-file limit** (C4: about 21 citing files; C5: about 20). Accepted as
+  one task each, because the edits are mechanical path rewrites checked by `git grep`.
+- **C8's output is prose.** It is checked by the owner's text approval (a hard stop), not by a
+  test.
+- **The P2 note calls the `test_ws` flake "known".** That is out of date: it was fixed in
+  `61f9f76`, and triage item R6-01 carries the correction.
+- No new dependency (`vulture`/`knip` are ask-first). No data change: no migration, and every
+  deletion is reversible from the tag. Nothing touches Render, secrets or the v1 service. C4
+  edits only a comment in `.github/workflows/ci.yml`.
+
+- [x] Every AC maps to at least one task
+- [x] Every task maps to at least one AC
+- [x] Each task's expected output is what we actually need
+- [x] Existing patterns reused; nothing reinvented
+- [x] No new dependency without an approval note
+- [x] Data changes additive and reversible
+- [x] Errors, empty states and permissions are tasks, not afterthoughts
+- [x] Each task reviewable in one sitting
+- [x] Verification named per task
+- [x] Nothing touches prod, secrets or infra it should not
+
+Audited by: MartijnBoot (human, `/audit` "accept all lines")  Date: 2026-10-17
