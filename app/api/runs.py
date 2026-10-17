@@ -1,7 +1,7 @@
 """Runs: create a draft, find the current run (Phase 6 SD2, SD4; PD2, PD6).
 
 `POST /api/runs {name}` creates a draft through `create_run`: params copied from
-the most recently created run (else `Params()`), a random seed, the column
+the most recently created run (else `DEFAULT_PARAMS`), a random seed, the column
 defaults, and revision 1 authored by the session's key label. It refuses with
 409 `live_run_exists`, or 409 `draft_exists` carrying the draft's `run_id`, so
 the UI can open that draft. With `copy_from_run_id` the draft starts from that

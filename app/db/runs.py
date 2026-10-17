@@ -51,6 +51,23 @@ from exchange import EngineState, Params, anchor_s0_to_current_y, initial_state
 _NAME_INDEX = "drink_name_live"
 _ONE_LIVE_INDEX = "run_one_live"
 
+# A new run's params when no run exists yet: v1's saved settings
+# (legacy/v1/config/exchange_config.json), not its engine defaults (`Params()`).
+# The user's choice, 2026-10-17; tests/unit/test_default_params.py pins it.
+DEFAULT_PARAMS = Params(
+    lambda_orders=1.5,
+    eta=0.8,
+    K=5.0,
+    step_quant=0.1,
+    phi_persist=0.1,
+    refresh_minutes=0.2,
+    idle_decay_minutes=0.1,
+    idle_strength=1.5,
+    idle_rise_minutes=0.1,
+    idle_rise_strength=1.5,
+    demand_enabled=False,
+)
+
 
 class DuplicateDrinkName(AppError):
     """A run already has a live drink whose name matches, trimmed and case-folded (SD14)."""
@@ -441,7 +458,7 @@ async def create_run(
         drinks: list[DrinkRow] = []
         products: dict[int, int | None] = {}
         if copy_from_run_id is None:
-            params = await latest_params(conn) or Params()
+            params = await latest_params(conn) or DEFAULT_PARAMS
         else:
             params = Params.from_dict((await get_run(conn, copy_from_run_id)).params)
             drinks = await active_drinks(conn, copy_from_run_id)

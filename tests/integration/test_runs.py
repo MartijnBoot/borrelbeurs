@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from app.core.config import Settings
 from app.db.mapping import DrinkRow
 from app.db.runs import (
+    DEFAULT_PARAMS,
     DraftExists,
     DuplicateDrinkName,
     LiveRunExists,
@@ -281,7 +282,7 @@ async def _end(engine: AsyncEngine, run_id: int, status: str = "ended") -> None:
 def test_create_run_takes_params_defaults_and_writes_revision_one(
     settings: Settings, database_url: str
 ) -> None:
-    """Phase 6 SD2, PD6: an empty database gives `Params()`; revision 1 by the author."""
+    """Phase 6 SD2, PD6: an empty database gives v1's saved settings; revision 1 by the author."""
 
     async def body(engine: AsyncEngine) -> tuple[tuple[Any, ...], list[tuple[Any, ...]]]:
         run_id = await create_run(engine, name="  Vrijmibo ", author="admin key")
@@ -304,11 +305,11 @@ def test_create_run_takes_params_defaults_and_writes_revision_one(
 
     name, status, params, tick, candle, grace = run
     assert (name, status, tick, candle, grace) == ("Vrijmibo", "draft", 1000, 60_000, 2)
-    assert Params.from_dict(params) == Params()
+    assert Params.from_dict(params) == DEFAULT_PARAMS
     ((revision, author, config),) = revisions
     assert (revision, author) == (1, "admin key")
     assert (config["name"], config["drinks"]) == ("Vrijmibo", [])
-    assert Params.from_dict(config["params"]) == Params()
+    assert Params.from_dict(config["params"]) == DEFAULT_PARAMS
 
 
 def test_create_run_copies_the_most_recently_created_runs_params(
