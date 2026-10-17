@@ -89,6 +89,11 @@ access keys") only if the human asks.
 - Notes: **Open, deferred to last.** Tests green (13 passed). v1 runs as one Render service
   (baked-in keys, still accepted) plus a backup repo. Plan: stop the service and make the repo
   private once v2 is running (after H1). Evidence still owed: both actions done, date, visibility.
+  **Not done 2026-10-17, the human's decision:** the v1 Render service is **suspended** (human
+  report; no curl evidence), not deleted, and its keys are **not rotated**: the human keeps them
+  to read v1's old settings. Risk accepted: resuming the service makes the leaked keys valid
+  there again. v2 is unaffected (tests above: 13 passed 2026-10-17). Repository visibility not
+  changed. No `key-rotation` record; AC32's human half is open.
 
 ---
 
@@ -275,6 +280,9 @@ SHA each time, and the workflow run URL for the Render rollback.
 a follow-up, not a pass.
 
 - Notes: **Partly deferred 2026-10-17.** Step 1 (venue laptop) needs H2 hardware: deferred with H2, see the backlog. Step 2 (Render rollback n+4 to n+3, timed against 5 minutes) can still be run on its own.
+  **Step 2 skipped 2026-10-17, the human's decision** ("the app is not that serious"). Not run,
+  no record. n+3's image was confirmed in GHCR, so the rollback path is still open. The Phase 8
+  exit line ("previous-image rollback rehearsed within 5 minutes") is therefore not met.
 
 ---
 
