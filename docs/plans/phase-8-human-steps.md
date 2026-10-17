@@ -46,8 +46,8 @@ against target, what broke, follow-ups. No key material.
 ## Progress
 
 - [ ] **H4** key rotation: `<date>-key-rotation.md`
-- [ ] **H1** Render and GHCR: `<date>-render-deploy.md`
-- [ ] **H2** the mock borrel: `<date>-mock-borrel.md`
+- [x] **H1** Render and GHCR: `2026-10-17-render-deploy.md`
+- [ ] **H2** the mock borrel: deferred, no hardware (backlog)
 - [ ] **H3** rollback rehearsals: `<date>-rollback.md`
 
 Image SHAs in play (fill in as they exist). **n** = the first deployed image; **n+1** = a later
@@ -89,6 +89,11 @@ access keys") only if the human asks.
 - Notes: **Open, deferred to last.** Tests green (13 passed). v1 runs as one Render service
   (baked-in keys, still accepted) plus a backup repo. Plan: stop the service and make the repo
   private once v2 is running (after H1). Evidence still owed: both actions done, date, visibility.
+  **Not done 2026-10-17, the human's decision:** the v1 Render service is **suspended** (human
+  report; no curl evidence), not deleted, and its keys are **not rotated**: the human keeps them
+  to read v1's old settings. Risk accepted: resuming the service makes the leaked keys valid
+  there again. v2 is unaffected (tests above: 13 passed 2026-10-17). Repository visibility not
+  changed. No `key-rotation` record; AC32's human half is open.
 
 ---
 
@@ -196,6 +201,23 @@ order and the evidence. Applying the Blueprint **costs money** (SD10): the human
   instances again. No `/ws` or `/api/orders` in the window: **no borrel was running, so step 8 is
   not done**; it needs n+4 deployed while phones are on run 1. No version lines in the logs, so
   contiguous versions across the handover are still unshown (step 9).
+  **Step 8 done with n+4 (`0ad12c6d…`), 2026-10-17**: deploy run `39018016714` green (1m42s),
+  smoke seven steps passed (`theme revision=1->2`). A phone (bar) and a browser (display) were
+  connected to run 1 during the deploy. Render log 08:37:19–08:38:48 UTC: "service is live"
+  08:37:21, old `Shutting down` 08:38:19.327 (~58 s later), `runtime_stopped` .524, new
+  `lock_acquired` 08:38:20.405 (`waited_s` 67), `runtime_started` .979 (handover 1.45 s).
+  **Finding F-H1-3 (human report, matches the log):** during the overlap `POST /api/orders` got
+  503 (28 times, 08:37:29–08:38:07; one 201 at 08:37:31 from the old instance), and the bar's
+  retries did not get through either; orders were 201 again from 08:38:31. No order was written
+  (the human saw no change in database or finance; the 503 comes before any write), so nothing
+  was lost or doubled. Prices did not move in the window and the human saw no Brownian motion
+  (the marquees kept scrolling; cause not investigated, probably the page was on the standby
+  instance, which runs no ticks). The WebSocket was re-accepted four times at 08:38:19.9–21.3
+  and the human never saw the connection drop. The human accepts this for a mid-borrel deploy.
+  Still no version lines in the logs, so contiguous versions across the handover are unshown:
+  step 9 is recorded as overlap proven (twice), versions not evidenced by the logs.
+  **H1 done 2026-10-17.** Human's `curl.exe -s <RENDER_URL>/healthz`: `status` `ok`, `build_sha`
+  n+4 (`0ad12c6d…`). Record: `docs/runbooks/rehearsals/2026-10-17-render-deploy.md`.
 
 ---
 
@@ -232,7 +254,7 @@ restore, and the image SHA from `http://127.0.0.1/healthz` on the laptop.
 **Record:** `mock-borrel`. The timings (start to ready, power-off to ready) and everything that
 broke. Anything broke is a follow-up, not a silent fix.
 
-- Notes:
+- Notes: **Deferred 2026-10-17: the human has no venue hardware (travel router, laptop).** Not run, no record. The offline venue path is moved to the backlog ([backlog.md](../backlog.md)). The Phase 8 exit line is therefore not met for the offline half.
 
 ---
 
@@ -257,7 +279,10 @@ SHA each time, and the workflow run URL for the Render rollback.
 **Record:** `rollback`. If either took longer than 5 minutes, record what cost the time; that is
 a follow-up, not a pass.
 
-- Notes:
+- Notes: **Partly deferred 2026-10-17.** Step 1 (venue laptop) needs H2 hardware: deferred with H2, see the backlog. Step 2 (Render rollback n+4 to n+3, timed against 5 minutes) can still be run on its own.
+  **Step 2 skipped 2026-10-17, the human's decision** ("the app is not that serious"). Not run,
+  no record. n+3's image was confirmed in GHCR, so the rollback path is still open. The Phase 8
+  exit line ("previous-image rollback rehearsed within 5 minutes") is therefore not met.
 
 ---
 

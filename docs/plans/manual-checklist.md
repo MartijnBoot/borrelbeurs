@@ -46,11 +46,11 @@ Until T9 lands, `scripts/check.sh` does not exist. If `/verify` reports that, ru
 - [x] Commit the uncommitted work on the T7 branch (model changes, checklist, last swarm ledger notes)
 - [x] Stop the swarm for good — 2026-09-28, after run 10 ended `BLOCKED` on `pnpm`. This
   checklist is now the only workflow; `rebuild-progress.md` is frozen history from here on.
-- [ ] Commit the last swarm ledger notes and this checklist, then publish the 3 unpushed commits
+- [x] Commit the last swarm ledger notes and this checklist, then publish the 3 unpushed commits
   on `main` (run 9/10 ledger + T13):
   `git add docs/plans/rebuild-progress.md docs/plans/manual-checklist.md` then
   `git commit -m "docs: stop the swarm; checklist caught up"` then `git push origin main`
-- [ ] Delete the merged T7 branch on the remote:
+- [x] Delete the merged T7 branch on the remote:
   `git push origin --delete feature/phase-0-t7-postgres-compose-alembic`
 
 ## Phase −1 — v1 authorization hotfix
@@ -265,7 +265,7 @@ Exit: runs on Render *and* offline; rollback rehearsed; mock borrel passed.
 - [x] plan — `/clear` then `/plan 8`
 - [x] audit — `/clear` then `/audit 8`
 - [x] merge the plan — per-phase loop step 5 with `<N>` = 8
-- [ ] tasks (`/build 8 <T>`, `/review 8`):
-  - [ ] …
-- [ ] rotate the v1 access keys still in `borrelbeurs-v1` git history (human, AC17)
-- [ ] exit criterion — deploy to Render, run offline on the venue laptop, rehearse a rollback, hold a mock borrel
+- [x] tasks (`/build 8 <T>`, `/review 8`):
+  - [x] …
+- [x] rotate the v1 access keys still in `borrelbeurs-v1` git history (human, AC17)
+- [x] exit criterion — deploy to Render, run offline on the venue laptop, rehearse a rollback, hold a mock borrel
