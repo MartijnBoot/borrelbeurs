@@ -1,17 +1,11 @@
 import { useEffect, useState } from 'react'
+import { formatClock } from '../../lib/time'
 import { exchangeStore } from '../exchange'
 import styles from './KoersPage.module.css'
 
-const TIME = new Intl.DateTimeFormat('nl-NL', {
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-  hour12: false,
-})
-
 /** `HH:MM:SS` on the server's clock: `Date.now()` plus the skew offset (SD18). */
 function serverTime(): string {
-  return TIME.format(Date.now() + exchangeStore.getState().skewOffsetMs)
+  return formatClock(Date.now() + exchangeStore.getState().skewOffsetMs)
 }
 
 export function HeaderClock() {

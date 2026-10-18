@@ -18,6 +18,7 @@ const charts: FakeChart[] = []
 vi.mock('lightweight-charts', () => ({
   LineSeries: { type: 'Line' },
   CrosshairMode: { Hidden: 2 },
+  TickMarkType: { Year: 0, Month: 1, DayOfMonth: 2, Time: 3, TimeWithSeconds: 4 },
   createChart: vi.fn((_el: HTMLElement, options: FakeChart['options']) => {
     const chart: FakeChart = { options, series: [], remove: vi.fn() }
     charts.push(chart)

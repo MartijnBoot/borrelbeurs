@@ -17,6 +17,7 @@ import { Field } from '../../components/ui/Field'
 import fieldStyles from '../../components/ui/Field.module.css'
 import { Select } from '../../components/ui/Select'
 import { HttpError, request } from '../../lib/http'
+import { formatWhen } from '../../lib/time'
 import styles from './KeysSection.module.css'
 
 const Role = z.enum(['display', 'bar', 'admin'])
@@ -43,8 +44,6 @@ const ROLES = [
 const ROLE_LABEL: Readonly<Record<Role, string>> = Object.fromEntries(
   ROLES.map((role) => [role.value, role.label]),
 ) as Record<Role, string>
-
-const WHEN = new Intl.DateTimeFormat('nl-NL', { dateStyle: 'short', timeStyle: 'short' })
 
 const REFUSALS: Readonly<Record<string, string>> = {
   last_admin_key: 'Dit is de laatste beheerderssleutel; die kan niet worden ingetrokken.',
@@ -142,9 +141,9 @@ export function KeysSection() {
               <tr key={key.key_id}>
                 <td>{key.label}</td>
                 <td>{ROLE_LABEL[key.role]}</td>
-                <td>{WHEN.format(new Date(key.created_at))}</td>
+                <td>{formatWhen(Date.parse(key.created_at))}</td>
                 <td>
-                  {key.last_used_at === null ? 'Nooit' : WHEN.format(new Date(key.last_used_at))}
+                  {key.last_used_at === null ? 'Nooit' : formatWhen(Date.parse(key.last_used_at))}
                 </td>
                 <td>{key.revoked ? 'Ingetrokken' : 'Actief'}</td>
                 <td>

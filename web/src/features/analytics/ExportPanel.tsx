@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { HttpError } from '../../lib/http'
+import { formatWhen } from '../../lib/time'
 import styles from './analytics.module.css'
 import { type ExportData, fileUrl, getExport, listExports, requestExport } from './api/exports'
 
@@ -20,7 +21,6 @@ const STATUS = {
   failed: 'Mislukt',
 } as const
 const ERRORS: Readonly<Record<string, string>> = { onderbroken: 'Onderbroken' }
-const WHEN = new Intl.DateTimeFormat('nl-NL', { dateStyle: 'short', timeStyle: 'short' })
 
 const inFlight = (e: ExportData) => e.status === 'queued' || e.status === 'running'
 const size = (bytes: number | null) => (bytes === null ? '—' : `${Math.ceil(bytes / 1024)} kB`)
@@ -133,7 +133,7 @@ export function ExportPanel({ runId }: ExportPanelProps) {
                 <tr key={row.export_id}>
                   <td>{KIND[row.kind]}</td>
                   <td>{STATUS[row.status]}</td>
-                  <td>{WHEN.format(row.created_at_ms)}</td>
+                  <td>{formatWhen(row.created_at_ms)}</td>
                   <td className={styles.number}>{size(row.bytes)}</td>
                   <td>
                     {row.status === 'done' && (

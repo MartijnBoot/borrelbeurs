@@ -4,10 +4,11 @@
  * revenue chart uses the same theme without a sibling-feature import.
  *
  * Values stay integer cents in every chart; the axis shows them through the
- * one euro formatter.
+ * one euro formatter. The time axis shows Amsterdam time (`lib/time.ts`).
  */
 import { CrosshairMode, type ChartOptions, type DeepPartial } from 'lightweight-charts'
 import { formatEuro } from './format'
+import { chartTickMark, chartTime } from './time'
 
 export type Tokens = Readonly<Record<string, string>>
 
@@ -15,11 +16,11 @@ export type Tokens = Readonly<Record<string, string>>
 export const BASE_OPTIONS: DeepPartial<ChartOptions> = {
   autoSize: true,
   layout: { fontSize: 12 },
-  timeScale: { timeVisible: true, secondsVisible: false },
+  timeScale: { timeVisible: true, secondsVisible: false, tickMarkFormatter: chartTickMark },
   crosshair: { mode: CrosshairMode.Hidden },
   handleScroll: false,
   handleScale: false,
-  localization: { priceFormatter: formatEuro },
+  localization: { priceFormatter: formatEuro, timeFormatter: chartTime },
 }
 
 export function chartColors(tokens: Tokens): DeepPartial<ChartOptions> {

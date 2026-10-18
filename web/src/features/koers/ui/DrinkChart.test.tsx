@@ -35,6 +35,7 @@ vi.mock('lightweight-charts', () => ({
   CandlestickSeries: { type: 'Candlestick' },
   LineSeries: { type: 'Line' },
   CrosshairMode: { Hidden: 2 },
+  TickMarkType: { Year: 0, Month: 1, DayOfMonth: 2, Time: 3, TimeWithSeconds: 4 },
   createChart: vi.fn((_el: HTMLElement, options: unknown) => {
     const chart: FakeChart = {
       options,

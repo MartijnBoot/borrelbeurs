@@ -5,15 +5,9 @@
  * nieuws". It speeds up during a crash or bubble (`playbackRate`, AC33).
  */
 import { Marquee, type MarqueeItem } from '../../components/ui/Marquee'
+import { formatClock } from '../../lib/time'
 import { selectNews, useExchange } from '../exchange'
 import styles from './KoersPage.module.css'
-
-const TIME = new Intl.DateTimeFormat('nl-NL', {
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-  hour12: false,
-})
 
 const EMPTY: MarqueeItem[] = [
   {
@@ -37,7 +31,7 @@ export function NewsMarquee({ playbackRate }: { playbackRate: number }) {
           className: `${styles.newsItem} ${styles[n.level] ?? ''}`,
           parts: [
             { text: n.level, className: styles.badge },
-            { text: TIME.format(n.ts_ms), className: styles.newsTime },
+            { text: formatClock(n.ts_ms), className: styles.newsTime },
             { text: n.text, className: styles.newsText },
           ],
         }))

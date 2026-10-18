@@ -6,13 +6,13 @@
  */
 import { Button } from '../../components/ui/Button'
 import { formatEuro } from '../../lib/format'
+import { formatWhen } from '../../lib/time'
 import styles from './analytics.module.css'
 import type { AnalyticsRun } from './api/runs'
 
 const STATUS = { draft: 'Concept', live: 'Live', ended: 'Afgelopen' } as const
-const WHEN = new Intl.DateTimeFormat('nl-NL', { dateStyle: 'short', timeStyle: 'short' })
 
-const when = (ms: number | null) => (ms === null ? '—' : WHEN.format(ms))
+const when = (ms: number | null) => (ms === null ? '—' : formatWhen(ms))
 
 /** `9_000_000` → `"2:30"`: hours and minutes. */
 function duration(run: AnalyticsRun): string {
