@@ -1,7 +1,7 @@
 /**
  * ⚙️ Globale instellingen (Phase 6 SD8, SD25, SD27; AC1, AC2, AC3, AC5, AC28):
- * v1's global params and the candle interval, each a `NumberField` under v1's
- * label (`settings.html`, "sec-params").
+ * v1's global params and the candle interval, each a `NumberField` under its
+ * B-01 name, with an (i) carrying its explanation (`explanations.json`, E1-E10).
  *
  * The form edits a `useEditableRecord` copy of the run's config. Saving sends
  * only the changed fields -- params under `params`, the candle interval at the
@@ -16,23 +16,24 @@ import { NumberField } from '../../components/ui/NumberField'
 import { Toast } from '../../components/ui/Toast'
 import { request } from '../../lib/http'
 import { useEditableRecord } from '../../lib/useEditableRecord'
+import explanations from './explanations.json'
 import styles from './settings.module.css'
 import { faultsOf, Revision, type RunConfig, useRunConfig } from './useRunConfig'
 
 const FIELDS = [
-  ['step_quant', '🧱 Tickgrootte'],
-  ['eta', '⚡ Snelheid'],
-  ['K', '🎚️ Drempel'],
-  ['lambda_orders', '⚔️ Rivaliteit'],
-  ['alpha_price', '🧭 Aantrekking naar gemiddelde'],
-  ['phi_persist', '📈 Na-ijlen'],
-  ['decay_rho', '🧠 Geheugen (ρ)'],
-  ['history_window_minutes', '🗂️ Historie (min)'],
-  ['refresh_minutes', '🔁 Update-interval (min)'],
-  ['candle_interval_s', '🕯️ Kaarseninterval (sec)'],
+  'step_quant',
+  'eta',
+  'K',
+  'lambda_orders',
+  'alpha_price',
+  'phi_persist',
+  'decay_rho',
+  'history_window_minutes',
+  'refresh_minutes',
+  'candle_interval_s',
 ] as const
 
-type Field = (typeof FIELDS)[number][0]
+type Field = (typeof FIELDS)[number]
 type GlobalRecord = Record<Field, number>
 
 function recordOf(config: RunConfig): GlobalRecord {
@@ -107,10 +108,11 @@ export function GlobalSection() {
         </p>
       )}
       <div className={styles.grid}>
-        {FIELDS.map(([field, label]) => (
+        {FIELDS.map((field) => (
           <NumberField
             key={field}
-            label={label}
+            label={explanations[field].name}
+            info={explanations[field]}
             value={record.values?.[field] ?? null}
             onChange={(value) => record.set(field, value)}
             error={errorFor(field)}

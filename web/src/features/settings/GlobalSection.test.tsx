@@ -1,10 +1,26 @@
 // @vitest-environment jsdom
 // ⚙️ Globale instellingen (Phase 6 T25: SD8, SD25, SD27; AC1, AC2, AC3, AC5, AC28).
 // The D-03 gate: an untouched save sends nothing; an edit sends exactly its field.
+// B-01 T5: the new names, and an (i) per field (E1-E10).
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { expectExplained } from '../../components/ui/infoTesting'
 import { exchangeStore } from '../exchange'
+import explanations from './explanations.json'
 import { GlobalSection } from './GlobalSection'
+
+const GLOBAL_KEYS = [
+  'step_quant',
+  'eta',
+  'K',
+  'lambda_orders',
+  'alpha_price',
+  'phi_persist',
+  'decay_rho',
+  'history_window_minutes',
+  'refresh_minutes',
+  'candle_interval_s',
+] as const
 
 const PARAMS = {
   step_quant: 0.5,
@@ -83,22 +99,40 @@ const save = async () => {
 }
 
 describe('GlobalSection', () => {
-  it('shows every SD8 global field with its v1 label and the server value', async () => {
+  it('shows every SD8 global field with its B-01 name and the server value', async () => {
     await open()
-    expect((screen.getByLabelText('⚡ Snelheid') as HTMLInputElement).value).toBe('0,6')
-    expect((screen.getByLabelText('🕯️ Kaarseninterval (sec)') as HTMLInputElement).value).toBe('60')
+    expect((screen.getByLabelText('Beweging per bestelling') as HTMLInputElement).value).toBe('0,6')
+    expect((screen.getByLabelText('Kaarsbreedte (sec)') as HTMLInputElement).value).toBe('60')
     for (const label of [
-      '🧱 Tickgrootte',
-      '🎚️ Drempel',
-      '⚔️ Rivaliteit',
-      '🧭 Aantrekking naar gemiddelde',
-      '📈 Na-ijlen',
-      '🧠 Geheugen (ρ)',
-      '🗂️ Historie (min)',
-      '🔁 Update-interval (min)',
+      'Prijsstap (€)',
+      'Drukdrempel',
+      'Concurrentie tussen drankjes',
+      'Trek naar gemiddelde prijs',
+      'Nawerking van bestellingen',
+      'Geheugen van bestellingen',
+      'Grafiekgeschiedenis (min)',
+      'Ritme stille drankjes (min)',
     ]) {
       expect(screen.getByLabelText(label)).toBeTruthy()
     }
+  })
+
+  it.each(GLOBAL_KEYS)('%s has an (i) with its explanation (B-01 AC1, AC7)', async (key) => {
+    const { container } = render(<GlobalSection />)
+    await settle()
+    expect(screen.getByLabelText(explanations[key].name)).toBeTruthy()
+    expectExplained(container, explanations[key])
+  })
+
+  it('opening every (i) leaves the form clean: saving sends nothing (B-01 AC5)', async () => {
+    await open()
+    for (const button of screen.getAllByRole('button', { name: /^Uitleg: / })) {
+      fireEvent.click(button)
+      fireEvent.click(button)
+    }
+    await save()
+    expect(patches()).toEqual([])
+    expect(screen.getByRole('status').textContent).toBe('Niets te wijzigen')
   })
 
   it('an untouched save sends nothing and says "Niets te wijzigen" (AC2)', async () => {
@@ -110,14 +144,14 @@ describe('GlobalSection', () => {
 
   it('editing eta sends {params: {eta}} only (AC1)', async () => {
     await open()
-    fireEvent.change(screen.getByLabelText('⚡ Snelheid'), { target: { value: '0,9' } })
+    fireEvent.change(screen.getByLabelText('Beweging per bestelling'), { target: { value: '0,9' } })
     await save()
     expect(patches()).toEqual([{ params: { eta: 0.9 } }])
   })
 
   it('the candle interval goes at the top level', async () => {
     await open()
-    fireEvent.change(screen.getByLabelText('🕯️ Kaarseninterval (sec)'), {
+    fireEvent.change(screen.getByLabelText('Kaarsbreedte (sec)'), {
       target: { value: '30' },
     })
     await save()
@@ -126,7 +160,7 @@ describe('GlobalSection', () => {
 
   it('a cleared field blocks the save (AC3)', async () => {
     await open()
-    fireEvent.change(screen.getByLabelText('🎚️ Drempel'), { target: { value: '' } })
+    fireEvent.change(screen.getByLabelText('Drukdrempel'), { target: { value: '' } })
     await save()
     expect(patches()).toEqual([])
     expect(screen.getByText('Verplicht')).toBeTruthy()
@@ -134,17 +168,17 @@ describe('GlobalSection', () => {
 
   it('a config while dirty keeps the input and offers the server values (AC5)', async () => {
     await open()
-    fireEvent.change(screen.getByLabelText('⚡ Snelheid'), { target: { value: '0,9' } })
+    fireEvent.change(screen.getByLabelText('Beweging per bestelling'), { target: { value: '0,9' } })
     served = config({ ...PARAMS, K: 20 }, 60, 4)
 
     act(() => exchangeStore.setState({ params: { ...PARAMS, K: 20 } }))
     await settle()
 
     expect(screen.getByText('Serverwaarden gewijzigd — overnemen?')).toBeTruthy()
-    expect((screen.getByLabelText('⚡ Snelheid') as HTMLInputElement).value).toBe('0,9')
+    expect((screen.getByLabelText('Beweging per bestelling') as HTMLInputElement).value).toBe('0,9')
     fireEvent.click(screen.getByRole('button', { name: 'Overnemen' }))
-    expect((screen.getByLabelText('⚡ Snelheid') as HTMLInputElement).value).toBe('0,6')
-    expect((screen.getByLabelText('🎚️ Drempel') as HTMLInputElement).value).toBe('20')
+    expect((screen.getByLabelText('Beweging per bestelling') as HTMLInputElement).value).toBe('0,6')
+    expect((screen.getByLabelText('Drukdrempel') as HTMLInputElement).value).toBe('20')
   })
 
   it('a config while clean reloads silently', async () => {
@@ -152,7 +186,7 @@ describe('GlobalSection', () => {
     served = config({ ...PARAMS, K: 20 }, 60, 4)
     act(() => exchangeStore.setState({ params: { ...PARAMS, K: 20 } }))
     await settle()
-    expect((screen.getByLabelText('🎚️ Drempel') as HTMLInputElement).value).toBe('20')
+    expect((screen.getByLabelText('Drukdrempel') as HTMLInputElement).value).toBe('20')
     expect(screen.queryByText('Serverwaarden gewijzigd — overnemen?')).toBeNull()
   })
 
@@ -175,12 +209,12 @@ describe('GlobalSection', () => {
       return Promise.resolve(json(200, served))
     })
     await open()
-    fireEvent.change(screen.getByLabelText('🕯️ Kaarseninterval (sec)'), {
+    fireEvent.change(screen.getByLabelText('Kaarsbreedte (sec)'), {
       target: { value: '7' },
     })
     await save()
 
-    const input = screen.getByLabelText('🕯️ Kaarseninterval (sec)')
+    const input = screen.getByLabelText('Kaarsbreedte (sec)')
     expect(input.getAttribute('aria-invalid')).toBe('true')
     expect(screen.getByText('multiple of 5')).toBeTruthy()
   })

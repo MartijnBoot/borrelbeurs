@@ -120,7 +120,7 @@ test('an admin builds a borrel from nothing, and every screen follows live', asy
 
   // 3. Params.
   const global = section(page, '⚙️ Globale instellingen')
-  await global.getByLabel('🧱 Tickgrootte').fill('0,05')
+  await global.getByLabel('Prijsstap (€)', { exact: true }).fill('0,05')
   await global.getByRole('button', { name: '💾 Opslaan instellingen' }).click()
   await expect(page.getByText('Opgeslagen')).toBeVisible()
 
