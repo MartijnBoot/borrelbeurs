@@ -847,6 +847,8 @@ export interface components {
             name: string;
             /** Copy From Run Id */
             copy_from_run_id?: number | null;
+            /** Profile Id */
+            profile_id?: number | null;
         };
         /** CreatedDrink */
         CreatedDrink: {

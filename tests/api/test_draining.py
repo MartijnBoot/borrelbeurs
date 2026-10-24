@@ -50,6 +50,7 @@ DRAINING_WRITES: Final[list[tuple[str, str, dict[str, Any] | None]]] = [
     ("POST", "/api/runs/999999/exports", None),
     ("POST", "/api/profiles", {"name": "Wilde beurs", "run_id": 999999}),
     ("DELETE", "/api/profiles/999999", None),
+    ("POST", "/api/runs", {"name": "Nieuw", "profile_id": 999999}),
     ("POST", "/api/runs/999999/profile", {"profile_id": 999999}),
 ]
 

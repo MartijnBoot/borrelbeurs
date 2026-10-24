@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.core.errors import AppError
 from app.db.models import SettingsProfile
-from app.db.runs import name_key
+from app.db.products import name_key
 
 
 class ProfileNotFound(AppError):

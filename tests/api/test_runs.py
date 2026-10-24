@@ -1,15 +1,22 @@
-"""Runs over HTTP: create a draft, find the current run (Phase 6 T8: SD2, SD4; PD2, PD6)."""
+"""Runs over HTTP: create a draft, find the current run (Phase 6 T8: SD2, SD4; PD2, PD6).
+
+B-04 T5: a create carrying a profile (AC7, AC10, AC15, AC24).
+"""
 
 from __future__ import annotations
 
 import asyncio
+import json
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.core.config import Settings
+from app.db.runs import DEFAULT_PARAMS
 from app.db.session import create_engine
+from app.runtime.config_patch import profile_settings
 from tests.api.conftest import Login
 
 
@@ -160,3 +167,97 @@ def _drink_names(settings: Settings, url: str, *, run_id: int) -> list[object]:
     return _run_sql(
         settings, url, "SELECT name FROM drink WHERE run_id = :r ORDER BY slot", {"r": run_id}
     )
+
+
+# --- B-04 T5: "Nieuwe borrel" with a profile (AC10, AC15, AC24; SD4, SD9) ---------
+
+
+def _insert_profile(settings: Settings, url: str, values: dict[str, Any]) -> int:
+    (profile_id,) = _run_sql(
+        settings,
+        url,
+        "INSERT INTO settings_profile (name, name_key, settings, source_run_name, saved_by)"
+        " VALUES ('Wilde beurs', 'wilde beurs', CAST(:s AS jsonb), 'Proef', 'a')"
+        " RETURNING profile_id",
+        {"s": json.dumps(values)},
+    )
+    return int(str(profile_id))
+
+
+def _run_count(settings: Settings, url: str) -> int:
+    (count,) = _run_sql(settings, url, "SELECT count(*) FROM run", {})
+    return int(str(count))
+
+
+def test_a_create_with_a_profile_takes_its_values(
+    login: Login, settings: Settings, api_env: str
+) -> None:
+    """AC7 over HTTP: `profile_id` reaches `create_run`."""
+    values = profile_settings(DEFAULT_PARAMS, 30_000) | {"eta": 0.33}
+    profile_id = _insert_profile(settings, api_env, values)
+    admin = login("admin")
+
+    response = admin.post("/api/runs", json={"name": "Nieuw", "profile_id": profile_id})
+
+    assert response.status_code == 201, response.text
+    document = admin.get(f"/api/runs/{response.json()['run_id']}/config").json()
+    assert (document["params"]["eta"], document["run"]["candle_interval_s"]) == (0.33, 30)
+
+
+def test_a_create_with_an_unknown_profile_is_404_creating_nothing(
+    login: Login, settings: Settings, api_env: str
+) -> None:
+    """AC10."""
+    response = login("admin").post("/api/runs", json={"name": "Nieuw", "profile_id": 999_999})
+
+    assert (response.status_code, response.json()["error"]["code"]) == (404, "profile_not_found")
+    assert _run_count(settings, api_env) == 0
+
+
+def test_a_create_with_an_out_of_range_profile_is_422_naming_it_creating_nothing(
+    login: Login, settings: Settings, api_env: str
+) -> None:
+    """AC10, SD9: a range tightened since the profile was saved."""
+    values = profile_settings(DEFAULT_PARAMS, 60_000) | {"y_clip": 25}
+    profile_id = _insert_profile(settings, api_env, values)
+
+    response = login("admin").post("/api/runs", json={"name": "Nieuw", "profile_id": profile_id})
+
+    assert response.status_code == 422
+    faults = response.json()["error"]["faults"]
+    assert [fault["loc"] for fault in faults] == [["profile", "params", "y_clip"]]
+    assert _run_count(settings, api_env) == 0
+
+
+def test_a_field_the_profile_lacks_comes_from_the_latest_run(
+    login: Login, settings: Settings, api_env: str
+) -> None:
+    """AC15: a profile saved before a field existed keeps that field's base value."""
+    admin = login("admin")
+    old = admin.post("/api/runs", json={"name": "Vorige"}).json()["run_id"]
+    admin.patch(f"/api/runs/{old}/config", json={"params": {"eta": 0.33}})
+    _set_status(settings, api_env, run_id=old, status="ended")
+    values = profile_settings(DEFAULT_PARAMS, 60_000) | {"y_clip": 4.0}
+    del values["eta"]
+    profile_id = _insert_profile(settings, api_env, values)
+
+    response = admin.post("/api/runs", json={"name": "Nieuw", "profile_id": profile_id})
+
+    assert response.status_code == 201, response.text
+    params = admin.get(f"/api/runs/{response.json()['run_id']}/config").json()["params"]
+    assert (params["eta"], params["y_clip"]) == (0.33, 4.0)
+
+
+@pytest.mark.parametrize("role", ["display", "bar", None])
+def test_a_create_carrying_a_profile_is_admin_only(
+    client: TestClient, login: Login, settings: Settings, api_env: str, role: str | None
+) -> None:
+    """AC24."""
+    profile_id = _insert_profile(settings, api_env, profile_settings(DEFAULT_PARAMS, 60_000))
+    if role is not None:
+        login(role)
+
+    response = client.post("/api/runs", json={"name": "Nieuw", "profile_id": profile_id})
+
+    assert response.status_code == (401 if role is None else 403)
+    assert _run_count(settings, api_env) == 0
