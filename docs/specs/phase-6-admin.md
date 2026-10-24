@@ -211,6 +211,12 @@ Settled at the spec interview (2026-10-06).
     - `name` 1–40 characters after trim.
   - **Not editable:** `bm_*`, `flow_vol_amp`, `flow_beta`, `y_clip`, `tick_interval_ms` and
     `quote_grace_versions` stay as imported or created. The API rejects them with 422.
+
+  > **Superseded in part by B-03** ([phase-b-03-brownian-settings.md](phase-b-03-brownian-settings.md)).
+  > `bm_enabled`, `bm_sigma_y`, `bm_dt_minutes`, `flow_vol_amp`, `flow_beta` and `y_clip` are
+  > editable since B-03, on a draft and a live run. The legacy `bm_sigma`, `tick_interval_ms`
+  > and `quote_grace_versions` still are not: the API still rejects them with 422.
+
 - **SD9 — What a live change does to prices (D-45).**
   - **A scalar param, `a/d/s0/c`, `p0` or `bar_price`:** no price moves. The change takes
     effect at the next step. `p0` matters to the "correction" event; `bar_price` matters to
@@ -536,6 +542,11 @@ Settled at the spec interview (2026-10-06).
 - Exports and the earnings download, on shutdown or anywhere else (Phase 7).
 - Editing `bm_*`, `flow_vol_amp`, `flow_beta`, `y_clip`, `tick_interval_ms` or
   `quote_grace_versions` (SD8).
+
+  > **Superseded in part by B-03** ([phase-b-03-brownian-settings.md](phase-b-03-brownian-settings.md)).
+  > The six noise settings are editable since B-03; `bm_sigma`, `tick_interval_ms` and
+  > `quote_grace_versions` are still out.
+
 - Editing news, news expiry or scheduling, or editing or cancelling a running market event or
   jump from the UI.
 - Undoing a drink removal (re-add creates a new drink), reordering slots, or drink images.

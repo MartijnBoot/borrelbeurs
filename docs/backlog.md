@@ -120,7 +120,8 @@ koers screen's market-event layer, possibly theming (ADR 0005). Not the engine.
 
 ### B-03 — Brownian settings in Globale instellingen
 
-- **Status:** specced → `docs/specs/phase-b-03-brownian-settings.md`
+- **Status:** built → `docs/plans/phase-b-03-brownian-settings.md` (spec:
+  `docs/specs/phase-b-03-brownian-settings.md`)
 - **Added:** 2026-10-18
 - **Size:** S (a day or less) — a guess
 
