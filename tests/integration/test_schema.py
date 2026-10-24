@@ -33,6 +33,7 @@ PHASE_4_TABLES = frozenset({"theme"})
 PHASE_6_TABLES = frozenset({"asset"})
 PHASE_7_TABLES = frozenset({"product", "export"})
 PHASE_8_TABLES = frozenset({"schema_compat"})
+B_04_TABLES = frozenset({"settings_profile"})
 
 # PD4: SD5's three columns plus the singleton key; Phase 6 adds the custom
 # theme (SD28) and one pointer per image slot (SD29).
@@ -107,7 +108,7 @@ def money_violations(columns: Iterable[Column]) -> list[str]:
 
 
 def test_the_application_tables_are_the_ones_inspected(database_url: str) -> None:
-    """Anti-vacuity: the inspection below reaches every table, Phase 2 SD4 through Phase 8."""
+    """Anti-vacuity: the inspection below reaches every table, Phase 2 SD4 through B-04."""
     tables = {table for table, _, _ in asyncio.run(_columns(database_url))}
 
     assert tables == (
@@ -117,6 +118,7 @@ def test_the_application_tables_are_the_ones_inspected(database_url: str) -> Non
         | PHASE_6_TABLES
         | PHASE_7_TABLES
         | PHASE_8_TABLES
+        | B_04_TABLES
     )
 
 
