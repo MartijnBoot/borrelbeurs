@@ -66,15 +66,30 @@ describe('BarPage', () => {
   it('with no live run shows only "Geen actieve borrel"; a snapshot shows the pad without remount (AC27)', () => {
     dispatch('hello', hello(null), null)
     render(<BarPage />)
-    const header = screen.getByRole('heading', { name: '🍺 Bar — Bestellen' })
+    const header = screen.getByRole('heading', { name: 'Bar — Bestellen' })
     expect(screen.getByText('Geen actieve borrel')).toBeTruthy()
     expect(drinkButtons()).toHaveLength(0)
-    expect(screen.queryByText('💶 Financieel overzicht')).toBeNull()
+    expect(screen.queryByText('Financieel overzicht')).toBeNull()
 
     dispatch('snapshot', SNAPSHOT)
     expect(screen.queryByText('Geen actieve borrel')).toBeNull()
     expect(drinkButtons()).toHaveLength(1)
-    expect(screen.getByRole('heading', { name: '🍺 Bar — Bestellen' })).toBe(header)
+    expect(screen.getByRole('heading', { name: 'Bar — Bestellen' })).toBe(header)
+  })
+
+  it('both headings are the plain names, each after one pixel icon (B-02 AC7, AC8)', () => {
+    dispatch('hello', hello(1), null)
+    dispatch('snapshot', SNAPSHOT)
+    render(<BarPage />)
+    for (const name of ['Bar — Bestellen', 'Financieel overzicht']) {
+      const heading = screen.getByRole('heading', { name })
+      expect(heading.textContent).toBe(name)
+      const icons = heading.querySelectorAll('svg')
+      expect(icons).toHaveLength(1)
+      expect(icons[0].getAttribute('aria-hidden')).toBe('true')
+      expect(heading.firstChild).toBe(icons[0])
+    }
+    expect(screen.getByRole('heading', { name: 'Bestellingen' }).querySelector('svg')).toBeNull()
   })
 
   it('with a live run renders both cards', () => {
@@ -82,7 +97,7 @@ describe('BarPage', () => {
     dispatch('snapshot', SNAPSHOT)
     render(<BarPage />)
     expect(screen.getByRole('heading', { name: 'Bestellingen' })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: '💶 Financieel overzicht' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Financieel overzicht' })).toBeTruthy()
     expect(drinkButtons()).toHaveLength(1)
     expect(screen.getByText('Klaar')).toBeTruthy()
   })
@@ -93,16 +108,16 @@ describe('a closed run (Phase 7 T17: SD2, PD5)', () => {
     dispatch('hello', hello(1), null)
     dispatch('snapshot', SNAPSHOT)
     render(<BarPage />)
-    const header = screen.getByRole('heading', { name: '🍺 Bar — Bestellen' })
+    const header = screen.getByRole('heading', { name: 'Bar — Bestellen' })
     expect(drinkButtons()).toHaveLength(1)
 
     dispatch('run_closed', { run_id: 1, name: 'Vrijmibo', ended_at_ms: 0 }, null)
     expect(screen.getByText('Geen actieve borrel')).toBeTruthy()
     expect(drinkButtons()).toHaveLength(0)
-    expect(screen.queryByText('💶 Financieel overzicht')).toBeNull()
+    expect(screen.queryByText('Financieel overzicht')).toBeNull()
 
     dispatch('snapshot', SNAPSHOT)
     expect(drinkButtons()).toHaveLength(1)
-    expect(screen.getByRole('heading', { name: '🍺 Bar — Bestellen' })).toBe(header)
+    expect(screen.getByRole('heading', { name: 'Bar — Bestellen' })).toBe(header)
   })
 })

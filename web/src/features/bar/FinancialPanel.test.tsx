@@ -87,7 +87,7 @@ const testId = (id: string) => screen.getByTestId(id).textContent
 
 describe('FinancialPanel', () => {
   it("renders the snapshot's aggregates exactly", () => {
-    expect(screen.getByText('💶 Financieel overzicht')).toBeTruthy()
+    expect(screen.getByText('Financieel overzicht')).toBeTruthy()
     expect(testId('total-revenue')).toBe(formatEuro(520))
     expect(testId('total-qty')).toBe('2')
     expect(text()).toContain(`Bier: 2× — ${formatEuro(520)}`)

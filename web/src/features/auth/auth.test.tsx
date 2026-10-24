@@ -196,7 +196,7 @@ describe('routes (AC22, AC23, SD4, SD13)', () => {
   it('bar on /bar sees the bar page inside the shell (Phase 5 AC28)', async () => {
     session = 'bar'
     await open('/bar')
-    expect(screen.getByRole('heading', { name: '🍺 Bar — Bestellen' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Bar — Bestellen' })).toBeTruthy()
     expect(screen.getByRole('button', { name: /Menu/ })).toBeTruthy()
   })
 
@@ -204,7 +204,7 @@ describe('routes (AC22, AC23, SD4, SD13)', () => {
     session = 'display'
     await open('/bar')
     expect(screen.getByText('Geen toegang')).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: '🍺 Bar — Bestellen' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: 'Bar — Bestellen' })).toBeNull()
   })
 
   it('bar on /analytics sees "Geen toegang" and no "Analyse" entry (Phase 7 AC33)', async () => {
