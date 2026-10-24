@@ -22,6 +22,10 @@ and writes a `price_tick` of source `config`; it emits `ConfigChanged`. An
 empty body returns the current revision and writes nothing (AC2). An ended run
 is 409 `run_ended`.
 
+**Loading a profile (B-04 SD3, PD7)** is a draft write of the profile's 22, in
+the same one transaction as the profile read, and only onto a draft: a live or
+ended run is 409 `run_not_draft`.
+
 **Anchor s0 (SD5, SD26)** is v1's "📌 Zet huidige prijs als evenwicht", live
 only: one `mutate("config")` running `anchor_s0_to_current_y` on the masked
 spec -- the mean over active drinks, a removed drink's `s0` kept (AC16) -- and
@@ -41,6 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from app.db.codec import tick_prices
 from app.db.engine_state import compare_and_set, insert_tick
 from app.db.mapping import DrinkRow
+from app.db.profiles import get_profile
 from app.db.runs import (
     RunEnded,
     RunNotDraft,
@@ -59,6 +64,7 @@ from app.runtime.config_patch import ConfigPatch as ConfigPatch
 from app.runtime.config_patch import InvalidConfig as InvalidConfig
 from app.runtime.config_patch import ParamsPatch as ParamsPatch
 from app.runtime.config_patch import _whole_cents as _whole_cents
+from app.runtime.config_patch import profile_patch
 from app.runtime.history import TickEntry
 from app.runtime.holder import ConfigChanged, MarketHolder, MarketView, Outcome
 from exchange import EngineState, MarketSpec, Params, anchor_s0_to_current_y, hold_quoted_prices
@@ -344,6 +350,27 @@ async def write_draft_config(
         if run.status != "draft":
             raise RunNotDraft(f"run {run_id} is {run.status}, and not live in this process")
         merged = await _merged(conn, run, patch)
+        if merged is None:
+            return await latest_revision(conn, run_id)
+        return await _record(conn, merged, author=author)
+
+
+async def load_profile_onto_draft(
+    engine: AsyncEngine, run_id: int, profile_id: int, *, author: str
+) -> int:
+    """Replace a draft's 22 with a profile's (B-04 SD3, SD9; PD7); the new revision.
+
+    One transaction, the status checked first: a live or ended run is 409
+    `run_not_draft` whatever the profile holds. Then 404 `profile_not_found`, or
+    422 naming a stored value outside today's rules. A profile equal to the
+    draft appends nothing and returns the current revision.
+    """
+    async with engine.begin() as conn:
+        run = await get_run(conn, run_id, lock=True)
+        if run.status != "draft":
+            raise RunNotDraft(f"run {run_id} is {run.status}; a profile loads only onto a draft")
+        profile = await get_profile(conn, profile_id)
+        merged = await _merged(conn, run, profile_patch(profile.settings, source="profile"))
         if merged is None:
             return await latest_revision(conn, run_id)
         return await _record(conn, merged, author=author)

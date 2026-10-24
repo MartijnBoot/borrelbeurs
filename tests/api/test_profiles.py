@@ -4,6 +4,10 @@ AC1 (a save stores the run's 22 as committed), AC2 (`profile_exists`, and an
 overwrite that keeps the stored name), AC4 (a run value outside today's rules is
 422 naming it), AC5 (ended, unknown, bad names), AC6 (nothing but the 22), AC17
 (delete), AC18 (no run touched), AC24 (admin only).
+
+T4, the load onto a draft: AC11 (the 22 replaced, nothing else; an equal profile
+appends nothing), AC13 (`run_not_draft` for a live or ended run), AC14 (404 and
+422, the draft unchanged), AC15 (a missing field keeps the draft's value).
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ from app.db.runs import create_run
 from app.db.session import create_engine
 from app.runtime.config_patch import PROFILE_FIELDS
 from tests.api.conftest import Login
+from tests.api.test_config import _draft_with_drinks
 
 
 def _sql(settings: Settings, url: str, sql: str, **bind: Any) -> list[Any]:
@@ -274,3 +279,212 @@ def test_the_profile_routes_are_admin_only(
     assert client.get("/api/profiles").status_code == expected
     assert _save(client, draft, "x").status_code == expected
     assert client.delete("/api/profiles/1").status_code == expected
+
+
+# --- T4: load onto a draft (AC11, AC13, AC14, AC15, AC24; SD3, SD15, PD7) -----
+
+
+def _load(client: TestClient, run_id: int, profile_id: int) -> Any:
+    return client.post(f"/api/runs/{run_id}/profile", json={"profile_id": profile_id})
+
+
+def _revisions(settings: Settings, url: str, run_id: int) -> list[tuple[int, str]]:
+    rows = _sql(
+        settings,
+        url,
+        "SELECT revision, author FROM run_config_revision WHERE run_id = :r ORDER BY revision",
+        r=run_id,
+    )
+    return [(int(row.revision), row.author) for row in rows]
+
+
+def _set_profile(settings: Settings, url: str, profile_id: int, expression: str) -> None:
+    _sql(
+        settings,
+        url,
+        f"UPDATE settings_profile SET settings = {expression} WHERE profile_id = :p",
+        p=profile_id,
+    )
+
+
+def _bm_sigma(settings: Settings, url: str, run_id: int) -> Any:
+    (row,) = _sql(settings, url, "SELECT params->'bm_sigma' FROM run WHERE run_id = :r", r=run_id)
+    return row[0]
+
+
+WILD = {"candle_interval_s": 30, "params": {"bm_sigma_y": 0.5, "eta": 0.9, "y_clip": 4.0}}
+CALM = {"candle_interval_s": 60, "params": {"bm_sigma_y": 0.1, "eta": 0.2, "y_clip": 6.0}}
+
+
+@pytest.fixture
+def stocked(settings: Settings, api_env: str) -> int:
+    """`test_config.py`'s draft: Bier, Wijn and Fris, as `POST /api/runs` makes it."""
+    return _draft_with_drinks(settings, api_env)
+
+
+def _wild_profile(admin: TestClient, run_id: int) -> int:
+    """A profile saved from `run_id` tuned wild, which is then set calm again."""
+    assert admin.patch(f"/api/runs/{run_id}/config", json=WILD).status_code == 200
+    profile_id = int(_save(admin, run_id, "Wilde beurs").json()["profile_id"])
+    assert admin.patch(f"/api/runs/{run_id}/config", json=CALM).status_code == 200
+    return profile_id
+
+
+def test_a_load_replaces_the_22_and_nothing_else(
+    stocked: int, login: Login, settings: Settings, api_env: str
+) -> None:
+    """AC11: one revision by the key label; idle lists, `bm_sigma`, drinks and name stay."""
+    admin = login("admin", label="Bestuur")
+    profile_id = _wild_profile(admin, stocked)
+    (stored,) = _stored(settings, api_env)
+    bier = admin.get(f"/api/runs/{stocked}/config").json()["drinks"][0]["drink_id"]
+    admin.patch(f"/api/runs/{stocked}/config", json={"params": {"idle_targets": [bier]}})
+    _sql(
+        settings,
+        api_env,
+        "UPDATE run SET params = jsonb_set(params, '{bm_sigma}', '0.77') WHERE run_id = :r",
+        r=stocked,
+    )
+    before = admin.get(f"/api/runs/{stocked}/config").json()
+    revisions = _revisions(settings, api_env, stocked)
+
+    response = _load(admin, stocked, profile_id)
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"revision": revisions[-1][0] + 1}
+    after = admin.get(f"/api/runs/{stocked}/config").json()
+    assert _document_values(admin, stocked) == stored["settings"]
+    assert after["params"]["idle_targets"] == before["params"]["idle_targets"] == [bier]
+    assert after["params"]["idle_rise_targets"] == before["params"]["idle_rise_targets"]
+    assert after["drinks"] == before["drinks"]
+    assert after["run"]["name"] == before["run"]["name"]
+    assert _bm_sigma(settings, api_env, stocked) == 0.77
+    assert _revisions(settings, api_env, stocked) == [
+        *revisions,
+        (revisions[-1][0] + 1, "Bestuur"),
+    ]
+
+
+def test_loading_an_equal_profile_appends_no_revision(
+    stocked: int, login: Login, settings: Settings, api_env: str
+) -> None:
+    """AC11: the same load twice is one revision."""
+    admin = login("admin")
+    profile_id = _wild_profile(admin, stocked)
+    first = _load(admin, stocked, profile_id).json()
+    revisions = _revisions(settings, api_env, stocked)
+
+    again = _load(admin, stocked, profile_id)
+
+    assert (again.status_code, again.json()) == (200, first)
+    assert _revisions(settings, api_env, stocked) == revisions
+
+
+def test_a_load_onto_the_live_run_is_409_run_not_draft(
+    live_run: int, live_client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """AC13, SD3: never onto a live run; nothing written."""
+    admin = login("admin")
+    profile_id = _save(admin, live_run, "Live").json()["profile_id"]
+    _set_profile(settings, api_env, profile_id, "jsonb_set(settings, '{eta}', '0.01')")
+    before = _run_state(settings, api_env)
+
+    response = _load(admin, live_run, profile_id)
+
+    assert (response.status_code, response.json()["error"]["code"]) == (409, "run_not_draft")
+    assert _run_state(settings, api_env) == before
+
+
+def test_a_load_onto_an_ended_run_is_409_run_not_draft(
+    stocked: int, login: Login, settings: Settings, api_env: str
+) -> None:
+    """AC13: `run_not_draft`, not `run_ended` (PD7 checks the status first)."""
+    admin = login("admin")
+    profile_id = _wild_profile(admin, stocked)
+    _sql(settings, api_env, "UPDATE run SET status = 'ended' WHERE run_id = :r", r=stocked)
+    before = _run_state(settings, api_env)
+
+    response = _load(admin, stocked, profile_id)
+
+    assert (response.status_code, response.json()["error"]["code"]) == (409, "run_not_draft")
+    assert _run_state(settings, api_env) == before
+
+
+def test_an_empty_profile_onto_the_live_run_is_still_409(
+    live_run: int, live_client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """PD7: the status is checked before anything else, an empty patch included."""
+    admin = login("admin")
+    profile_id = _save(admin, live_run, "Leeg").json()["profile_id"]
+    _set_profile(settings, api_env, profile_id, "'{}'::jsonb")
+
+    response = _load(admin, live_run, profile_id)
+
+    assert (response.status_code, response.json()["error"]["code"]) == (409, "run_not_draft")
+
+
+@pytest.mark.parametrize("missing", ["profile", "run"])
+def test_an_unknown_profile_or_run_is_404_and_changes_nothing(
+    stocked: int, login: Login, settings: Settings, api_env: str, missing: str
+) -> None:
+    """AC14."""
+    admin = login("admin")
+    profile_id = _wild_profile(admin, stocked)
+    before = _run_state(settings, api_env)
+
+    if missing == "profile":
+        response = _load(admin, stocked, 999_999)
+    else:
+        response = _load(admin, 999_999, profile_id)
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == f"{missing}_not_found"
+    assert _run_state(settings, api_env) == before
+
+
+def test_a_stored_value_outside_todays_rules_is_422_naming_it(
+    stocked: int, login: Login, settings: Settings, api_env: str
+) -> None:
+    """AC14, SD9: the whole load is refused, the draft unchanged."""
+    admin = login("admin")
+    profile_id = _wild_profile(admin, stocked)
+    _set_profile(settings, api_env, profile_id, "jsonb_set(settings, '{y_clip}', '25')")
+    before = _run_state(settings, api_env)
+
+    response = _load(admin, stocked, profile_id)
+
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["code"] == "invalid_request"
+    assert [fault["loc"] for fault in error["faults"]] == [["profile", "params", "y_clip"]]
+    assert _run_state(settings, api_env) == before
+
+
+def test_a_missing_field_keeps_the_drafts_value_and_an_extra_key_is_ignored(
+    stocked: int, login: Login, settings: Settings, api_env: str
+) -> None:
+    """AC15."""
+    admin = login("admin")
+    profile_id = _wild_profile(admin, stocked)
+    (stored,) = _stored(settings, api_env)
+    _set_profile(settings, api_env, profile_id, """(settings - 'eta') || '{"foo": 1}'::jsonb""")
+
+    response = _load(admin, stocked, profile_id)
+
+    assert response.status_code == 200, response.text
+    values = _document_values(admin, stocked)
+    assert values["eta"] == CALM["params"]["eta"]
+    assert {k: v for k, v in values.items() if k != "eta"} == {
+        k: v for k, v in stored["settings"].items() if k != "eta"
+    }
+
+
+@pytest.mark.parametrize("role", ["display", "bar", None])
+def test_a_load_is_admin_only(
+    stocked: int, client: TestClient, login: Login, role: str | None
+) -> None:
+    """AC24."""
+    if role is not None:
+        login(role)
+
+    assert _load(client, stocked, 1).status_code == (401 if role is None else 403)

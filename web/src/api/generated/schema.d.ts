@@ -404,6 +404,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{run_id}/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Profile Load */
+        post: operations["post_profile_load_api_runs__run_id__profile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{run_id}/drinks": {
         parameters: {
             query?: never;
@@ -1048,6 +1065,11 @@ export interface components {
             last_used_at: string | null;
             /** Revoked */
             revoked: boolean;
+        };
+        /** LoadProfileRequest */
+        LoadProfileRequest: {
+            /** Profile Id */
+            profile_id: number;
         };
         /** LoginRequest */
         LoginRequest: {
@@ -2156,6 +2178,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionData"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_profile_load_api_runs__run_id__profile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoadProfileRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
