@@ -56,7 +56,27 @@ describe('Tile', () => {
     const [name, priceText, delta] = [...container.firstElementChild!.children].map(
       (c) => c.textContent,
     )
-    expect([name, priceText, delta]).toEqual(['Bier', `€${NBSP}2,80`, `▲ €${NBSP}0,30 (12,0%)`])
+    expect([name, priceText, delta]).toEqual(['Bier', `€${NBSP}2,80`, `€${NBSP}0,30 (12,0%)`])
+  })
+
+  it.each([
+    ['a rise', 280, 'stijgt', `€${NBSP}0,30 (12,0%)`],
+    ['a fall', 220, 'daalt', `€${NBSP}-0,30 (-12,0%)`],
+  ])('puts the named pixel icon before %s (B-02 AC9)', (_, cents, label, text) => {
+    set({ prices: { 1: price(cents), 2: price(300) }, prevPriceCents: { 1: 250, 2: 300 } })
+    const { container } = render(<Tile drinkId={1} />)
+    const change = container.firstElementChild!.children[2]
+    expect(change.textContent).toBe(text)
+    expect(screen.getByRole('img', { name: label })).toBe(change.firstChild)
+    expect(change.lastChild?.nodeType).toBe(Node.TEXT_NODE)
+  })
+
+  it('shows "—" and no icon when the price is unchanged (B-02 AC9)', () => {
+    set({ prices: { 1: price(280), 2: price(300) }, prevPriceCents: { 1: 250, 2: 300 } })
+    const { container } = render(<Tile drinkId={2} />)
+    const change = container.firstElementChild!.children[2]
+    expect(change.textContent).toBe('—')
+    expect(change.querySelector('svg')).toBeNull()
   })
 
   it('renders an HTML name as text and creates no element (AC32)', () => {

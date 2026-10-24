@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { deltaText, formatEuro, formatPercent, parseEuroCents } from './format'
+import { deltaParts, formatEuro, formatPercent, parseEuroCents } from './format'
 
 // Intl's nl-NL currency format separates the symbol with a no-break space.
 const NBSP = ' '
@@ -27,21 +27,22 @@ describe('formatPercent', () => {
   })
 })
 
-describe('deltaText', () => {
-  it('is a dash when the price is unchanged', () => {
-    expect(deltaText(250, 250)).toBe('—')
+// B-02 PD7: the direction is an icon now, so the text carries no symbol.
+describe('deltaParts', () => {
+  it('is a dash with no direction when the price is unchanged', () => {
+    expect(deltaParts(250, 250)).toEqual({ direction: null, text: '—' })
   })
 
-  it('shows a rise with ▲, the amount and the percentage', () => {
-    expect(deltaText(250, 280)).toBe(`▲ €${NBSP}0,30 (12,0%)`)
+  it('gives a rise, the amount and the percentage', () => {
+    expect(deltaParts(250, 280)).toEqual({ direction: 'rise', text: `€${NBSP}0,30 (12,0%)` })
   })
 
-  it('shows a fall with ▼ and signed values, as v1 did', () => {
-    expect(deltaText(250, 220)).toBe(`▼ €${NBSP}-0,30 (-12,0%)`)
+  it('gives a fall with signed values, as v1 did', () => {
+    expect(deltaParts(250, 220)).toEqual({ direction: 'fall', text: `€${NBSP}-0,30 (-12,0%)` })
   })
 
   it('shows 0,0% when the previous price was zero', () => {
-    expect(deltaText(0, 5)).toBe(`▲ €${NBSP}0,05 (0,0%)`)
+    expect(deltaParts(0, 5)).toEqual({ direction: 'rise', text: `€${NBSP}0,05 (0,0%)` })
   })
 })
 

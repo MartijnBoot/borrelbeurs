@@ -11,14 +11,16 @@
  *   have put out of step.
  * - `playbackRate` changes go through `updatePlaybackRate`.
  *
- * Every part is rendered as a text node (AC32). Hover pauses it (SD24).
+ * Every part is rendered as a text node (AC32), after its icon if it has one
+ * (B-02 PD7). Hover pauses it (SD24).
  */
-import { useEffect, useRef } from 'react'
+import { type ReactNode, useEffect, useRef } from 'react'
 import styles from './Marquee.module.css'
 
 export interface MarqueePart {
   text: string
   className?: string
+  icon?: ReactNode
 }
 
 export interface MarqueeItem {
@@ -85,6 +87,7 @@ export function Marquee({ items, variant, playbackRate = 1 }: MarqueeProps) {
           <span key={item.key} className={item.className}>
             {item.parts.map((part, i) => (
               <span key={i} className={part.className}>
+                {part.icon}
                 {part.text}
               </span>
             ))}

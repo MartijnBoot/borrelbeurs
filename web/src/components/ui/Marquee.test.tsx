@@ -51,6 +51,17 @@ describe('Marquee', () => {
     expect(container.querySelector('img')).toBeNull()
   })
 
+  it('renders a part’s icon before its text, and the text still as text (B-02 PD7)', () => {
+    const xss = '<img src=x onerror=alert(1)>'
+    const parts = [{ text: xss, icon: <svg data-testid="icon" /> }]
+    const { container } = render(<Marquee variant="loop" items={[{ key: 'a', parts }]} />)
+    const part = container.querySelector('[data-testid="icon"]')!.parentElement!
+    expect(part.firstElementChild?.getAttribute('data-testid')).toBe('icon')
+    expect(part.lastChild?.nodeType).toBe(Node.TEXT_NODE)
+    expect(part.textContent).toBe(xss)
+    expect(container.querySelector('img')).toBeNull()
+  })
+
   it('keeps the animation when content changes but the count does not (AC33)', () => {
     const { rerender } = render(<Marquee variant="loop" items={[item('a', '1'), item('b', '2')]} />)
     expect(animations).toHaveLength(1)

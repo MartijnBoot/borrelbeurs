@@ -138,6 +138,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The rise/fall icon before the amount: the gap is CSS, not a space (B-02 PD3). */
+.deltaIcon {
+  margin-inline-end: 0.3em;
+}
+
 .spark {
   display: block;
   width: 100%;
