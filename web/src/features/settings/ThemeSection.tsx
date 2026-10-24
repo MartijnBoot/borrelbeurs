@@ -1,5 +1,5 @@
 /**
- * The "🎨 Kleurenschema" section of `/settings` (Phase 4 SD10; moved here by
+ * The "Kleurenschema" section of `/settings` (Phase 4 SD10; moved here by
  * Phase 6 PD13; `SettingsLayout` gives it its heading): the five presets, the current
  * one marked. The key -> label pairs are UI strings, not theme data -- the
  * tokens stay on the server (SD6) -- so these are labelled buttons, not

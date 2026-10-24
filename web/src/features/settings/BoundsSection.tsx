@@ -1,5 +1,5 @@
 /**
- * 🔒 Min/Max/Startprijs (Phase 6 SD25; AC1, AC3, AC11): one row per active
+ * Min/Max/Startprijs (Phase 6 SD25; AC1, AC3, AC11): one row per active
  * drink, its three bounds as `MoneyField`s under B-01's names, each with an (i)
  * (E17-E19). Each row is its own
  * `useEditableRecord` and its own save, which sends one `PATCH` with only that

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 🔑 Toegangssleutels (Phase 6 T32: SD30; AC36, AC38, AC39): the list, a new key
+// Toegangssleutels (Phase 6 T32: SD30; AC36, AC38, AC39): the list, a new key
 // shown exactly once, and revocation behind a dialog.
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

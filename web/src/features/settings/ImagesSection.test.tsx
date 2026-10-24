@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 🖼️ Afbeeldingen (Phase 6 T31: SD29; AC31, AC33, AC34, AC39): four slots, each with
+// Afbeeldingen (Phase 6 T31: SD29; AC31, AC33, AC34, AC39): four slots, each with
 // a preview from the store's theme, an upload and a confirmed removal.
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

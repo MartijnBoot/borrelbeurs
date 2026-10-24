@@ -1,5 +1,5 @@
 /**
- * 🔑 Toegangssleutels (Phase 6 SD30; AC36, AC38, AC39).
+ * Toegangssleutels (Phase 6 SD30; AC36, AC38, AC39).
  *
  * - **The list:** every key's label, role, created, last used and
  *   Actief/Ingetrokken; never a secret.

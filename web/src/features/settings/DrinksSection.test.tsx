@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 🥤 Drankjes beheren (Phase 6 T26: SD13, SD25; AC4, AC17, AC21, AC39): add with
+// Drankjes beheren (Phase 6 T26: SD13, SD25; AC4, AC17, AC21, AC39): add with
 // blank optionals omitted, rename and bar price dirty-only, remove behind a dialog.
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

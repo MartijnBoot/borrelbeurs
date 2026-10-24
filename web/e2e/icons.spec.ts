@@ -15,7 +15,7 @@ const FAVICON = readFileSync(new URL('../public/favicon.png', import.meta.url))
 const TILE = '[class^="_tile_"]' // see board.spec.ts
 const PROPAGATION_MS = 2_000
 
-/** SD12's set: any emoji, U+FE0F, and ▲ ▼ ▾ ⚠ -- written as escapes, as the scan's are. */
+/** SD12's set: any emoji, U+FE0F, and U+25B2, U+25BC, U+25BE, U+26A0 -- as escapes, like the scan's. */
 const BANNED = /\p{Extended_Pictographic}|\u{FE0F}|[\u{25B2}\u{25BC}\u{25BE}\u{26A0}]/u
 
 function rgb(hex: string): string {

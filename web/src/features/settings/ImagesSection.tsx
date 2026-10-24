@@ -1,5 +1,5 @@
 /**
- * 🖼️ Afbeeldingen (Phase 6 SD29; AC31, AC33, AC34, AC39): the four image slots.
+ * Afbeeldingen (Phase 6 SD29; AC31, AC33, AC34, AC39): the four image slots.
  *
  * Each slot previews the store's `theme.images` -- a broadcast updates it --
  * uploads a chosen file as multipart `file` (PD1) and removes the image behind

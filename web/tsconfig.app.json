@@ -23,6 +23,7 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
-  // Lints with ESLint's Node API, so it is type-checked as Node code (tsconfig.node.json).
-  "exclude": ["src/lint-rules.test.ts"]
+  // These read files or lint with Node APIs, so they are type-checked as Node code
+  // (tsconfig.node.json): CSS imports are stubbed under Vitest, so the emoji scan reads the disk.
+  "exclude": ["src/lint-rules.test.ts", "src/noEmoji.test.ts"]
 }
