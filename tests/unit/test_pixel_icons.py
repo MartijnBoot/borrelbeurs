@@ -200,8 +200,10 @@ def test_the_sheet_is_not_part_of_the_built_app() -> None:
     assert not DEFAULT_SHEET.is_relative_to(ROOT / "web")
 
 
-def test_the_committed_favicon_is_the_grid_byte_for_byte() -> None:
+def test_the_committed_favicon_is_the_grid_pixel_for_pixel() -> None:
     """AC12, PD9: a redraw of the `favicon` grid fails here until the PNG is regenerated
-    (`uv run python -m scripts.pixel_icons favicon`)."""
+    (`uv run python -m scripts.pixel_icons favicon`). Pixels, not bytes: another zlib
+    build may deflate the same pixels differently."""
     assert DEFAULT_FAVICON == ROOT / "web" / "public" / "favicon.png"
-    assert DEFAULT_FAVICON.read_bytes() == encode_png(favicon_rgba(load_grids()["favicon"]))
+    expected = encode_png(favicon_rgba(load_grids()["favicon"]))
+    assert _decode_png(DEFAULT_FAVICON.read_bytes()) == _decode_png(expected)

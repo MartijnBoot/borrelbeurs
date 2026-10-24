@@ -6,6 +6,7 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { exchangeStore, type ExchangeState, type MarketEventInfo } from '../exchange'
 import { KoersPage } from './KoersPage'
+import { PriceMarquee } from './PriceMarquee'
 
 vi.mock('./ui/DrinkChart', () => ({ DrinkChart: () => <div /> }))
 
@@ -182,5 +183,16 @@ describe('marquees', () => {
     // the tile's name and the marquee's two copies, all text
     expect(screen.getAllByText(XSS)).toHaveLength(3)
     expect(container.querySelector('img')).toBeNull()
+  })
+
+  it('puts the rise or fall icon before each copy’s delta (B-02 AC9)', () => {
+    render(<PriceMarquee />)
+    const rises = screen.getAllByRole('img', { name: 'stijgt' })
+    expect(rises).toHaveLength(2)
+    for (const icon of rises) expect(icon.nextSibling?.textContent).toBe('€ 0,30 (12,0%)')
+
+    set({ prices: { 1: price(220) } })
+    expect(screen.queryByRole('img', { name: 'stijgt' })).toBeNull()
+    expect(screen.getAllByRole('img', { name: 'daalt' })).toHaveLength(2)
   })
 })

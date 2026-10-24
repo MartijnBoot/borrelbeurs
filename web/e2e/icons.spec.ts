@@ -45,12 +45,19 @@ test('the favicon is linked and served from the app’s own origin (AC12)', asyn
   expect(Buffer.compare(await response.body(), FAVICON)).toBe(0)
 })
 
-/** The icon's rendered height and its container's computed font size, in px. */
+/**
+ * The icon's rendered height and its container's computed font size, in px. The
+ * height is taken back out of the container's own scale: the crash banner throbs
+ * to 1.06 (`banner-throb`), which the rect includes and the font size does not.
+ */
 async function heightAndFontSize(container: Locator) {
-  return container.evaluate((el) => ({
-    icon: el.querySelector('svg')!.getBoundingClientRect().height,
-    font: parseFloat(getComputedStyle(el).fontSize),
-  }))
+  return container.evaluate((el) => {
+    const { a, b } = new DOMMatrix(getComputedStyle(el).transform)
+    return {
+      icon: el.querySelector('svg')!.getBoundingClientRect().height / Math.hypot(a, b),
+      font: parseFloat(getComputedStyle(el).fontSize),
+    }
+  })
 }
 
 async function expectAsTallAsItsText(container: Locator) {
