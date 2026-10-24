@@ -103,6 +103,12 @@
   width: 6rem;
 }
 
+.columnHeader {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
 .preview {
   max-height: 64px;
   max-width: 160px;

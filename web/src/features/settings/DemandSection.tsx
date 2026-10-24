@@ -7,7 +7,8 @@
  * - **The switches** (`demand_enabled`, `auto_calibrate_s0`) are one
  *   `useEditableRecord`, saved as `PATCH config {params}` with only the one that
  *   changed.
- * - **The `a/d/s0/c` table** is one `useEditableRecord` over every active
+ * - **The `a/d/s0/c` table** (headed by B-01's names, each with an (i);
+ *   a cell is named "{drink} {name}") is one `useEditableRecord` over every active
  *   drink's four coefficients, keyed `"<drink_id>:<field>"`. Saving splits the
  *   patch by drink and sends one `PATCH` per changed drink, carrying only its
  *   changed coefficients. Untouched, it sends nothing: "Niets te wijzigen".
@@ -17,11 +18,13 @@
  */
 import { type FormEvent, useMemo, useState } from 'react'
 import { Button } from '../../components/ui/Button'
+import { InfoButton } from '../../components/ui/InfoButton'
 import { NumberField } from '../../components/ui/NumberField'
 import { Switch } from '../../components/ui/Switch'
 import { Toast } from '../../components/ui/Toast'
 import { request } from '../../lib/http'
 import { useEditableRecord } from '../../lib/useEditableRecord'
+import explanations from './explanations.json'
 import styles from './settings.module.css'
 import { Revision, type RunConfig, useRunConfig } from './useRunConfig'
 
@@ -137,12 +140,14 @@ export function DemandSection() {
       <form className={styles.subsection} onSubmit={saveSwitches}>
         <div className={styles.row}>
           <Switch
-            label="Vraag/aanbod actief"
+            label={explanations.demand_enabled.name}
+            info={explanations.demand_enabled}
             checked={toggles.demand_enabled === true}
             onChange={(on) => switches.set('demand_enabled', on)}
           />
           <Switch
-            label="Evenwicht, s0, auto-kalibreren bij init/reset"
+            label={explanations.auto_calibrate_s0.name}
+            info={explanations.auto_calibrate_s0}
             checked={toggles.auto_calibrate_s0 === true}
             onChange={(on) => switches.set('auto_calibrate_s0', on)}
           />
@@ -157,7 +162,12 @@ export function DemandSection() {
             <tr>
               <th>Drankje</th>
               {COEFFICIENTS.map((field) => (
-                <th key={field}>{field}</th>
+                <th key={field}>
+                  <span className={styles.columnHeader}>
+                    <span>{explanations[field].name}</span>
+                    <InfoButton explanation={explanations[field]} />
+                  </span>
+                </th>
               ))}
             </tr>
           </thead>
@@ -173,7 +183,7 @@ export function DemandSection() {
                     return (
                       <td key={field}>
                         <NumberField
-                          label={`${drink.name} ${field}`}
+                          label={`${drink.name} ${explanations[field].name}`}
                           hideLabel
                           value={value}
                           onChange={(next) => table.set(key, next)}

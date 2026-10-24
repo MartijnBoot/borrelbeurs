@@ -3,10 +3,13 @@
 // v1 sent every coefficient of every drink on save, and an empty field became 0
 // (D-03). Here the real `useEditableRecord` runs: an untouched save sends nothing;
 // one edited `a` sends exactly `{a}` to that drink's PATCH.
+// B-01 T6: the new names (E11-E16), the switches' and the column headers' (i).
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { expectExplained } from '../../components/ui/infoTesting'
 import { exchangeStore } from '../exchange'
 import { DemandSection } from './DemandSection'
+import explanations from './explanations.json'
 
 const DRINK = {
   slot: 0,
@@ -104,7 +107,7 @@ describe('DemandSection: the D-03 gate', () => {
 
   it("one edited a sends exactly {a} to that drink's PATCH (AC1)", async () => {
     await open()
-    fireEvent.change(table().getByLabelText('Wijn a'), { target: { value: '7,5' } })
+    fireEvent.change(table().getByLabelText('Wijn Basisvraag (a)'), { target: { value: '7,5' } })
     await saveTable()
     expect(writes()).toEqual([['/api/runs/7/drinks/12', 'PATCH', { a: 7.5 }]])
   })
@@ -113,20 +116,24 @@ describe('DemandSection: the D-03 gate', () => {
 describe('DemandSection', () => {
   it('lists every active drink and its four coefficients', async () => {
     await open()
-    expect((table().getByLabelText('Bier d') as HTMLInputElement).value).toBe('0,6')
-    expect(table().queryByLabelText('Oud a')).toBeNull()
+    expect((table().getByLabelText('Bier Prijsgevoeligheid (d)') as HTMLInputElement).value).toBe(
+      '0,6',
+    )
+    expect(table().queryByLabelText('Oud Basisvraag (a)')).toBeNull()
   })
 
   it('a cleared coefficient blocks the save and is never sent as 0 (AC3)', async () => {
     await open()
-    fireEvent.change(table().getByLabelText('Bier s0'), { target: { value: '' } })
+    fireEvent.change(table().getByLabelText('Bier Vraagverschuiving (s0)'), {
+      target: { value: '' },
+    })
     await saveTable()
     expect(writes()).toEqual([])
   })
 
   it('a toggle sends PATCH config with only that param', async () => {
     await open()
-    fireEvent.click(screen.getByRole('switch', { name: 'Vraag/aanbod actief' }))
+    fireEvent.click(screen.getByRole('switch', { name: 'Verwachte verkoop meetellen' }))
     fireEvent.click(screen.getByRole('button', { name: '💾 Opslaan schakelaars' }))
     await settle()
     expect(writes()).toEqual([
@@ -141,9 +148,49 @@ describe('DemandSection', () => {
     expect(writes()).toEqual([])
   })
 
+  it('names the switches E11 and E12, each with its (i) (B-01 AC7, AC13)', async () => {
+    render(<DemandSection />)
+    await settle()
+    expect(screen.getByRole('switch', { name: 'Verwachte verkoop meetellen' })).toBeTruthy()
+    expect(screen.getByRole('switch', { name: 'Evenwicht zetten bij live zetten' })).toBeTruthy()
+    expectExplained(document.body, explanations.demand_enabled)
+    expectExplained(document.body, explanations.auto_calibrate_s0)
+  })
+
+  it('heads the columns with the new names, each with its (i) (B-01 AC7, AC9)', async () => {
+    await open()
+    const headers = table().getAllByRole('columnheader')
+    const names = ['Basisvraag (a)', 'Prijsgevoeligheid (d)', 'Vraagverschuiving (s0)']
+    names.push('Voordeel onder gemiddelde (c)')
+    expect(headers).toHaveLength(5)
+    names.forEach((name, i) => expect(within(headers[i + 1]).getByText(name)).toBeTruthy())
+    for (const key of ['a', 'd', 's0', 'c'] as const) {
+      expectExplained(screen.getByRole('table', { name: 'Coëfficiënten' }), explanations[key])
+    }
+  })
+
+  it('a cell is named "{drink} {new name}" and has no (i) of its own (B-01 AC7, PD9)', async () => {
+    await open()
+    const bier = table().getByRole('row', { name: /^Bier/ })
+    for (const name of ['Basisvraag (a)', 'Prijsgevoeligheid (d)', 'Vraagverschuiving (s0)']) {
+      expect(within(bier).getByLabelText(`Bier ${name}`)).toBeTruthy()
+    }
+    expect(within(bier).queryAllByRole('button', { name: /^Uitleg: / })).toEqual([])
+  })
+
+  it("a header's (i) leaves the table clean: saving sends nothing (B-01 AC5)", async () => {
+    await open()
+    const info = table().getByRole('button', { name: 'Uitleg: Basisvraag (a)' })
+    fireEvent.click(info)
+    fireEvent.click(info)
+    await saveTable()
+    expect(writes()).toEqual([])
+    expect(screen.getByRole('status').textContent).toBe('Niets te wijzigen')
+  })
+
   it('a config while a row is dirty offers the server values (AC5)', async () => {
     await open()
-    fireEvent.change(table().getByLabelText('Bier a'), { target: { value: '3' } })
+    fireEvent.change(table().getByLabelText('Bier Basisvraag (a)'), { target: { value: '3' } })
     const changed = {
       ...CONFIG,
       revision: 4,
@@ -160,9 +207,11 @@ describe('DemandSection', () => {
     await settle()
 
     expect(screen.getByText('Serverwaarden gewijzigd — overnemen?')).toBeTruthy()
-    expect((table().getByLabelText('Bier a') as HTMLInputElement).value).toBe('3')
+    expect((table().getByLabelText('Bier Basisvraag (a)') as HTMLInputElement).value).toBe('3')
     fireEvent.click(screen.getByRole('button', { name: 'Overnemen' }))
-    expect((table().getByLabelText('Bier c') as HTMLInputElement).value).toBe('0,9')
-    expect((table().getByLabelText('Bier a') as HTMLInputElement).value).toBe('10')
+    expect(
+      (table().getByLabelText('Bier Voordeel onder gemiddelde (c)') as HTMLInputElement).value,
+    ).toBe('0,9')
+    expect((table().getByLabelText('Bier Basisvraag (a)') as HTMLInputElement).value).toBe('10')
   })
 })
