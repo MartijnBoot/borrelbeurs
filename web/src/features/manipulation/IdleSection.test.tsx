@@ -2,6 +2,7 @@
 // Idle (Phase 6 T34: SD11, SD20; AC1, AC2, AC7, AC22): v1's decay/rise minutes
 // and strengths, and both target lists over active drinks, sent as a dirty-only
 // `PATCH config` of `drink_id`s. B-01 T8: the new names and (i) (E21-E26), and AC18.
+// B-04 T9 (AC16, PD10 reading A): a live run's idle numbers loaded from a profile show.
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectExplained } from '../../components/ui/infoTesting'
@@ -213,5 +214,30 @@ describe('IdleSection', () => {
 
     expect(within(decayTargets()).queryByLabelText('Wijn')).toBeNull()
     expect(within(riseTargets()).queryByLabelText('Wijn')).toBeNull()
+  })
+
+  it('shows the idle numbers of a live run started from a profile (B-04 AC16, PD10 A)', async () => {
+    // A profile's four idle numbers, as the run's config serves them once it is live.
+    const fromProfile = {
+      ...PARAMS,
+      idle_decay_minutes: 2,
+      idle_strength: 3,
+      idle_rise_minutes: 4,
+      idle_rise_strength: 0.25,
+    }
+    fetchMock.mockImplementation((_path: string, init?: RequestInit) =>
+      Promise.resolve(
+        (init?.method ?? 'GET') === 'GET'
+          ? json(200, { revision: 2, params: fromProfile })
+          : json(200, { revision: 3 }),
+      ),
+    )
+    await open()
+
+    const value = (label: string) => (screen.getByLabelText(label) as HTMLInputElement).value
+    expect(value('Omlaag na stilte van (min)')).toBe('2')
+    expect(value('Kracht omlaag')).toBe('3')
+    expect(value('Omhoog na stilte van (min)')).toBe('4')
+    expect(value('Kracht omhoog')).toBe('0,25')
   })
 })

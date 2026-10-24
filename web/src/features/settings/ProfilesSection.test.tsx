@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 // The Profielen section (B-04 T8b: SD2, SD5, SD6, SD10, SD12, SD14; AC1-AC3, AC17,
 // AC19-AC21, AC23): the list, "Opslaan als profiel" with its overwrite confirm, and
-// "Verwijderen" behind a plain confirm.
+// "Verwijderen" behind a plain confirm. T9 (AC11-AC14, AC16, AC21): "Profiel laden" on a
+// draft, and the other sections showing the loaded values.
 import { act, cleanup, fireEvent, render, renderHook, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { exchangeStore } from '../exchange'
+import { DemandSection } from './DemandSection'
+import { GlobalSection } from './GlobalSection'
 import { ProfilesSection } from './ProfilesSection'
 import { useProfiles } from './useProfiles'
 
@@ -325,5 +328,225 @@ describe('"Verwijderen" (AC17, SD6)', () => {
     await settle()
 
     expect(other.result.current.profiles).toEqual([CALM])
+  })
+})
+
+// --- T9: "Profiel laden" on a draft (AC11-AC14, AC16, AC21; SD3, SD13) ----------
+
+const LOAD = '/api/runs/7/profile'
+const loadConfirm =
+  "Profiel 'Wilde beurs' laden op 'Proef'? Dit vervangt de instellingen van deze borrel."
+
+function pick(name: string) {
+  const select = screen.getByLabelText('Profiel laden') as HTMLSelectElement
+  const option = [...select.options].find((o) => o.textContent === name)
+  fireEvent.change(select, { target: { value: option?.value } })
+}
+
+describe('"Profiel laden" (AC12, AC13, AC21)', () => {
+  it('shows on a draft, with every profile by name', async () => {
+    await open()
+
+    const select = screen.getByLabelText('Profiel laden') as HTMLSelectElement
+    expect([...select.options].map((o) => o.textContent)).toEqual(['rustig', 'Wilde beurs'])
+    expect(screen.getByRole('button', { name: 'Laden' })).toBeTruthy()
+  })
+
+  it.each([
+    ['a live run', () => json(200, live)],
+    ['no run', noRun],
+  ])('is absent on %s', async (_, answer) => {
+    current = answer
+    await open()
+
+    expect(screen.queryByLabelText('Profiel laden')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Laden' })).toBeNull()
+  })
+
+  it('asks first, then sends the profile and reloads the run', async () => {
+    writes = [() => json(200, { revision: 4 })]
+    await open()
+    const runReads = () =>
+      fetchMock.mock.calls.filter(([path]) => path === '/api/runs/current').length
+    const before = runReads()
+
+    pick('Wilde beurs')
+    fireEvent.click(screen.getByRole('button', { name: 'Laden' }))
+    expect(screen.getByText(loadConfirm)).toBeTruthy()
+    expect(sent()).toEqual([])
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Laden' }))
+    await settle()
+
+    expect(sent()).toEqual([[LOAD, 'POST', { profile_id: 2 }]])
+    expect(runReads()).toBeGreaterThan(before)
+    expect(screen.queryByText(loadConfirm)).toBeNull()
+  })
+
+  it('sends nothing on cancel', async () => {
+    await open()
+
+    pick('Wilde beurs')
+    fireEvent.click(screen.getByRole('button', { name: 'Laden' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Annuleren' }))
+    await settle()
+
+    expect(sent()).toEqual([])
+  })
+})
+
+describe('the load failures (AC13, AC14, AC23; PD12)', () => {
+  async function load() {
+    await open()
+    pick('Wilde beurs')
+    fireEvent.click(screen.getByRole('button', { name: 'Laden' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Laden' }))
+    await settle()
+  }
+
+  it('a profile gone meanwhile says so and reloads the list', async () => {
+    writes = [() => json(404, { error: { code: 'profile_not_found', message: 'gone' } })]
+    profiles = () => json(200, [CALM, WILD])
+    await open()
+    profiles = () => json(200, [CALM])
+    pick('Wilde beurs')
+    fireEvent.click(screen.getByRole('button', { name: 'Laden' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Laden' }))
+    await settle()
+
+    expect(screen.getByRole('alert').textContent).toBe('Dit profiel bestaat niet meer.')
+    expect(rows()).toHaveLength(1)
+  })
+
+  it('a stored value outside the rules is named by its setting name', async () => {
+    writes = [
+      () =>
+        json(422, {
+          error: {
+            code: 'invalid_request',
+            message: 'y_clip: too big',
+            faults: [{ loc: ['profile', 'params', 'y_clip'], msg: 'too big' }],
+          },
+        }),
+    ]
+    await load()
+
+    expect(screen.getByRole('alert').textContent).toBe(
+      "Profiel niet toegepast: 'Grens ruis' valt buiten de toegestane waarden.",
+    )
+    expect(sent()).toHaveLength(1)
+  })
+
+  it('a run that is no longer a draft says so and reloads the run', async () => {
+    writes = [() => json(409, { error: { code: 'run_not_draft', message: 'live' } })]
+    await open()
+    current = () => json(200, live)
+    pick('Wilde beurs')
+    fireEvent.click(screen.getByRole('button', { name: 'Laden' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Laden' }))
+    await settle()
+
+    expect(screen.getByRole('alert').textContent).toBe('Deze borrel is geen concept meer.')
+    expect(screen.queryByLabelText('Profiel laden')).toBeNull()
+  })
+})
+
+// --- AC16: the other sections show the loaded values without a remount -----------
+
+const PARAMS = {
+  step_quant: 0.1,
+  eta: 0.8,
+  K: 5,
+  lambda_orders: 1.5,
+  alpha_price: 0,
+  phi_persist: 0.1,
+  decay_rho: 0.98,
+  history_window_minutes: 15,
+  refresh_minutes: 0.2,
+  idle_decay_minutes: 0.1,
+  idle_rise_minutes: 0.1,
+  idle_strength: 1.5,
+  idle_rise_strength: 1.5,
+  idle_targets: [],
+  idle_rise_targets: [],
+  demand_enabled: false,
+  auto_calibrate_s0: false,
+  bm_enabled: true,
+  bm_sigma_y: 0.18,
+  bm_dt_minutes: 1,
+  flow_vol_amp: 0.7,
+  flow_beta: 0.25,
+  y_clip: 6,
+}
+
+const document_ = (params: object, candle: number, revision: number) => ({
+  revision,
+  run: { ...draft, candle_interval_s: candle },
+  params,
+  drinks: [],
+})
+
+describe('after a load, the other sections show the loaded values (AC16)', () => {
+  let served: unknown
+
+  beforeEach(() => {
+    served = document_(PARAMS, 60, 3)
+    fetchMock.mockImplementation((path: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET'
+      if (path === '/api/runs/current') return Promise.resolve(json(200, draft))
+      if (path === '/api/profiles') return Promise.resolve(json(200, [WILD]))
+      if (path === '/api/runs/7/config' && method === 'GET')
+        return Promise.resolve(json(200, served))
+      if (path === LOAD) {
+        served = document_({ ...PARAMS, bm_sigma_y: 0.5, demand_enabled: true }, 30, 4)
+        return Promise.resolve(json(200, { revision: 4 }))
+      }
+      return Promise.resolve(json(404, { error: { code: 'not_found', message: path } }))
+    })
+  })
+
+  async function renderTogether() {
+    render(
+      <>
+        <ProfilesSection names={NAMES} />
+        <GlobalSection />
+        <DemandSection />
+      </>,
+    )
+    await settle()
+  }
+
+  async function loadWild() {
+    pick('Wilde beurs')
+    fireEvent.click(screen.getByRole('button', { name: 'Laden' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Laden' }))
+    await settle()
+  }
+
+  const field = (label: string) => screen.getByLabelText(label) as HTMLInputElement
+  const demand = () => screen.getByRole('switch', { name: 'Verwachte verkoop meetellen' })
+
+  it('Globale instellingen and Vraag/Aanbod refetch', async () => {
+    await renderTogether()
+    expect(field('Sterkte ruis').value).toBe('0,18')
+    expect(demand().getAttribute('aria-checked')).toBe('false')
+
+    await loadWild()
+
+    expect(field('Sterkte ruis').value).toBe('0,5')
+    expect(field('Kaarsbreedte (sec)').value).toBe('30')
+    expect(demand().getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('a section with an unsaved edit keeps it and offers "Overnemen"', async () => {
+    await renderTogether()
+    fireEvent.change(field('Sterkte ruis'), { target: { value: '0,3' } })
+
+    await loadWild()
+
+    expect(field('Sterkte ruis').value).toBe('0,3')
+    expect(screen.getByText('Serverwaarden gewijzigd — overnemen?')).toBeTruthy()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Overnemen' })[0])
+    expect(field('Sterkte ruis').value).toBe('0,5')
+    expect(field('Kaarsbreedte (sec)').value).toBe('30')
   })
 })
