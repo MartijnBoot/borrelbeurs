@@ -6,12 +6,14 @@ import {
   DrinksSection,
   GlobalSection,
   ImagesSection,
+  ProfilesSection,
   type SettingsSection,
   SettingsLayout,
   SystemSection,
   ThemeEditor,
   ThemeSection,
 } from '../../features/settings'
+import { settingNames } from './settingNames'
 
 /**
  * `/settings` (Phase 6 SD25, PD13): v1's sidebar sections, in its order.
@@ -22,6 +24,12 @@ const SECTIONS: readonly SettingsSection[] = [
   { id: 'borrel', label: 'Borrel', content: <BorrelSection /> },
   { id: 'systeem', label: 'Systeemacties', icon: 'broom', content: <SystemSection /> },
   { id: 'globaal', label: 'Globale instellingen', icon: 'gear', content: <GlobalSection /> },
+  {
+    id: 'profielen',
+    label: 'Profielen',
+    icon: 'floppy',
+    content: <ProfilesSection names={settingNames} />,
+  },
   {
     id: 'kleuren',
     label: 'Kleurenschema',

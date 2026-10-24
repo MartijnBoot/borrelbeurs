@@ -1,16 +1,19 @@
 // @vitest-environment jsdom
-// `/settings` (Phase 6 T24: SD25, PD13): nine sections, in v1's sidebar order,
-// each listed in the section navigation. B-01 T11: exactly the 21 settings
+// `/settings` (Phase 6 T24: SD25, PD13): ten sections, in v1's sidebar order with
+// B-04's Profielen after Globale instellingen (SD10), each listed in the section
+// navigation. B-01 T11: exactly the 21 settings
 // explanations get an (i), section by section (AC8-AC10).
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { settingsExplanations as explanations } from '../../features/settings'
 import { SettingsPage } from './SettingsPage'
+import { settingNames } from './settingNames'
 
 const SECTIONS = [
   'Borrel',
   'Systeemacties',
   'Globale instellingen',
+  'Profielen',
   'Kleurenschema',
   'Afbeeldingen',
   'Drankjes beheren',
@@ -53,7 +56,7 @@ afterEach(() => {
 })
 
 describe('SettingsPage', () => {
-  it('lists the nine sections in the nav, each with its own heading', async () => {
+  it('lists the ten sections in the nav, each with its own heading', async () => {
     render(<SettingsPage />)
     await act(async () => {})
 
@@ -169,6 +172,7 @@ const SERVED: Readonly<Record<string, unknown>> = {
   '/api/runs/7/config': CONFIG,
   '/api/keys': [KEY],
   '/api/analytics/runs': [],
+  '/api/profiles': [],
 }
 
 const NAMES = new Set(Object.values(explanations).map((entry) => entry.name))
@@ -208,6 +212,7 @@ describe('SettingsPage: the explanations (B-01)', () => {
     ['Drankjes beheren', 8 + 1 * 2],
     ['Systeemacties', 1],
     ['Borrel', 0],
+    ['Profielen', 0],
     ['Kleurenschema', 0],
     ['Afbeeldingen', 0],
     ['Toegangssleutels', 0],
@@ -238,3 +243,45 @@ function expectSameEverywhere(entry: { name: string; paragraphs: string[] }, pla
     fireEvent.keyDown(document, { key: 'Escape' })
   }
 }
+
+// B-04 SD1's 22 under their wire names.
+const PROFILE_FIELDS = [
+  'step_quant',
+  'eta',
+  'K',
+  'lambda_orders',
+  'alpha_price',
+  'phi_persist',
+  'decay_rho',
+  'history_window_minutes',
+  'refresh_minutes',
+  'candle_interval_s',
+  'bm_enabled',
+  'bm_sigma_y',
+  'bm_dt_minutes',
+  'flow_vol_amp',
+  'flow_beta',
+  'y_clip',
+  'demand_enabled',
+  'auto_calibrate_s0',
+  'idle_decay_minutes',
+  'idle_strength',
+  'idle_rise_minutes',
+  'idle_rise_strength',
+]
+
+describe('SettingsPage: Profielen (B-04)', () => {
+  it('has the floppy icon in its heading, after Globale instellingen (AC19)', async () => {
+    render(<SettingsPage />)
+    await act(async () => {})
+
+    const heading = screen.getByRole('heading', { level: 2, name: 'Profielen' })
+    expect(leadingIcon(heading)).not.toBeNull()
+    expect(document.getElementById('profielen')).not.toBeNull()
+  })
+
+  it.each(PROFILE_FIELDS)('names %s for a 422 by its setting name (AC23)', (field) => {
+    expect(settingNames[field]?.trim()).toBeTruthy()
+    expect(settingNames[field]).not.toBe(field)
+  })
+})
