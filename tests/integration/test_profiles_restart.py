@@ -117,6 +117,7 @@ def test_a_borrel_created_from_a_profile_goes_live_with_its_values(
     async def body(engine: AsyncEngine) -> tuple[Any, ...]:
         stored = await _wild_profile(engine)
         async with engine.connect() as conn:
+            profile_id: int
             (profile_id,) = (
                 await conn.execute(text("SELECT profile_id FROM settings_profile"))
             ).scalars()
@@ -136,6 +137,7 @@ def test_a_draft_loaded_with_a_profile_goes_live_with_its_values(
     async def body(engine: AsyncEngine) -> tuple[Any, ...]:
         stored = await _wild_profile(engine)
         async with engine.connect() as conn:
+            profile_id: int
             (profile_id,) = (
                 await conn.execute(text("SELECT profile_id FROM settings_profile"))
             ).scalars()
