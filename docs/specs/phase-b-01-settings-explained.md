@@ -1,6 +1,6 @@
 # Spec: B-01 — Settings that explain themselves
 
-Status: Draft · Depends on: Phase 6, Phase 7 · Fixes: no open defect — closes the screen-text
+Status: Approved · Depends on: Phase 6, Phase 7 · Fixes: no open defect — closes the screen-text
 side of D-21 and D-22 (both resolved in the engine in Phase 1; the labels still say the old
 thing) · Backlog: [B-01](../backlog.md)
 
