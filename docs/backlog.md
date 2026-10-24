@@ -15,12 +15,11 @@ Top is next. Every item that is not `specced` or `dropped` appears here exactly 
 
 | # | ID | Feature | Size | Status |
 |---|---|---|---|---|
-| 1 | B-03 | Brownian settings in Globale instellingen | S | idea |
-| 2 | B-04 | Named setting profiles per type of game | M | idea |
-| 3 | B-05 | Player wallets with a QR code | L | idea |
-| 4 | B-06 | Pay at the bar by scanning a player's wallet | M | idea |
-| 5 | B-07 | Price bounds on the Prijsstap grid | S | idea |
-| 6 | B-08 | Short keys you can read aloud | S | idea |
+| 1 | B-04 | Named setting profiles per type of game | M | idea |
+| 2 | B-05 | Player wallets with a QR code | L | idea |
+| 3 | B-06 | Pay at the bar by scanning a player's wallet | M | idea |
+| 4 | B-07 | Price bounds on the Prijsstap grid | S | idea |
+| 5 | B-08 | Short keys you can read aloud | S | idea |
 
 ## Items
 
@@ -121,7 +120,7 @@ koers screen's market-event layer, possibly theming (ADR 0005). Not the engine.
 
 ### B-03 — Brownian settings in Globale instellingen
 
-- **Status:** idea
+- **Status:** specced → `docs/specs/phase-b-03-brownian-settings.md`
 - **Added:** 2026-10-18
 - **Size:** S (a day or less) — a guess
 
