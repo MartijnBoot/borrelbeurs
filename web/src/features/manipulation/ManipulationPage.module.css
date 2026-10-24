@@ -71,6 +71,9 @@
 }
 
 .targets legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-bottom: 6px;
   color: var(--muted);
 }
