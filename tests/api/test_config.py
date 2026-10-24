@@ -3,6 +3,10 @@
 AC2 (an empty body writes nothing), AC3 (`null` is 422 naming the field), AC11
 (SD8 violations are 422 naming the field and change nothing), AC28 (the candle
 interval's 422). SD8's "a-b" ranges include both ends (the user, 2026-10-08).
+
+B-03 T1 (AC1-AC4): the six noise params are writable within SD3's ranges and in
+the document; the legacy `bm_sigma`, `tick_interval_ms`, `quote_grace_versions`
+are still 422.
 """
 
 from __future__ import annotations
@@ -16,7 +20,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.core.config import Settings
-from app.db.runs import add_drink, create_run
+from app.db.runs import DEFAULT_PARAMS, add_drink, create_run
 from app.db.session import create_engine
 from tests.api.conftest import Login
 
@@ -90,6 +94,10 @@ def _set_status(settings: Settings, url: str, run_id: int, status: str) -> None:
     asyncio.run(scenario())
 
 
+NOISE = ("bm_enabled", "bm_sigma_y", "bm_dt_minutes", "flow_vol_amp", "flow_beta", "y_clip")
+NOISE_NUMBERS = NOISE[1:]
+
+
 def _fault_fields(response: Any) -> list[str]:
     return [fault["loc"][-1] for fault in response.json()["error"]["faults"]]
 
@@ -127,6 +135,10 @@ def test_get_config_is_the_documented_shape(draft: int, client: TestClient, logi
         "idle_rise_targets",
         "demand_enabled",
         "auto_calibrate_s0",
+        *NOISE,
+    }
+    assert {name: body["params"][name] for name in NOISE} == {
+        name: getattr(DEFAULT_PARAMS, name) for name in NOISE
     }
     assert [d["name"] for d in body["drinks"]] == ["Bier", "Wijn", "Fris"]
     assert body["drinks"][0] == {
@@ -236,6 +248,8 @@ def test_a_patch_that_changes_nothing_writes_no_revision(
         {"params": None},
         {"params": {"demand_enabled": None}},
         {"params": {"idle_targets": None}},
+        {"params": {"bm_sigma_y": None}},
+        {"params": {"bm_enabled": None}},
     ],
 )
 def test_an_explicit_null_is_422_naming_the_field_and_stores_nothing(
@@ -257,8 +271,6 @@ def test_an_explicit_null_is_422_naming_the_field_and_stores_nothing(
 @pytest.mark.parametrize(
     ("body", "field"),
     [
-        ({"params": {"bm_sigma_y": 0.2}}, "bm_sigma_y"),
-        ({"params": {"y_clip": 5.0}}, "y_clip"),
         ({"params": {"decay_rho": 1.5}}, "decay_rho"),
         ({"params": {"decay_rho": -0.01}}, "decay_rho"),
         ({"params": {"history_window_minutes": 0.5}}, "history_window_minutes"),
@@ -275,6 +287,22 @@ def test_an_explicit_null_is_422_naming_the_field_and_stores_nothing(
         ({"params": {"idle_rise_minutes": 0.09}}, "idle_rise_minutes"),
         ({"params": {"idle_rise_strength": -0.1}}, "idle_rise_strength"),
         ({"params": {"demand_enabled": 0}}, "demand_enabled"),
+        ({"params": {"bm_sigma_y": -0.01}}, "bm_sigma_y"),
+        ({"params": {"bm_dt_minutes": 0.04}}, "bm_dt_minutes"),
+        ({"params": {"bm_dt_minutes": 10.01}}, "bm_dt_minutes"),
+        ({"params": {"flow_vol_amp": -0.01}}, "flow_vol_amp"),
+        ({"params": {"flow_beta": -0.01}}, "flow_beta"),
+        ({"params": {"flow_beta": 1.01}}, "flow_beta"),
+        ({"params": {"y_clip": 0.99}}, "y_clip"),
+        ({"params": {"y_clip": 20.01}}, "y_clip"),
+        *(({"params": {name: "0.5"}}, name) for name in NOISE_NUMBERS),
+        *(({"params": {name: True}}, name) for name in NOISE_NUMBERS),
+        ({"params": {"bm_enabled": 0}}, "bm_enabled"),
+        ({"params": {"bm_enabled": 1}}, "bm_enabled"),
+        ({"params": {"bm_enabled": "true"}}, "bm_enabled"),
+        ({"params": {"bm_sigma": 0.2}}, "bm_sigma"),
+        ({"params": {"tick_interval_ms": 500}}, "tick_interval_ms"),
+        ({"params": {"quote_grace_versions": 3}}, "quote_grace_versions"),
         ({"candle_interval_s": 7}, "candle_interval_s"),
         ({"candle_interval_s": 0}, "candle_interval_s"),
         ({"candle_interval_s": 3605}, "candle_interval_s"),
@@ -291,7 +319,7 @@ def test_an_sd8_violation_is_422_naming_the_field_and_changes_nothing(
     body: Any,
     field: str,
 ) -> None:
-    """AC11, AC28 (422 half)."""
+    """AC11, AC28 (422 half); B-03 AC2, AC3."""
     admin = login("admin")
     before = admin.get(f"/api/runs/{draft}/config").json()
 
@@ -303,18 +331,19 @@ def test_an_sd8_violation_is_422_naming_the_field_and_changes_nothing(
     assert _revisions(settings, api_env, draft) == 1
 
 
+@pytest.mark.parametrize("field", ["eta", *NOISE_NUMBERS])
 @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
 def test_a_non_finite_number_is_422_naming_the_field(
-    draft: int, client: TestClient, login: Login, literal: str
+    draft: int, client: TestClient, login: Login, literal: str, field: str
 ) -> None:
     response = login("admin").patch(
         f"/api/runs/{draft}/config",
-        content=f'{{"params": {{"eta": {literal}}}}}',
+        content=f'{{"params": {{"{field}": {literal}}}}}',
         headers={"content-type": "application/json"},
     )
 
     assert response.status_code == 422, response.text
-    assert "eta" in _fault_fields(response)
+    assert field in _fault_fields(response)
 
 
 @pytest.mark.parametrize(
@@ -330,12 +359,21 @@ def test_a_non_finite_number_is_422_naming_the_field(
         {"step_quant": 0.01},
         {"idle_decay_minutes": 0.1},
         {"idle_rise_minutes": 0.1},
+        {"bm_sigma_y": 0},
+        {"bm_dt_minutes": 0.05},
+        {"bm_dt_minutes": 10},
+        {"flow_vol_amp": 0},
+        {"flow_beta": 0},
+        {"flow_beta": 1},
+        {"y_clip": 1},
+        {"y_clip": 20},
+        {"bm_enabled": False},
     ],
 )
 def test_range_ends_are_inclusive(
     draft: int, client: TestClient, login: Login, params: dict[str, float]
 ) -> None:
-    """SD8's a-b ranges include both ends (the user, 2026-10-08)."""
+    """SD8's a-b ranges include both ends (the user, 2026-10-08); B-03 SD3's too (AC1, AC2)."""
     admin = login("admin")
 
     response = admin.patch(f"/api/runs/{draft}/config", json={"params": params})
@@ -456,6 +494,29 @@ def test_a_live_patch_is_one_transition_and_one_config_frame(
     after = admin.get(f"/api/runs/{live_run}/config").json()
     assert after["params"] == {**before["params"], "eta": 0.9}
     assert after["run"]["status"] == "live"
+
+
+def test_a_live_patch_of_the_six_is_stored_and_in_the_document(
+    live_run: int, live_client: TestClient, login: Login
+) -> None:
+    """B-03 AC1 (live half), AC4."""
+    admin = login("admin")
+    before = admin.get(f"/api/runs/{live_run}/config").json()
+    noise = {
+        "bm_enabled": False,
+        "bm_sigma_y": 0.5,
+        "bm_dt_minutes": 0.25,
+        "flow_vol_amp": 1.2,
+        "flow_beta": 0.6,
+        "y_clip": 3.0,
+    }
+
+    response = admin.patch(f"/api/runs/{live_run}/config", json={"params": noise})
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"revision": before["revision"] + 1}
+    after = admin.get(f"/api/runs/{live_run}/config").json()
+    assert after["params"] == {**before["params"], **noise}
 
 
 def test_an_ended_run_is_409_run_ended(
