@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 // `/settings` (Phase 6 T24: SD25, PD13): nine sections, in v1's sidebar order,
-// each listed in the section navigation.
-import { act, cleanup, render, screen, within } from '@testing-library/react'
+// each listed in the section navigation. B-01 T11: exactly the 21 settings
+// explanations get an (i), section by section (AC8-AC10).
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { settingsExplanations as explanations } from '../../features/settings'
 import { SettingsPage } from './SettingsPage'
 
 const SECTIONS = [
@@ -63,3 +65,129 @@ describe('SettingsPage', () => {
     expect(screen.queryAllByText('Nog niet beschikbaar')).toHaveLength(0)
   })
 })
+
+const DRINK = {
+  slot: 0,
+  active: true,
+  p_min_cents: 150,
+  p0_cents: 260,
+  p_max_cents: 500,
+  bar_price_cents: 260,
+  a: 10,
+  d: 0.6,
+  s0: 8,
+  c: 0.4,
+}
+
+const CONFIG = {
+  revision: 3,
+  run: { run_id: 7, name: 'Vrijmibo', status: 'live', candle_interval_s: 60 },
+  params: {
+    step_quant: 0.1,
+    eta: 0.8,
+    K: 5,
+    lambda_orders: 1.5,
+    alpha_price: 0,
+    phi_persist: 0.1,
+    decay_rho: 0.98,
+    history_window_minutes: 15,
+    refresh_minutes: 0.2,
+    idle_decay_minutes: 0.1,
+    idle_rise_minutes: 0.1,
+    idle_strength: 1.5,
+    idle_rise_strength: 1.5,
+    idle_targets: [],
+    idle_rise_targets: [],
+    demand_enabled: false,
+    auto_calibrate_s0: false,
+  },
+  drinks: [
+    { ...DRINK, drink_id: 11, name: 'Bier' },
+    { ...DRINK, drink_id: 12, slot: 1, name: 'Wijn' },
+    { ...DRINK, drink_id: 13, slot: 2, name: 'Oud', active: false },
+  ],
+}
+
+const KEY = {
+  key_id: 1,
+  label: 'Tap 1',
+  role: 'bar',
+  created_at: '2026-10-01T10:00:00Z',
+  last_used_at: null,
+  revoked: false,
+}
+
+const SERVED: Readonly<Record<string, unknown>> = {
+  '/api/runs/current': { run_id: 7, name: 'Vrijmibo', status: 'live' },
+  '/api/runs/7/config': CONFIG,
+  '/api/keys': [KEY],
+  '/api/analytics/runs': [],
+}
+
+const NAMES = new Set(Object.values(explanations).map((entry) => entry.name))
+const info = (scope: HTMLElement) => within(scope).queryAllByRole('button', { name: /^Uitleg: / })
+
+async function openWithLiveRun() {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((path: string) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(SERVED[path] ?? { error: { code: 'not_found', message: path } }),
+          {
+            status: path in SERVED ? 200 : 404,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        ),
+      ),
+    ),
+  )
+  render(<SettingsPage />)
+  for (let i = 0; i < 4; i += 1) await act(async () => {})
+}
+
+describe('SettingsPage: the explanations (B-01)', () => {
+  it('every (i) names one of E1-E20 or E33 (AC10)', async () => {
+    await openWithLiveRun()
+    const names = info(document.body).map((b) => b.getAttribute('aria-label')!.slice(8))
+    expect(names.length).toBeGreaterThan(0)
+    expect(names.filter((name) => !NAMES.has(name))).toEqual([])
+  })
+
+  it.each([
+    ['⚙️ Globale instellingen', 10],
+    ['📈 Vraag/Aanbod', 6],
+    ['🔒 Min/Max/Startprijs', 3 * 2],
+    ['🥤 Drankjes beheren', 8 + 1 * 2],
+    ['🧹 Systeemacties', 1],
+    ['Borrel', 0],
+    ['🎨 Kleurenschema', 0],
+    ['🖼️ Afbeeldingen', 0],
+    ['🔑 Toegangssleutels', 0],
+  ])('%s has %i (i) with two drinks (AC10)', async (section, count) => {
+    await openWithLiveRun()
+    expect(info(screen.getByRole('region', { name: section }))).toHaveLength(count)
+  })
+
+  it('a field shown in several places opens the same explanation everywhere (AC9)', async () => {
+    await openWithLiveRun()
+    for (const key of ['a', 'd', 's0', 'c', 'p_min_cents', 'p0_cents', 'p_max_cents'] as const) {
+      expectSameEverywhere(explanations[key], 2)
+    }
+    expectSameEverywhere(explanations.bar_price_cents, 3)
+  })
+})
+
+function expectSameEverywhere(entry: { name: string; paragraphs: string[] }, places: number) {
+  const buttons = screen.getAllByRole('button', { name: `Uitleg: ${entry.name}` })
+  expect(buttons.length).toBeGreaterThanOrEqual(places)
+  for (const button of buttons) {
+    fireEvent.click(button)
+    const popup = screen.getByRole('note', { name: entry.name })
+    expect([...popup.querySelectorAll('p')].map((p) => p.textContent)).toEqual([
+      entry.name,
+      ...entry.paragraphs,
+    ])
+    fireEvent.keyDown(document, { key: 'Escape' })
+  }
+}

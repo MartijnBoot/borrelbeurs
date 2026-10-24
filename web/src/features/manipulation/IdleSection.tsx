@@ -2,7 +2,9 @@
  * ⏳ Idle (Phase 6 SD11, SD20; AC1, AC2, AC5, AC7, AC22): admin only (D-44).
  *
  * v1's decay/rise minutes and strengths as `NumberField`s, and a checkbox per
- * active drink for each target list, held as `drink_id`s. The form edits a
+ * active drink for each target list, held as `drink_id`s. Each carries its
+ * B-01 name and an (i) (E21-E26); a fieldset keeps `aria-label` so its name
+ * stays exact with the (i) inside its legend. The form edits a
  * `useEditableRecord` copy of the live run's params (`GET config`, refetched
  * on every `config` message), and "💾 Opslaan idle" sends only what changed as
  * `PATCH config {params}` -- nothing at all when clean. A removed drink has no
@@ -11,11 +13,13 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react'
 import { z } from 'zod'
 import { Button } from '../../components/ui/Button'
+import { InfoButton } from '../../components/ui/InfoButton'
 import { NumberField } from '../../components/ui/NumberField'
 import { Toast } from '../../components/ui/Toast'
 import { request } from '../../lib/http'
 import { useEditableRecord } from '../../lib/useEditableRecord'
 import { selectActiveDrinks, useExchange } from '../exchange'
+import explanations from './explanations.json'
 import styles from './ManipulationPage.module.css'
 
 const IdleParams = z.object({
@@ -31,16 +35,13 @@ type IdleParams = z.infer<typeof IdleParams>
 const Config = z.object({ params: IdleParams })
 
 const NUMBERS = [
-  ['idle_decay_minutes', '🕒 Idle-decay (min)'],
-  ['idle_strength', '⬇️ Decay-sterkte'],
-  ['idle_rise_minutes', '🕒 Idle-rise (min)'],
-  ['idle_rise_strength', '⬆️ Rise-sterkte'],
+  'idle_decay_minutes',
+  'idle_strength',
+  'idle_rise_minutes',
+  'idle_rise_strength',
 ] as const
 
-const TARGETS = [
-  ['idle_targets', 'Decay targets'],
-  ['idle_rise_targets', 'Rise targets'],
-] as const
+const TARGETS = ['idle_targets', 'idle_rise_targets'] as const
 
 /** The live run's idle params; refetched when a `config` message changes the store's. */
 function useIdleParams() {
@@ -86,7 +87,7 @@ export function IdleSection() {
   }
   const values = record.values
 
-  function toggle(list: (typeof TARGETS)[number][0], drinkId: number) {
+  function toggle(list: (typeof TARGETS)[number], drinkId: number) {
     const current = values[list]
     const ids = Array.isArray(current) ? current : []
     record.set(list, ids.includes(drinkId) ? ids.filter((id) => id !== drinkId) : [...ids, drinkId])
@@ -122,10 +123,11 @@ export function IdleSection() {
         </p>
       )}
       <div className={styles.row}>
-        {NUMBERS.map(([field, label]) => (
+        {NUMBERS.map((field) => (
           <NumberField
             key={field}
-            label={label}
+            label={explanations[field].name}
+            info={explanations[field]}
             value={values[field]}
             onChange={(value) => record.set(field, value)}
             error={
@@ -138,9 +140,12 @@ export function IdleSection() {
           />
         ))}
       </div>
-      {TARGETS.map(([list, label]) => (
-        <fieldset key={list} className={styles.targets} aria-label={label}>
-          <legend>{label}</legend>
+      {TARGETS.map((list) => (
+        <fieldset key={list} className={styles.targets} aria-label={explanations[list].name}>
+          <legend>
+            {explanations[list].name}
+            <InfoButton explanation={explanations[list]} />
+          </legend>
           {drinks.map((drink) => {
             const ids = values[list]
             return (

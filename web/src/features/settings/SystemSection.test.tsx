@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 // 🧹 Systeemacties (Phase 6 T29: SD26; AC39): shutdown behind a dialog, and
-// anchor-s0 with none, as in v1. No reset, no export.
+// anchor-s0 with none, as in v1. No reset, no export. B-01 T7: E33's name and (i).
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { expectExplained } from '../../components/ui/infoTesting'
 import { exchangeStore } from '../exchange'
+import explanations from './explanations.json'
 import { SystemSection } from './SystemSection'
 
 const json = (status: number, body: unknown) =>
@@ -64,14 +66,17 @@ describe('SystemSection', () => {
 
     expect(posts()).toEqual(['/api/admin/shutdown'])
     expect(screen.getByText('App sluit nu af…')).toBeTruthy()
-    for (const button of screen.getAllByRole('button')) {
+    // Every action button; the (i) sends nothing and stays readable (B-01).
+    for (const button of screen.getAllByRole('button', {
+      name: (n) => !n.startsWith('Uitleg: '),
+    })) {
       expect((button as HTMLButtonElement).disabled).toBe(true)
     }
   })
 
   it('anchor-s0 posts once, with no dialog', async () => {
     await open()
-    fireEvent.click(screen.getByRole('button', { name: '📌 Zet huidige prijs als evenwicht' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Evenwicht op huidige prijzen' }))
     await settle()
 
     expect(screen.queryByRole('dialog')).toBeNull()
@@ -81,8 +86,21 @@ describe('SystemSection', () => {
   it('anchor-s0 is disabled for a draft', async () => {
     status = 'draft'
     await open()
-    const anchor = screen.getByRole('button', { name: '📌 Zet huidige prijs als evenwicht' })
+    const anchor = screen.getByRole('button', { name: 'Evenwicht op huidige prijzen' })
     expect((anchor as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it("the anchor's (i) opens while the button is disabled for a draft (E33; B-01 AC1, AC13)", async () => {
+    status = 'draft'
+    await open()
+    const anchor = screen.getByRole('button', { name: 'Evenwicht op huidige prijzen' })
+    expect((anchor as HTMLButtonElement).disabled).toBe(true)
+    expectExplained(document.body, explanations.anchor_s0)
+  })
+
+  it('Sluit app has no (i) (B-01 SD2)', async () => {
+    await open()
+    expect(screen.getAllByRole('button', { name: /^Uitleg: / })).toHaveLength(1)
   })
 
   it('offers no reset and no export', async () => {

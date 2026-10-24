@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import styles from './Field.module.css'
+import { type Explanation, InfoButton } from './InfoButton'
 
 export interface FieldProps {
   /** The input's id; the label and the hint/error texts point at it. */
@@ -9,16 +10,28 @@ export interface FieldProps {
   error?: string
   /** For a table cell: the label is read out but not shown; the column header shows it. */
   hideLabel?: boolean
+  /** B-01: an (i) beside the label, outside it, so the label's name stays exact. */
+  info?: Explanation
   children: ReactNode
 }
 
 /** A labelled form control with an optional hint and error (SD27). */
-export function Field({ id, label, hint, error, hideLabel = false, children }: FieldProps) {
+export function Field({ id, label, hint, error, hideLabel = false, info, children }: FieldProps) {
+  const labelElement = (
+    <label htmlFor={id} className={hideLabel ? styles.hidden : styles.label}>
+      {label}
+    </label>
+  )
   return (
     <div className={styles.field}>
-      <label htmlFor={id} className={hideLabel ? styles.hidden : styles.label}>
-        {label}
-      </label>
+      {info === undefined ? (
+        labelElement
+      ) : (
+        <div className={styles.labelRow}>
+          {labelElement}
+          <InfoButton explanation={info} />
+        </div>
+      )}
       {children}
       {hint !== undefined && (
         <span id={`${id}-hint`} className={styles.hint}>

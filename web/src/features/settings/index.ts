@@ -5,6 +5,8 @@ export { BorrelSection } from './BorrelSection'
 export { DemandSection } from './DemandSection'
 export { BoundsSection } from './BoundsSection'
 export { DrinksSection } from './DrinksSection'
+// B-01: the 21 settings explanations, for the page-level checks (AC9, AC10).
+export { default as settingsExplanations } from './explanations.json'
 export { GlobalSection } from './GlobalSection'
 export { ImagesSection } from './ImagesSection'
 export { type SettingsSection, SettingsLayout } from './SettingsLayout'

@@ -1,0 +1,99 @@
+{
+  "idle_decay_minutes": {
+    "id": "E21",
+    "name": "Omlaag na stilte van (min)",
+    "paragraphs": [
+      "Een drankje uit Omlaag bij stilte dat minstens zo lang niet besteld is, krijgt op elk moment van Ritme stille drankjes een duwtje omlaag, zolang het niet besteld wordt. Het eerste duwtje kan dus iets later komen. Nog nooit besteld telt vanaf Live zetten, of vanaf het toevoegen.",
+      "Hoger: pas na een langere stilte.",
+      "Eerste borrel: 0,1. Toegestaan: 0,1 of meer."
+    ]
+  },
+  "idle_strength": {
+    "id": "E22",
+    "name": "Kracht omlaag",
+    "paragraphs": [
+      "Hoe hard elk duwtje omlaag is. Het werkt als een bestelling met een minteken: door Concurrentie tussen drankjes gaan de andere drankjes daarbij iets omhoog, en Nawerking van bestellingen onthoudt het. Met Verwachte verkoop meetellen aan duwt het harder bij drankjes waar veel verkoop verwacht wordt.",
+      "Hoger: stille drankjes zakken sneller.",
+      "Eerste borrel: 1,5. Toegestaan: 0 of meer."
+    ]
+  },
+  "idle_rise_minutes": {
+    "id": "E23",
+    "name": "Omhoog na stilte van (min)",
+    "paragraphs": [
+      "Een drankje uit Omhoog bij stilte dat minstens zo lang niet besteld is, krijgt op elk moment van Ritme stille drankjes een duwtje omhoog, zolang het niet besteld wordt. Het eerste duwtje kan dus iets later komen. Nog nooit besteld telt vanaf Live zetten, of vanaf het toevoegen.",
+      "Hoger: pas na een langere stilte.",
+      "Eerste borrel: 0,1. Toegestaan: 0,1 of meer."
+    ]
+  },
+  "idle_rise_strength": {
+    "id": "E24",
+    "name": "Kracht omhoog",
+    "paragraphs": [
+      "Hoe hard elk duwtje omhoog is. Het werkt als een bestelling: door Concurrentie tussen drankjes gaan de andere drankjes daarbij iets omlaag, en Nawerking van bestellingen onthoudt het. Met Verwachte verkoop meetellen aan duwt het harder bij drankjes waar veel verkoop verwacht wordt.",
+      "Hoger: stille drankjes stijgen sneller.",
+      "Eerste borrel: 1,5. Toegestaan: 0 of meer."
+    ]
+  },
+  "idle_targets": {
+    "id": "E25",
+    "name": "Omlaag bij stilte",
+    "paragraphs": [
+      "De drankjes die een duwtje omlaag krijgen als ze een tijd niet besteld zijn (Omlaag na stilte van, Kracht omlaag). Staat een drankje ook in Omhoog bij stilte, dan werken de duwtjes tegen elkaar in.",
+      "Eerste borrel: geen drankjes."
+    ]
+  },
+  "idle_rise_targets": {
+    "id": "E26",
+    "name": "Omhoog bij stilte",
+    "paragraphs": [
+      "De drankjes die een duwtje omhoog krijgen als ze een tijd niet besteld zijn (Omhoog na stilte van, Kracht omhoog). Staat een drankje ook in Omlaag bij stilte, dan werken de duwtjes tegen elkaar in.",
+      "Eerste borrel: geen drankjes."
+    ]
+  },
+  "event_duration_s": {
+    "id": "E27",
+    "name": "Duur gebeurtenis (sec)",
+    "paragraphs": [
+      "Hoe lang Marktcrash, Terug naar startprijs en Prijsbubbel de prijzen vasthouden, en hoe lang het koersbord de melding toont. Bij Marktcrash en Prijsbubbel staan de prijzen meestal al na ongeveer een derde van deze tijd op hun grens, en blijven ze daar tot het eind. Direct na een Marktcrash of Prijsbubbel blijft Terug naar startprijs juist lang bij de grens en komt pas tegen het eind terug. Bestellingen in die tijd tellen wel mee voor Nawerking van bestellingen, en duwen daarna door.",
+      "Standaard: 30. Toegestaan: 1 tot en met 600."
+    ]
+  },
+  "crash": {
+    "id": "E28",
+    "name": "Marktcrash",
+    "paragraphs": [
+      "Je ziet: alle drankjes zakken snel naar hun Minimumprijs en staan daar meestal al na ongeveer een derde van de Duur gebeurtenis. Het koersbord toont de crashmelding en er verschijnt een nieuwsbericht. Tot het eind van de Duur gebeurtenis verschuiven bestellingen deze prijzen niet, maar Nawerking van bestellingen onthoudt ze wel. Een lopende marktgebeurtenis of prijssprong wordt vervangen."
+    ]
+  },
+  "correction": {
+    "id": "E29",
+    "name": "Terug naar startprijs",
+    "paragraphs": [
+      "Je ziet: alle drankjes glijden in de Duur gebeurtenis terug naar hun Startprijs. Direct na een Marktcrash of Prijsbubbel blijven ze eerst lang bij hun grens en komen ze pas tegen het eind terug. Het koersbord toont een rustige melding en er verschijnt een nieuwsbericht. Zolang ze glijden, verschuiven bestellingen deze prijzen niet, maar Nawerking van bestellingen onthoudt ze wel. Een lopende marktgebeurtenis of prijssprong wordt vervangen."
+    ]
+  },
+  "bubble": {
+    "id": "E30",
+    "name": "Prijsbubbel",
+    "paragraphs": [
+      "Je ziet: alle drankjes stijgen snel naar hun Maximumprijs en staan daar meestal al na ongeveer een derde van de Duur gebeurtenis. Het koersbord toont de bubbelmelding en er verschijnt een nieuwsbericht. Tot het eind van de Duur gebeurtenis verschuiven bestellingen deze prijzen niet, maar Nawerking van bestellingen onthoudt ze wel. Een lopende marktgebeurtenis of prijssprong wordt vervangen."
+    ]
+  },
+  "jump_target": {
+    "id": "E31",
+    "name": "Doelprijs (€)",
+    "paragraphs": [
+      "De prijs waar dit drankje naartoe glijdt, afgerond op de Prijsstap. Moet tussen de Minimumprijs en de Maximumprijs liggen. Zolang het glijdt, verschuiven bestellingen de prijs niet; ze tellen wel mee voor Nawerking van bestellingen en Concurrentie tussen drankjes. Een Doelprijs op de Minimumprijs of Maximumprijs wordt al ruim voor het eind bereikt.",
+      "Toegestaan: van de Minimumprijs tot en met de Maximumprijs van dit drankje."
+    ]
+  },
+  "jump_duration_s": {
+    "id": "E32",
+    "name": "Duur sprong (sec)",
+    "paragraphs": [
+      "Hoe lang het glijden naar de Doelprijs duurt, langzaam beginnend en langzaam eindigend. Ligt de Doelprijs op de Minimumprijs of Maximumprijs, dan is hij er al ruim voor het eind. Een nieuwe sprong op hetzelfde drankje vervangt de lopende.",
+      "Standaard: 5. Toegestaan: 1 tot en met 1800."
+    ]
+  }
+}

@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 // ⏳ Idle (Phase 6 T34: SD11, SD20; AC1, AC2, AC7, AC22): v1's decay/rise minutes
 // and strengths, and both target lists over active drinks, sent as a dirty-only
-// `PATCH config` of `drink_id`s.
+// `PATCH config` of `drink_id`s. B-01 T8: the new names and (i) (E21-E26), and AC18.
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { expectExplained } from '../../components/ui/infoTesting'
 import { applyMessage, exchangeStore, type ServerMessage, type SnapshotData } from '../exchange'
+import explanations from './explanations.json'
 import { IdleSection } from './IdleSection'
 
 const RUN = {
@@ -95,13 +97,15 @@ async function open() {
   await act(async () => {})
 }
 
-const decayTargets = () => screen.getByRole('group', { name: 'Decay targets' })
-const riseTargets = () => screen.getByRole('group', { name: 'Rise targets' })
+const decayTargets = () => screen.getByRole('group', { name: 'Omlaag bij stilte' })
+const riseTargets = () => screen.getByRole('group', { name: 'Omhoog bij stilte' })
 
 describe('IdleSection', () => {
   it('shows the server values and the target lists over active drinks', async () => {
     await open()
-    expect((screen.getByLabelText('🕒 Idle-decay (min)') as HTMLInputElement).value).toBe('5')
+    expect((screen.getByLabelText('Omlaag na stilte van (min)') as HTMLInputElement).value).toBe(
+      '5',
+    )
     const wijn = within(riseTargets()).getByLabelText('Wijn') as HTMLInputElement
     expect(wijn.checked).toBe(true)
     expect((within(decayTargets()).getByLabelText('Bier') as HTMLInputElement).checked).toBe(false)
@@ -125,6 +129,67 @@ describe('IdleSection', () => {
 
     expect(writes()).toEqual([])
     expect(screen.getByText('Niets te wijzigen')).toBeTruthy()
+  })
+
+  it.each([
+    'idle_decay_minutes',
+    'idle_strength',
+    'idle_rise_minutes',
+    'idle_rise_strength',
+    'idle_targets',
+    'idle_rise_targets',
+  ] as const)('%s has its B-01 name and (i) (B-01 AC1, AC7)', async (key) => {
+    await open()
+    expectExplained(document.body, explanations[key])
+  })
+
+  it('names each field and target group exactly (B-01 AC7)', async () => {
+    await open()
+    for (const name of [
+      'Omlaag na stilte van (min)',
+      'Kracht omlaag',
+      'Omhoog na stilte van (min)',
+      'Kracht omhoog',
+    ]) {
+      expect(screen.getByLabelText(name)).toBeTruthy()
+    }
+    expect(decayTargets().getAttribute('aria-label')).toBe('Omlaag bij stilte')
+    expect(riseTargets().getAttribute('aria-label')).toBe('Omhoog bij stilte')
+  })
+
+  it("an (i) leaves the form clean: saving says 'Niets te wijzigen' (B-01 AC5)", async () => {
+    await open()
+    const info = screen.getByRole('button', { name: 'Uitleg: Omlaag bij stilte' })
+    fireEvent.click(info)
+    fireEvent.click(info)
+    fireEvent.click(screen.getByRole('button', { name: '💾 Opslaan idle' }))
+    await act(async () => {})
+
+    expect(writes()).toEqual([])
+    expect(screen.getByText('Niets te wijzigen')).toBeTruthy()
+  })
+
+  it("on a first borrel's 0.1 idle minutes, saving only Kracht omlaag succeeds (B-01 AC18)", async () => {
+    const first = { ...PARAMS, idle_decay_minutes: 0.1, idle_rise_minutes: 0.1 }
+    fetchMock.mockImplementation((_path: string, init?: RequestInit) =>
+      Promise.resolve(
+        (init?.method ?? 'GET') === 'GET'
+          ? json(200, { revision: 3, params: first })
+          : json(200, { revision: 4 }),
+      ),
+    )
+    await open()
+    expect((screen.getByLabelText('Omlaag na stilte van (min)') as HTMLInputElement).value).toBe(
+      '0,1',
+    )
+    fireEvent.change(screen.getByLabelText('Kracht omlaag'), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: '💾 Opslaan idle' }))
+    await act(async () => {})
+
+    expect(writes()).toEqual([
+      ['/api/runs/1/config', 'PATCH', JSON.stringify({ params: { idle_strength: 2 } })],
+    ])
+    expect(screen.getByText('Opgeslagen')).toBeTruthy()
   })
 
   it('a config message removing a drink drops its checkbox (AC22)', async () => {

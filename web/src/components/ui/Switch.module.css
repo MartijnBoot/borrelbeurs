@@ -10,6 +10,12 @@
   cursor: pointer;
 }
 
+.row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .switch:disabled {
   opacity: 0.6;
   cursor: default;

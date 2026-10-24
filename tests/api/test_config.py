@@ -271,7 +271,8 @@ def test_an_explicit_null_is_422_naming_the_field_and_stores_nothing(
         ({"params": {"K": 0}}, "K"),
         ({"params": {"eta": -1}}, "eta"),
         ({"params": {"eta": "0.5"}}, "eta"),
-        ({"params": {"idle_decay_minutes": 0.4}}, "idle_decay_minutes"),
+        ({"params": {"idle_decay_minutes": 0.09}}, "idle_decay_minutes"),
+        ({"params": {"idle_rise_minutes": 0.09}}, "idle_rise_minutes"),
         ({"params": {"idle_rise_strength": -0.1}}, "idle_rise_strength"),
         ({"params": {"demand_enabled": 0}}, "demand_enabled"),
         ({"candle_interval_s": 7}, "candle_interval_s"),
@@ -327,7 +328,8 @@ def test_a_non_finite_number_is_422_naming_the_field(
         {"refresh_minutes": 10},
         {"step_quant": 5},
         {"step_quant": 0.01},
-        {"idle_decay_minutes": 0.5},
+        {"idle_decay_minutes": 0.1},
+        {"idle_rise_minutes": 0.1},
     ],
 )
 def test_range_ends_are_inclusive(
@@ -341,6 +343,22 @@ def test_range_ends_are_inclusive(
     assert response.status_code == 200, response.text
     ((field, value),) = params.items()
     assert admin.get(f"/api/runs/{draft}/config").json()["params"][field] == value
+
+
+def test_another_field_saves_on_a_run_started_from_default_params(
+    draft: int, client: TestClient, login: Login
+) -> None:
+    """B-01 AC18: the first borrel's idle minutes (0.1) do not block another field's save."""
+    admin = login("admin")
+    assert admin.get(f"/api/runs/{draft}/config").json()["params"]["idle_decay_minutes"] == 0.1
+
+    response = admin.patch(f"/api/runs/{draft}/config", json={"params": {"idle_strength": 2.0}})
+
+    assert response.status_code == 200, response.text
+    params = admin.get(f"/api/runs/{draft}/config").json()["params"]
+    assert params["idle_strength"] == 2.0
+    assert params["idle_decay_minutes"] == 0.1
+    assert params["idle_rise_minutes"] == 0.1
 
 
 @pytest.mark.parametrize("seconds", [5, 3600])

@@ -1,6 +1,7 @@
 /**
  * 🔒 Min/Max/Startprijs (Phase 6 SD25; AC1, AC3, AC11): one row per active
- * drink, its three bounds as `MoneyField`s. Each row is its own
+ * drink, its three bounds as `MoneyField`s under B-01's names, each with an (i)
+ * (E17-E19). Each row is its own
  * `useEditableRecord` and its own save, which sends one `PATCH` with only that
  * row's changed bounds -- or nothing, "Niets te wijzigen". `p_min < p0 < p_max`
  * is checked here first; the server's 422 shows under the field it names. On the
@@ -12,6 +13,7 @@ import { MoneyField } from '../../components/ui/MoneyField'
 import { Toast } from '../../components/ui/Toast'
 import { request } from '../../lib/http'
 import { useEditableRecord } from '../../lib/useEditableRecord'
+import explanations from './explanations.json'
 import styles from './settings.module.css'
 import { faultsOf, Revision, type RunConfig, useRunConfig } from './useRunConfig'
 
@@ -23,11 +25,7 @@ interface Bounds {
   p_max_cents: number
 }
 
-const FIELDS = [
-  ['p_min_cents', 'Min'],
-  ['p0_cents', 'Start'],
-  ['p_max_cents', 'Max'],
-] as const
+const FIELDS = ['p_min_cents', 'p0_cents', 'p_max_cents'] as const
 
 export function BoundsSection() {
   const { config, failed, reload } = useRunConfig()
@@ -82,7 +80,7 @@ function BoundsRow({
         low < mid &&
         mid < high
       if (!ordered && record.dirty) {
-        setError('Min < Start < Max')
+        setError('Minimumprijs < Startprijs < Maximumprijs')
         return
       }
     }
@@ -121,10 +119,11 @@ function BoundsRow({
         </p>
       )}
       <div className={styles.row}>
-        {FIELDS.map(([field, label]) => (
+        {FIELDS.map((field) => (
           <MoneyField
             key={field}
-            label={label}
+            label={explanations[field].name}
+            info={explanations[field]}
             cents={values?.[field] ?? null}
             onChange={(value) => record.set(field, value)}
             error={faults[field]}

@@ -109,9 +109,9 @@ test('an admin builds a borrel from nothing, and every screen follows live', asy
   const add = section(page, '🥤 Drankjes beheren').getByRole('form', { name: 'Drankje toevoegen' })
   for (const [name, min, start, max] of DRINKS) {
     await add.getByLabel('Naam').fill(name)
-    await add.getByLabel('Min').fill(min)
-    await add.getByLabel('Start').fill(start)
-    await add.getByLabel('Max').fill(max)
+    await add.getByLabel('Minimumprijs (€)', { exact: true }).fill(min)
+    await add.getByLabel('Startprijs (€)', { exact: true }).fill(start)
+    await add.getByLabel('Maximumprijs (€)', { exact: true }).fill(max)
     await add.getByRole('button', { name: 'Toevoegen' }).click()
     await expect(
       section(page, '🥤 Drankjes beheren').getByRole('group', { name, exact: true }),
@@ -120,7 +120,7 @@ test('an admin builds a borrel from nothing, and every screen follows live', asy
 
   // 3. Params.
   const global = section(page, '⚙️ Globale instellingen')
-  await global.getByLabel('🧱 Tickgrootte').fill('0,05')
+  await global.getByLabel('Prijsstap (€)', { exact: true }).fill('0,05')
   await global.getByRole('button', { name: '💾 Opslaan instellingen' }).click()
   await expect(page.getByText('Opgeslagen')).toBeVisible()
 
@@ -202,4 +202,36 @@ test('an admin builds a borrel from nothing, and every screen follows live', asy
   await page.goto('/')
   await expect(page.getByText(/Vrijmibo \(live\)/)).toBeVisible()
   expect(errors).toEqual([])
+})
+
+test('at 360 px an explanation fits the screen, and the keyboard opens and closes it (B-01 AC4, AC6)', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 800 })
+  await login(page, adminKey)
+  for (const [path, name] of [
+    ['/settings', 'Prijsstap (€)'],
+    ['/manipulation', 'Kracht omlaag'],
+  ] as const) {
+    await page.goto(path)
+    const button = page.getByRole('button', { name: `Uitleg: ${name}`, exact: true })
+    const popup = page.getByRole('note', { name, exact: true })
+    await button.click()
+    await expect(popup).toBeVisible()
+    const box = (await popup.boundingBox())!
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(360)
+    expect(box.y).toBeGreaterThanOrEqual(0)
+    expect(box.y + box.height).toBeLessThanOrEqual(800)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360)
+    await page.keyboard.press('Escape')
+    await expect(popup).toBeHidden()
+
+    await button.focus()
+    await page.keyboard.press('Enter')
+    await expect(popup).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(popup).toBeHidden()
+    await expect(button).toBeFocused()
+  }
 })

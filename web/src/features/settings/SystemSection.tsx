@@ -4,9 +4,9 @@
  * - **"⛔ Sluit app"** asks "Applicatie nu afsluiten?" in `ConfirmDialog`, then
  *   posts `/api/admin/shutdown` and shows "App sluit nu af…" with every control
  *   disabled: the server is going away.
- * - **"📌 Zet huidige prijs als evenwicht"** is v1's anchor, with no
- *   confirmation, as in v1. It needs the live market, so it is disabled for a
- *   draft (the server says 409 `run_not_live` otherwise).
+ * - **"Evenwicht op huidige prijzen"** (B-01 E33, with an (i)) is v1's anchor,
+ *   with no confirmation, as in v1. It needs the live market, so it is disabled
+ *   for a draft (the server says 409 `run_not_live` otherwise); its (i) is not.
  *
  * No reset (Phase 7) and no earnings download (Phase 7's export).
  */
@@ -14,8 +14,10 @@ import { useState } from 'react'
 import { z } from 'zod'
 import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+import { InfoButton } from '../../components/ui/InfoButton'
 import { Toast } from '../../components/ui/Toast'
 import { request } from '../../lib/http'
+import explanations from './explanations.json'
 import styles from './settings.module.css'
 import { useCurrentRun } from './useCurrentRun'
 import { Revision } from './useRunConfig'
@@ -60,9 +62,15 @@ export function SystemSection() {
   return (
     <>
       <div className={styles.row}>
-        <Button disabled={disabled || !live} onClick={() => run != null && void anchor(run.run_id)}>
-          📌 Zet huidige prijs als evenwicht
-        </Button>
+        <span className={styles.inline}>
+          <Button
+            disabled={disabled || !live}
+            onClick={() => run != null && void anchor(run.run_id)}
+          >
+            {explanations.anchor_s0.name}
+          </Button>
+          <InfoButton explanation={explanations.anchor_s0} />
+        </span>
         <Button disabled={disabled} onClick={() => setAsking(true)}>
           ⛔ Sluit app
         </Button>

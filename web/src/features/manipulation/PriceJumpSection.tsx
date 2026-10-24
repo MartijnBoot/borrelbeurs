@@ -1,7 +1,8 @@
 /**
  * ⚡ Price jump (Phase 6 SD23; D-46): a select over the store's active
- * drinks, "Doelprijs (€)" and "Duur (seconden)" (1–1800, default 5). "Start
- * jump" stays disabled until every field parses.
+ * drinks, "Doelprijs (€)" and "Duur sprong (sec)" (1–1800, default 5), each
+ * with B-01's (i) (E31, E32). "Start jump" stays disabled until every field
+ * parses.
  *
  * With `showBounds` (admin) the target's hint is the drink's `[p_min, p_max]`
  * from `GET config`, which is admin-only; a bar session shows no hint and the
@@ -17,6 +18,7 @@ import { type FieldValue, formatEuro } from '../../lib/format'
 import { HttpError, request } from '../../lib/http'
 import { selectActiveDrinks, useExchange } from '../exchange'
 import { seconds } from './duration'
+import explanations from './explanations.json'
 import styles from './ManipulationPage.module.css'
 
 const Bounds = z.object({
@@ -98,7 +100,8 @@ export function PriceJumpSection({ showBounds }: { showBounds: boolean }) {
           onChange={(value) => setChosen(Number(value))}
         />
         <MoneyField
-          label="Doelprijs (€)"
+          label={explanations.jump_target.name}
+          info={explanations.jump_target}
           cents={target}
           onChange={setTarget}
           hint={
@@ -108,7 +111,8 @@ export function PriceJumpSection({ showBounds }: { showBounds: boolean }) {
           }
         />
         <NumberField
-          label="Duur (seconden)"
+          label={explanations.jump_duration_s.name}
+          info={explanations.jump_duration_s}
           value={duration}
           onChange={setDuration}
           error={durationS === null ? 'Kies 1 tot 1800 seconden.' : undefined}

@@ -196,6 +196,12 @@ Settled at the spec interview (2026-10-06).
   | `demand_enabled` | Vraag/aanbod actief | bool |
   | `auto_calibrate_s0` | Evenwicht, s0, auto-kalibreren bij init/reset | bool |
 
+  > **Superseded in part by B-01** ([phase-b-01-settings-explained.md](phase-b-01-settings-explained.md)).
+  > The labels in this table are v1's, kept as the record. The screens now show B-01's
+  > names, each with an explanation ("The table", E1–E33). The `idle_decay_minutes` /
+  > `idle_rise_minutes` floor is now ≥ 0.1, not ≥ 0.5 (B-01 SD9), so v1's saved 0.1 can be
+  > saved again. Every other range above still holds.
+
   - `candle_interval_s` (🕯️ Kaarseninterval (sec)) is 5–3600 and a multiple of 5 (SD10).
   - Per drink:
     - `p_min_cents ≥ 0` and `p_min_cents < p0_cents < p_max_cents`, checked on the
