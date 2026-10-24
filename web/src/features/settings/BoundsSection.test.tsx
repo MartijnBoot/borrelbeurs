@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 // 🔒 Min/Max/Startprijs (Phase 6 T27: SD25; AC1, AC3, AC11): one row per active
-// drink, each saving only its own dirty bounds.
+// drink, each saving only its own dirty bounds. B-01 T7: the new names (E17-E19).
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { expectExplained } from '../../components/ui/infoTesting'
 import { exchangeStore } from '../exchange'
 import { BoundsSection } from './BoundsSection'
+import explanations from './explanations.json'
 
 const DRINK = {
   slot: 0,
@@ -93,10 +95,19 @@ async function open() {
 describe('BoundsSection', () => {
   it('lists the active drinks with their bounds in euros', async () => {
     await open()
-    expect((row('Bier').getByLabelText('Min') as HTMLInputElement).value).toBe('1,50')
-    expect((row('Bier').getByLabelText('Start') as HTMLInputElement).value).toBe('2,60')
-    expect((row('Bier').getByLabelText('Max') as HTMLInputElement).value).toBe('5,00')
+    expect((row('Bier').getByLabelText('Minimumprijs (€)') as HTMLInputElement).value).toBe('1,50')
+    expect((row('Bier').getByLabelText('Startprijs (€)') as HTMLInputElement).value).toBe('2,60')
+    expect((row('Bier').getByLabelText('Maximumprijs (€)') as HTMLInputElement).value).toBe('5,00')
     expect(screen.queryByRole('group', { name: 'Oud' })).toBeNull()
+  })
+
+  it('each bound has its B-01 name and (i) (E17-E19; B-01 AC1, AC7, AC9)', async () => {
+    await open()
+    const bier = screen.getByRole('group', { name: 'Bier' })
+    for (const key of ['p_min_cents', 'p0_cents', 'p_max_cents'] as const) {
+      expect(within(bier).getByLabelText(explanations[key].name)).toBeTruthy()
+      expectExplained(bier, explanations[key])
+    }
   })
 
   it('an untouched save sends nothing (AC1)', async () => {
@@ -109,7 +120,7 @@ describe('BoundsSection', () => {
 
   it('one edited p_max sends one PATCH with only p_max_cents', async () => {
     await open()
-    fireEvent.change(row('Wijn').getByLabelText('Max'), { target: { value: '4,75' } })
+    fireEvent.change(row('Wijn').getByLabelText('Maximumprijs (€)'), { target: { value: '4,75' } })
     fireEvent.click(row('Wijn').getByRole('button', { name: 'Opslaan' }))
     await settle()
     expect(writes()).toEqual([['/api/runs/7/drinks/12', { p_max_cents: 475 }]])
@@ -117,16 +128,18 @@ describe('BoundsSection', () => {
 
   it('an order that breaks p_min < p0 < p_max blocks the save (AC11)', async () => {
     await open()
-    fireEvent.change(row('Bier').getByLabelText('Min'), { target: { value: '3' } })
+    fireEvent.change(row('Bier').getByLabelText('Minimumprijs (€)'), { target: { value: '3' } })
     fireEvent.click(row('Bier').getByRole('button', { name: 'Opslaan' }))
     await settle()
     expect(writes()).toEqual([])
-    expect(row('Bier').getByRole('alert').textContent).toBe('Min < Start < Max')
+    expect(row('Bier').getByRole('alert').textContent).toBe(
+      'Minimumprijs < Startprijs < Maximumprijs',
+    )
   })
 
   it('a cleared bound blocks the save (AC3)', async () => {
     await open()
-    fireEvent.change(row('Bier').getByLabelText('Start'), { target: { value: '' } })
+    fireEvent.change(row('Bier').getByLabelText('Startprijs (€)'), { target: { value: '' } })
     fireEvent.click(row('Bier').getByRole('button', { name: 'Opslaan' }))
     await settle()
     expect(writes()).toEqual([])
@@ -142,7 +155,7 @@ describe('BoundsSection', () => {
         },
       })
     await open()
-    fireEvent.change(row('Bier').getByLabelText('Max'), { target: { value: '9' } })
+    fireEvent.change(row('Bier').getByLabelText('Maximumprijs (€)'), { target: { value: '9' } })
     fireEvent.click(row('Bier').getByRole('button', { name: 'Opslaan' }))
     await settle()
     expect(row('Bier').getByText('p_min_cents < p0_cents < p_max_cents')).toBeTruthy()
