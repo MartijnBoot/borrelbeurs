@@ -70,7 +70,7 @@ const section = (page: Page, name: string) => page.getByRole('region', { name, e
 
 /** "Nieuwe sleutel" for `role`; the key read from the one-time display, then closed. */
 async function createKey(page: Page, role: 'Scherm' | 'Bar', label: string): Promise<string> {
-  const keys = section(page, '🔑 Toegangssleutels')
+  const keys = section(page, 'Toegangssleutels')
   await keys.getByLabel('Rol').selectOption({ label: role })
   await keys.getByLabel('Label').fill(label)
   await keys.getByRole('button', { name: 'Nieuwe sleutel' }).click()
@@ -106,7 +106,7 @@ test('an admin builds a borrel from nothing, and every screen follows live', asy
   await expect(borrel.getByText('Vrijmibo')).toBeVisible()
 
   // 2. Three drinks.
-  const add = section(page, '🥤 Drankjes beheren').getByRole('form', { name: 'Drankje toevoegen' })
+  const add = section(page, 'Drankjes beheren').getByRole('form', { name: 'Drankje toevoegen' })
   for (const [name, min, start, max] of DRINKS) {
     await add.getByLabel('Naam').fill(name)
     await add.getByLabel('Minimumprijs (€)', { exact: true }).fill(min)
@@ -114,18 +114,18 @@ test('an admin builds a borrel from nothing, and every screen follows live', asy
     await add.getByLabel('Maximumprijs (€)', { exact: true }).fill(max)
     await add.getByRole('button', { name: 'Toevoegen' }).click()
     await expect(
-      section(page, '🥤 Drankjes beheren').getByRole('group', { name, exact: true }),
+      section(page, 'Drankjes beheren').getByRole('group', { name, exact: true }),
     ).toBeVisible()
   }
 
   // 3. Params.
-  const global = section(page, '⚙️ Globale instellingen')
+  const global = section(page, 'Globale instellingen')
   await global.getByLabel('Prijsstap (€)', { exact: true }).fill('0,05')
   await global.getByRole('button', { name: '💾 Opslaan instellingen' }).click()
   await expect(page.getByText('Opgeslagen')).toBeVisible()
 
   // 4. A preset, then a custom theme.
-  const colours = section(page, '🎨 Kleurenschema')
+  const colours = section(page, 'Kleurenschema')
   await colours.getByRole('button', { name: 'Rood', exact: true }).click()
   await colours.getByLabel('--bg', { exact: true }).fill(CUSTOM_BG)
   await colours.getByRole('button', { name: 'Opslaan', exact: true }).click()
@@ -136,7 +136,7 @@ test('an admin builds a borrel from nothing, and every screen follows live', asy
     .toBe(CUSTOM_BG)
 
   // 5. A logo; removing it asks first, and Annuleren keeps it (AC39).
-  const images = section(page, '🖼️ Afbeeldingen')
+  const images = section(page, 'Afbeeldingen')
   const logo = images.getByRole('group', { name: 'Logo', exact: true })
   await logo.getByLabel('Logo kiezen').setInputFiles({
     name: 'logo.png',
@@ -153,7 +153,7 @@ test('an admin builds a borrel from nothing, and every screen follows live', asy
   const barKey = await createKey(page, 'Bar', 'Tap 1')
 
   // Revoking asks first; Annuleren revokes nothing (AC39).
-  const keys = section(page, '🔑 Toegangssleutels')
+  const keys = section(page, 'Toegangssleutels')
   await keys
     .getByRole('row', { name: /Koersbord/ })
     .getByRole('button', { name: 'Intrekken' })
@@ -184,7 +184,7 @@ test('an admin builds a borrel from nothing, and every screen follows live', asy
   // The bar: one button per drink; the admin removes one and its button goes (AC23).
   const bar = await signedIn(browser, barKey)
   await expect(bar.getByRole('button', { name: DRINK })).toHaveCount(3)
-  const wijn = section(page, '🥤 Drankjes beheren').getByRole('group', {
+  const wijn = section(page, 'Drankjes beheren').getByRole('group', {
     name: 'Wijn',
     exact: true,
   })

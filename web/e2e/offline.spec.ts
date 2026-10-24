@@ -55,7 +55,7 @@ test('every Phase 4 page works with every non-origin request blocked (AC1)', asy
 
   await page.goto('/settings')
   // Phase 6 SD25 renamed the theme section after v1's sidebar.
-  await expect(page.getByRole('heading', { name: '🎨 Kleurenschema' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Kleurenschema' })).toBeVisible()
   await expectThemeFontLoaded(page)
 
   expect(foreign).toEqual([])

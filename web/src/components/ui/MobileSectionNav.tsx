@@ -1,9 +1,12 @@
 /**
  * The settings sections' navigation (Phase 6 SD25): in-page links, or, on a
- * narrow screen, one select that scrolls to the chosen section.
+ * narrow screen, one select that scrolls to the chosen section. A link shows
+ * the section's pixel icon before its name; an `<option>` holds text only
+ * (B-02 SD4).
  */
 import { useMediaQuery } from '../../lib/useMediaQuery'
 import styles from './MobileSectionNav.module.css'
+import { PixelIcon, type PixelIconName } from './PixelIcon'
 import { Select } from './Select'
 
 export const NARROW_NAV = '(max-width: 800px)'
@@ -11,6 +14,7 @@ export const NARROW_NAV = '(max-width: 800px)'
 export interface Section {
   id: string
   label: string
+  icon?: PixelIconName
 }
 
 export function MobileSectionNav({ sections }: { sections: readonly Section[] }) {
@@ -29,6 +33,7 @@ export function MobileSectionNav({ sections }: { sections: readonly Section[] })
     <nav aria-label="Secties" className={styles.nav}>
       {sections.map((s) => (
         <a key={s.id} href={`#${s.id}`} className={styles.link}>
+          {s.icon && <PixelIcon name={s.icon} />}
           {s.label}
         </a>
       ))}

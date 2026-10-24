@@ -82,7 +82,7 @@ async function signedIn(browser: Browser, key: string): Promise<Page> {
 const section = (page: Page, name: string) => page.getByRole('region', { name, exact: true })
 
 async function createKey(page: Page, role: 'Scherm' | 'Bar', label: string): Promise<string> {
-  const keys = section(page, '🔑 Toegangssleutels')
+  const keys = section(page, 'Toegangssleutels')
   await keys.getByLabel('Rol').selectOption({ label: role })
   await keys.getByLabel('Label').fill(label)
   await keys.getByRole('button', { name: 'Nieuwe sleutel' }).click()
@@ -93,7 +93,7 @@ async function createKey(page: Page, role: 'Scherm' | 'Bar', label: string): Pro
 }
 
 async function addDrink(page: Page, name: string, min: string, start: string, max: string) {
-  const drinks = section(page, '🥤 Drankjes beheren')
+  const drinks = section(page, 'Drankjes beheren')
   const add = drinks.getByRole('form', { name: 'Drankje toevoegen' })
   await add.getByLabel('Naam').fill(name)
   await add.getByLabel('Minimumprijs (€)', { exact: true }).fill(min)
@@ -170,7 +170,7 @@ test('two borrels: close, copy, compare, export and delete', async ({ page, brow
   const bar = await signedIn(browser, barKey)
   await order(bar)
   await order(bar)
-  const bier = section(page, '🥤 Drankjes beheren').getByRole('group', {
+  const bier = section(page, 'Drankjes beheren').getByRole('group', {
     name: 'Bier',
     exact: true,
   })
@@ -197,7 +197,7 @@ test('two borrels: close, copy, compare, export and delete', async ({ page, brow
   await borrel.getByRole('button', { name: 'Nieuwe borrel' }).click()
   await expect(borrel.getByText('Zaterdag')).toBeVisible()
   await expect(
-    section(page, '🥤 Drankjes beheren').getByRole('group', { name: 'Cola', exact: true }),
+    section(page, 'Drankjes beheren').getByRole('group', { name: 'Cola', exact: true }),
   ).toBeVisible()
   await goLive(page)
   await expect(display.locator(TILE)).toHaveCount(4)

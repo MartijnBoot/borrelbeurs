@@ -130,22 +130,33 @@ describe('Toast', () => {
 describe('MobileSectionNav', () => {
   const sections = [
     { id: 'borrel', label: 'Borrel' },
-    { id: 'thema', label: '🎨 Kleurenschema' },
+    { id: 'thema', label: 'Kleurenschema', icon: 'palette' as const },
   ]
 
   it('renders in-page links on a wide screen', () => {
     stubMatchMedia(false)
     render(<MobileSectionNav sections={sections} />)
-    const link = screen.getByRole('link', { name: '🎨 Kleurenschema' })
+    const link = screen.getByRole('link', { name: 'Kleurenschema' })
     expect(link.getAttribute('href')).toBe('#thema')
     expect(screen.queryByRole('combobox')).toBeNull()
+  })
+
+  it('shows a section’s icon before its name in the link (B-02 PD4)', () => {
+    stubMatchMedia(false)
+    render(<MobileSectionNav sections={sections} />)
+    const link = screen.getByRole('link', { name: 'Kleurenschema' })
+    expect(link.textContent).toBe('Kleurenschema')
+    expect(link.firstElementChild?.tagName).toBe('svg')
+    expect(link.firstElementChild?.getAttribute('aria-hidden')).toBe('true')
+    expect(screen.getByRole('link', { name: 'Borrel' }).querySelector('svg')).toBeNull()
   })
 
   it('renders a select when the narrow query matches', () => {
     stubMatchMedia(true)
     render(<MobileSectionNav sections={sections} />)
     const select = screen.getByRole('combobox', { name: 'Sectie' }) as HTMLSelectElement
-    expect([...select.options].map((o) => o.textContent)).toEqual(['Borrel', '🎨 Kleurenschema'])
+    expect([...select.options].map((o) => o.textContent)).toEqual(['Borrel', 'Kleurenschema'])
+    expect(select.querySelector('svg')).toBeNull()
     expect(screen.queryByRole('link')).toBeNull()
   })
 

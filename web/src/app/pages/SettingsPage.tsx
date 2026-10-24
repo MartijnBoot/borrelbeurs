@@ -20,11 +20,12 @@ import {
  */
 const SECTIONS: readonly SettingsSection[] = [
   { id: 'borrel', label: 'Borrel', content: <BorrelSection /> },
-  { id: 'systeem', label: '🧹 Systeemacties', content: <SystemSection /> },
-  { id: 'globaal', label: '⚙️ Globale instellingen', content: <GlobalSection /> },
+  { id: 'systeem', label: 'Systeemacties', icon: 'broom', content: <SystemSection /> },
+  { id: 'globaal', label: 'Globale instellingen', icon: 'gear', content: <GlobalSection /> },
   {
     id: 'kleuren',
-    label: '🎨 Kleurenschema',
+    label: 'Kleurenschema',
+    icon: 'palette',
     content: (
       <>
         <ThemeSection />
@@ -32,11 +33,11 @@ const SECTIONS: readonly SettingsSection[] = [
       </>
     ),
   },
-  { id: 'afbeeldingen', label: '🖼️ Afbeeldingen', content: <ImagesSection /> },
-  { id: 'drankjes', label: '🥤 Drankjes beheren', content: <DrinksSection /> },
-  { id: 'prijzen', label: '🔒 Min/Max/Startprijs', content: <BoundsSection /> },
-  { id: 'vraag', label: '📈 Vraag/Aanbod', content: <DemandSection /> },
-  { id: 'sleutels', label: '🔑 Toegangssleutels', content: <KeysSection /> },
+  { id: 'afbeeldingen', label: 'Afbeeldingen', icon: 'picture', content: <ImagesSection /> },
+  { id: 'drankjes', label: 'Drankjes beheren', icon: 'cup', content: <DrinksSection /> },
+  { id: 'prijzen', label: 'Min/Max/Startprijs', icon: 'padlock', content: <BoundsSection /> },
+  { id: 'vraag', label: 'Vraag/Aanbod', icon: 'chart', content: <DemandSection /> },
+  { id: 'sleutels', label: 'Toegangssleutels', icon: 'key', content: <KeysSection /> },
 ]
 
 export function SettingsPage() {

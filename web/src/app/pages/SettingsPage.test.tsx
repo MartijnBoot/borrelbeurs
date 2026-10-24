@@ -9,15 +9,25 @@ import { SettingsPage } from './SettingsPage'
 
 const SECTIONS = [
   'Borrel',
-  '🧹 Systeemacties',
-  '⚙️ Globale instellingen',
-  '🎨 Kleurenschema',
-  '🖼️ Afbeeldingen',
-  '🥤 Drankjes beheren',
-  '🔒 Min/Max/Startprijs',
-  '📈 Vraag/Aanbod',
-  '🔑 Toegangssleutels',
+  'Systeemacties',
+  'Globale instellingen',
+  'Kleurenschema',
+  'Afbeeldingen',
+  'Drankjes beheren',
+  'Min/Max/Startprijs',
+  'Vraag/Aanbod',
+  'Toegangssleutels',
 ]
+
+/** The one decorative pixel icon before the name (B-02 SD4, AC7, AC8), or `null` without one. */
+function leadingIcon(element: HTMLElement): SVGElement | null {
+  const icons = element.querySelectorAll('svg')
+  if (icons.length === 0) return null
+  expect(icons).toHaveLength(1)
+  expect(icons[0].getAttribute('aria-hidden')).toBe('true')
+  expect(element.firstChild).toBe(icons[0])
+  return icons[0]
+}
 
 beforeEach(() => {
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -56,6 +66,37 @@ describe('SettingsPage', () => {
     for (const label of SECTIONS) {
       expect(screen.getByRole('heading', { level: 2, name: label })).toBeTruthy()
     }
+  })
+
+  it('puts one pixel icon before each name but Borrel, in the heading and the link (B-02)', async () => {
+    render(<SettingsPage />)
+    await act(async () => {})
+
+    const nav = screen.getByRole('navigation', { name: 'Secties' })
+    for (const label of SECTIONS) {
+      const heading = screen.getByRole('heading', { level: 2, name: label })
+      const link = within(nav).getByRole('link', { name: label })
+      for (const element of [heading, link]) {
+        expect(element.textContent).toBe(label)
+        if (label === 'Borrel') expect(leadingIcon(element)).toBeNull()
+        else expect(leadingIcon(element)).not.toBeNull()
+      }
+    }
+  })
+
+  it('the narrow-screen "Sectie" select holds the plain names, text only (SD4)', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }))
+    render(<SettingsPage />)
+    await act(async () => {})
+
+    const select = screen.getByRole('combobox', { name: 'Sectie' }) as HTMLSelectElement
+    expect([...select.options].map((o) => o.textContent)).toEqual(SECTIONS)
+    expect(select.querySelectorAll('svg')).toHaveLength(0)
   })
 
   it('every section is built: none says "Nog niet beschikbaar"', async () => {
@@ -155,15 +196,15 @@ describe('SettingsPage: the explanations (B-01)', () => {
   })
 
   it.each([
-    ['⚙️ Globale instellingen', 10],
-    ['📈 Vraag/Aanbod', 6],
-    ['🔒 Min/Max/Startprijs', 3 * 2],
-    ['🥤 Drankjes beheren', 8 + 1 * 2],
-    ['🧹 Systeemacties', 1],
+    ['Globale instellingen', 10],
+    ['Vraag/Aanbod', 6],
+    ['Min/Max/Startprijs', 3 * 2],
+    ['Drankjes beheren', 8 + 1 * 2],
+    ['Systeemacties', 1],
     ['Borrel', 0],
-    ['🎨 Kleurenschema', 0],
-    ['🖼️ Afbeeldingen', 0],
-    ['🔑 Toegangssleutels', 0],
+    ['Kleurenschema', 0],
+    ['Afbeeldingen', 0],
+    ['Toegangssleutels', 0],
   ])('%s has %i (i) with two drinks (AC10)', async (section, count) => {
     await openWithLiveRun()
     expect(info(screen.getByRole('region', { name: section }))).toHaveLength(count)
