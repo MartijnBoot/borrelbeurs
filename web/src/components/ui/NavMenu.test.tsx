@@ -33,6 +33,21 @@ describe('NavMenu (AC22, SD13)', () => {
     expect(hrefs(renderMenu(routes))).toEqual(routes)
   })
 
+  it('the button is named exactly "Menu", the chevron icon after the word (B-02 AC7, AC8)', () => {
+    render(
+      <MemoryRouter>
+        <NavMenu routes={[]} onLogout={vi.fn()} />
+      </MemoryRouter>,
+    )
+    const button = screen.getByRole('button', { name: 'Menu' })
+    expect(button.textContent).toBe('Menu')
+    const icons = button.querySelectorAll('svg')
+    expect(icons).toHaveLength(1)
+    expect(icons[0].getAttribute('aria-hidden')).toBe('true')
+    expect(button.firstChild?.nodeType).toBe(Node.TEXT_NODE)
+    expect(button.lastChild).toBe(icons[0])
+  })
+
   it('labels routes with v1 labels', () => {
     const menu = renderMenu(ALLOWED.admin)
     for (const label of [

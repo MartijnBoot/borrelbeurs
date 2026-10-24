@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import styles from './NavMenu.module.css'
+import { PixelIcon } from './PixelIcon'
 
 const LABELS: Readonly<Record<string, string>> = {
   '/': 'Home',
@@ -51,7 +52,8 @@ export function NavMenu({ routes, onLogout }: NavMenuProps) {
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
-        Menu <span aria-hidden="true">▾</span>
+        Menu
+        <PixelIcon name="chevronDown" />
       </button>
       {open && (
         <div className={styles.panel} role="menu">
