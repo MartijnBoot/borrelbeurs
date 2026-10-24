@@ -109,9 +109,9 @@ test('an admin builds a borrel from nothing, and every screen follows live', asy
   const add = section(page, '🥤 Drankjes beheren').getByRole('form', { name: 'Drankje toevoegen' })
   for (const [name, min, start, max] of DRINKS) {
     await add.getByLabel('Naam').fill(name)
-    await add.getByLabel('Min').fill(min)
-    await add.getByLabel('Start').fill(start)
-    await add.getByLabel('Max').fill(max)
+    await add.getByLabel('Minimumprijs (€)', { exact: true }).fill(min)
+    await add.getByLabel('Startprijs (€)', { exact: true }).fill(start)
+    await add.getByLabel('Maximumprijs (€)', { exact: true }).fill(max)
     await add.getByRole('button', { name: 'Toevoegen' }).click()
     await expect(
       section(page, '🥤 Drankjes beheren').getByRole('group', { name, exact: true }),

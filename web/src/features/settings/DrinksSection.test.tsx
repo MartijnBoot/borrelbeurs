@@ -3,8 +3,10 @@
 // blank optionals omitted, rename and bar price dirty-only, remove behind a dialog.
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { expectExplained } from '../../components/ui/infoTesting'
 import { exchangeStore } from '../exchange'
 import { DrinksSection } from './DrinksSection'
+import explanations from './explanations.json'
 
 const DRINK = {
   slot: 0,
@@ -112,9 +114,9 @@ describe('DrinksSection', () => {
     await open()
     const form = addForm()
     type(form, 'Naam', 'Cola')
-    type(form, 'Min', '1,00')
-    type(form, 'Start', '2,50')
-    type(form, 'Max', '6')
+    type(form, 'Minimumprijs (€)', '1,00')
+    type(form, 'Startprijs (€)', '2,50')
+    type(form, 'Maximumprijs (€)', '6')
     fireEvent.click(form.getByRole('button', { name: 'Toevoegen' }))
     await settle()
 
@@ -131,16 +133,16 @@ describe('DrinksSection', () => {
     await open()
     const form = addForm()
     type(form, 'Naam', 'Cola')
-    type(form, 'Min', '1')
-    type(form, 'Start', '2')
-    type(form, 'Max', '6')
-    type(form, 'Barprijs', '2,505')
+    type(form, 'Minimumprijs (€)', '1')
+    type(form, 'Startprijs (€)', '2')
+    type(form, 'Maximumprijs (€)', '6')
+    type(form, 'Normale barprijs (€)', '2,505')
     fireEvent.click(form.getByRole('button', { name: 'Toevoegen' }))
     await settle()
     expect(writes()).toEqual([])
 
-    type(form, 'Barprijs', '2,20')
-    type(form, 'a', '1,5')
+    type(form, 'Normale barprijs (€)', '2,20')
+    type(form, 'Basisvraag (a)', '1,5')
     fireEvent.click(form.getByRole('button', { name: 'Toevoegen' }))
     await settle()
     expect(writes()[0][2]).toEqual({
@@ -153,14 +155,61 @@ describe('DrinksSection', () => {
     })
   })
 
+  const ADD_KEYS = [
+    'p_min_cents',
+    'p0_cents',
+    'p_max_cents',
+    'bar_price_cents',
+    'a',
+    'd',
+    's0',
+    'c',
+  ] as const
+
+  it.each(ADD_KEYS)('the add form names %s as B-01 does, with its (i) (AC7, AC9)', async (key) => {
+    await open()
+    const form = screen.getByRole('form', { name: 'Drankje toevoegen' })
+    expect(within(form).getByLabelText(explanations[key].name)).toBeTruthy()
+    expectExplained(form, explanations[key])
+  })
+
+  it('the add form keeps its "Leeg:" hints (B-01 SD1)', async () => {
+    await open()
+    expect(addForm().getByText('Leeg: de startprijs')).toBeTruthy()
+    expect(addForm().getAllByText('Leeg: standaard')).toHaveLength(4)
+  })
+
+  it("a drink row's bar price is E20, with the same (i) (AC9)", async () => {
+    await open()
+    const bier = screen.getByRole('group', { name: 'Bier' })
+    expect(within(bier).getByLabelText('Normale barprijs (€)')).toBeTruthy()
+    expectExplained(bier, explanations.bar_price_cents)
+  })
+
+  it('an (i) in a complete add form sends no POST (B-01 AC5)', async () => {
+    await open()
+    const form = addForm()
+    type(form, 'Naam', 'Cola')
+    type(form, 'Minimumprijs (€)', '1')
+    type(form, 'Startprijs (€)', '2')
+    type(form, 'Maximumprijs (€)', '6')
+    for (const button of form.getAllByRole('button', { name: /^Uitleg: / })) {
+      fireEvent.click(button)
+      fireEvent.click(button)
+    }
+    await settle()
+    expect(writes()).toEqual([])
+    expect((form.getByLabelText('Startprijs (€)') as HTMLInputElement).value).toBe('2')
+  })
+
   it('a duplicate name shows in Dutch (AC21)', async () => {
     writeAnswer = () => json(409, { error: { code: 'duplicate_drink_name', message: 'exists' } })
     await open()
     const form = addForm()
     type(form, 'Naam', 'bier')
-    type(form, 'Min', '1')
-    type(form, 'Start', '2')
-    type(form, 'Max', '6')
+    type(form, 'Minimumprijs (€)', '1')
+    type(form, 'Startprijs (€)', '2')
+    type(form, 'Maximumprijs (€)', '6')
     fireEvent.click(form.getByRole('button', { name: 'Toevoegen' }))
     await settle()
 

@@ -2,7 +2,8 @@
  * 🥤 Drankjes beheren (Phase 6 SD13, SD25; AC4, AC17, AC21, AC39).
  *
  * **Add:** a name, the three bounds as `MoneyField`s, and an optional bar price
- * and `a/d/s0/c`. A blank optional is left out of the body, so the server's
+ * and `a/d/s0/c`, each under its B-01 name with an (i) (E13-E20) -- the same
+ * entries the bounds rows and the coefficient table use (AC9). A blank optional is left out of the body, so the server's
  * default applies (AC4); an invalid entry blocks the add.
  *
  * **Per active drink:** its name and bar price, saved as a dirty-only `PATCH`
@@ -21,6 +22,7 @@ import { Toast } from '../../components/ui/Toast'
 import { type FieldValue } from '../../lib/format'
 import { HttpError, request } from '../../lib/http'
 import { useEditableRecord } from '../../lib/useEditableRecord'
+import explanations from './explanations.json'
 import styles from './settings.module.css'
 import { faultsOf, Revision, type RunConfig, useRunConfig } from './useRunConfig'
 
@@ -172,25 +174,29 @@ function AddDrinkForm({ runId, onDone }: { runId: number; onDone: () => Promise<
           error={faults.name}
         />
         <MoneyField
-          label="Min"
+          label={explanations.p_min_cents.name}
+          info={explanations.p_min_cents}
           cents={draft.p_min_cents}
           onChange={(v) => set('p_min_cents', v)}
           error={faults.p_min_cents}
         />
         <MoneyField
-          label="Start"
+          label={explanations.p0_cents.name}
+          info={explanations.p0_cents}
           cents={draft.p0_cents}
           onChange={(v) => set('p0_cents', v)}
           error={faults.p0_cents}
         />
         <MoneyField
-          label="Max"
+          label={explanations.p_max_cents.name}
+          info={explanations.p_max_cents}
           cents={draft.p_max_cents}
           onChange={(v) => set('p_max_cents', v)}
           error={faults.p_max_cents}
         />
         <MoneyField
-          label="Barprijs"
+          label={explanations.bar_price_cents.name}
+          info={explanations.bar_price_cents}
           cents={draft.bar_price_cents}
           onChange={(v) => set('bar_price_cents', v)}
           hint="Leeg: de startprijs"
@@ -199,7 +205,8 @@ function AddDrinkForm({ runId, onDone }: { runId: number; onDone: () => Promise<
         {OPTIONAL_COEFFICIENTS.map((field) => (
           <NumberField
             key={field}
-            label={field}
+            label={explanations[field].name}
+            info={explanations[field]}
             value={draft[field]}
             onChange={(v) => set(field, v)}
             hint="Leeg: standaard"
@@ -305,7 +312,8 @@ function DrinkRow({
           onChange={(v) => record.set('name', v.trim() === '' ? null : v)}
         />
         <MoneyField
-          label="Barprijs"
+          label={explanations.bar_price_cents.name}
+          info={explanations.bar_price_cents}
           cents={price}
           onChange={(v) => record.set('bar_price_cents', v)}
         />

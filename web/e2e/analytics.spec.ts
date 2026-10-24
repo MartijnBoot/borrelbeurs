@@ -96,9 +96,9 @@ async function addDrink(page: Page, name: string, min: string, start: string, ma
   const drinks = section(page, '🥤 Drankjes beheren')
   const add = drinks.getByRole('form', { name: 'Drankje toevoegen' })
   await add.getByLabel('Naam').fill(name)
-  await add.getByLabel('Min').fill(min)
-  await add.getByLabel('Start').fill(start)
-  await add.getByLabel('Max').fill(max)
+  await add.getByLabel('Minimumprijs (€)', { exact: true }).fill(min)
+  await add.getByLabel('Startprijs (€)', { exact: true }).fill(start)
+  await add.getByLabel('Maximumprijs (€)', { exact: true }).fill(max)
   await add.getByRole('button', { name: 'Toevoegen' }).click()
   await expect(drinks.getByRole('group', { name, exact: true })).toBeVisible()
 }
@@ -174,7 +174,7 @@ test('two borrels: close, copy, compare, export and delete', async ({ page, brow
     name: 'Bier',
     exact: true,
   })
-  await bier.getByLabel('Barprijs').fill('2,75')
+  await bier.getByLabel('Normale barprijs (€)', { exact: true }).fill('2,75')
   const saved = page.waitForResponse(
     (r) => r.request().method() === 'PATCH' && /\/drinks\/\d+$/.test(new URL(r.url()).pathname),
   )
