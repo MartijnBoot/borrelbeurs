@@ -72,6 +72,10 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     ("GET", "/api/runs/{run_id}/exports"): ADMIN,
     ("GET", "/api/exports/{export_id}"): ADMIN,
     ("GET", "/api/exports/{export_id}/file"): ADMIN,
+    # B-04 SD14.
+    ("GET", "/api/profiles"): ADMIN,
+    ("POST", "/api/profiles"): ADMIN,
+    ("DELETE", "/api/profiles/{profile_id}"): ADMIN,
 }
 
 ACTORS: Final = ("anonymous", "revoked", "display", "bar", "admin")
@@ -115,6 +119,7 @@ def _status(client: TestClient, method: str, path: str) -> int:
         .replace("{drink_id}", "999999")
         .replace("{key_id}", "999999")
         .replace("{export_id}", "999999")
+        .replace("{profile_id}", "999999")
         .replace("{slot}", "bg")
     )
     if method == "WS":

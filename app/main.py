@@ -55,6 +55,7 @@ from app.api.keys import router as keys_router
 from app.api.market import router as market_router
 from app.api.news import router as news_router
 from app.api.orders import router as orders_router
+from app.api.profiles import router as profiles_router
 from app.api.runs import router as runs_router
 from app.api.security import ROLE_ROUTES, LoginLimiter, OriginGuard
 from app.api.standby import StandbyGate
@@ -88,6 +89,7 @@ api_router.include_router(drinks_router)
 api_router.include_router(keys_router)
 api_router.include_router(analytics_router)
 api_router.include_router(exports_router)
+api_router.include_router(profiles_router)
 
 # `pnpm --dir web build` output (T6). Not built by every checkout -- a Python
 # test run has no reason to have run pnpm first -- so its absence only means
