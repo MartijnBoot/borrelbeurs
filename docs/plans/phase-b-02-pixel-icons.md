@@ -473,7 +473,8 @@ T3 fills this in. No icon is placed on a page (T5–T13) before it holds a "go".
 
 | Round | Date | Owner's answer | Grids redrawn |
 |---|---|---|---|
-| — | — | — | — |
+| 1 | 2026-10-24 | "the banknote can have a clear euro sign in the icon" | `banknote` (a 2 px € inside the note's frame, corner dots kept) |
+| 2 | 2026-10-24 | "go" | — |
 
 ---
 
