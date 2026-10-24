@@ -19,6 +19,7 @@ import pytest
 
 from app.runtime.theme import resolve
 from scripts.pixel_icons import (
+    DEFAULT_FAVICON,
     DEFAULT_SHEET,
     FAVICON_FILL,
     FAVICON_OUTLINE,
@@ -197,3 +198,10 @@ def test_the_sheet_is_not_part_of_the_built_app() -> None:
     """AC3: written under the gitignored `.dev/`, never under `web/`."""
     assert DEFAULT_SHEET == ROOT / ".dev" / "pixel-icons.html"
     assert not DEFAULT_SHEET.is_relative_to(ROOT / "web")
+
+
+def test_the_committed_favicon_is_the_grid_byte_for_byte() -> None:
+    """AC12, PD9: a redraw of the `favicon` grid fails here until the PNG is regenerated
+    (`uv run python -m scripts.pixel_icons favicon`)."""
+    assert DEFAULT_FAVICON == ROOT / "web" / "public" / "favicon.png"
+    assert DEFAULT_FAVICON.read_bytes() == encode_png(favicon_rgba(load_grids()["favicon"]))
