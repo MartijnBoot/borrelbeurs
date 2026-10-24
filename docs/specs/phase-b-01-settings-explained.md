@@ -124,6 +124,15 @@ changed what the room is told the maths does, so they were the owner's:
   Kaarsbreedte (60 for every new borrel) and the two durations (the form's default) keep
   "Standaard". The drink fields keep "Leeg bij toevoegen".
 
+**After `/review` (2026-10-24)**
+
+- **SD15 — E11 covers high rivalry, as SD13 does for E4.** `engine-guardian` measured that
+  with Verwachte verkoop meetellen on, Concurrentie tussen drankjes 1,5 and the add-drink
+  coefficients, one unit ordered of one drink out of four moves every drink up: the rivalry
+  term (`exchange/steps.py:88-89`) outweighs each drink's own shortfall. E11's "Minder dan
+  verwacht duwt de prijs omlaag" was true only at low rivalry, so E11 gains one sentence for
+  that case. The owner chose this at the review. v1's maths, unchanged.
+
 ## The table
 
 Each row gives the field, where it appears, its v1 label, its **new name**, and the
@@ -225,7 +234,7 @@ Bron: `app/runtime/candles.py:83`, Phase 6 SD10 / AC28.
 
 **E11 — `demand_enabled`.** Was "Vraag/aanbod actief". **Verwachte verkoop meetellen**
 
-> Aan: bij elke bestelling vergelijkt de beurs wat elk drankje in die bestelling verkocht met wat bij zijn prijs verwacht wordt (Basisvraag, Prijsgevoeligheid, Vraagverschuiving en Voordeel onder gemiddelde). Minder dan verwacht duwt de prijs omlaag, meer duwt hem omhoog. Drankjes die niet in de bestelling zitten, tellen als niets verkocht: wordt er voor hen verkoop verwacht, dan zakken ze. Dat gebeurt ook bij elk duwtje bij stilte, voor alle drankjes. Bij stilte duwt Kracht omlaag of Kracht omhoog bovendien harder bij drankjes waar veel verkoop verwacht wordt.
+> Aan: bij elke bestelling vergelijkt de beurs wat elk drankje in die bestelling verkocht met wat bij zijn prijs verwacht wordt (Basisvraag, Prijsgevoeligheid, Vraagverschuiving en Voordeel onder gemiddelde). Minder dan verwacht duwt de prijs omlaag, meer duwt hem omhoog. Drankjes die niet in de bestelling zitten, tellen als niets verkocht: wordt er voor hen verkoop verwacht, dan zakken ze. Dat gebeurt ook bij elk duwtje bij stilte, voor alle drankjes. Bij stilte duwt Kracht omlaag of Kracht omhoog bovendien harder bij drankjes waar veel verkoop verwacht wordt. Bij een hoge Concurrentie tussen drankjes kan het andersom uitpakken: wordt er van alle drankjes meer verkoop verwacht dan er besteld wordt, dan duwt een bestelling meestal alle drankjes omhoog.
 > Uit: alleen de bestellingen zelf tellen; de vier kolommen doen niets.
 > Eerste borrel: uit.
 
