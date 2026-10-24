@@ -18,6 +18,13 @@ const WHEN = formatter({ dateStyle: 'short', timeStyle: 'short' })
 const DAY = formatter({ day: 'numeric' })
 const MONTH = formatter({ month: 'short' })
 const YEAR = formatter({ year: 'numeric' })
+const DAY_MONTH_TIME = formatter({
+  day: 'numeric',
+  month: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+})
 
 /** `HH:MM:SS`. */
 export const formatClock = (ms: number) => CLOCK.format(ms)
@@ -27,6 +34,16 @@ export const formatHourMinute = (ms: number) => HOUR_MINUTE.format(ms)
 
 /** `dd-mm-yyyy, HH:MM`. */
 export const formatWhen = (ms: number) => WHEN.format(ms)
+
+/**
+ * `d mmm HH:MM`, e.g. `24 okt 14:05` (B-04 SD12). Built from the parts, not the
+ * formatted string: ICU builds differ in the separator and in a short month's
+ * trailing dot (`okt` or `okt.`).
+ */
+export const formatDayMonthTime = (ms: number) => {
+  const part = Object.fromEntries(DAY_MONTH_TIME.formatToParts(ms).map((p) => [p.type, p.value]))
+  return `${part.day} ${part.month?.replace(/\.$/, '')} ${part.hour}:${part.minute}`
+}
 
 /** Chart times are `UTCTimestamp`s: whole seconds since the epoch. */
 const chartMs = (time: Time) => Number(time) * 1000
