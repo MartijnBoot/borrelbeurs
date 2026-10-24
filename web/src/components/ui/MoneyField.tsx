@@ -4,6 +4,7 @@
  * never rounded. Otherwise a `NumberField`.
  */
 import { centsText, type FieldValue, parseEuroCents } from '../../lib/format'
+import type { Explanation } from './InfoButton'
 import { TextNumberField } from './NumberField'
 
 export interface MoneyFieldProps {
@@ -13,6 +14,7 @@ export interface MoneyFieldProps {
   hint?: string
   error?: string
   placeholder?: string
+  info?: Explanation
 }
 
 export function MoneyField({ cents, ...rest }: MoneyFieldProps) {

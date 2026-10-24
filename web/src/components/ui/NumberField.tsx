@@ -12,6 +12,7 @@ import { type FieldValue, numberText, parseNumber } from '../../lib/format'
 import { Field } from './Field'
 import styles from './Field.module.css'
 import { describedBy } from './fieldAria'
+import type { Explanation } from './InfoButton'
 
 export interface NumberFieldProps {
   label: string
@@ -23,6 +24,7 @@ export interface NumberFieldProps {
   /** Text only: a number here would read as a value the field does not hold. */
   placeholder?: string
   hideLabel?: boolean
+  info?: Explanation
 }
 
 export function NumberField(props: NumberFieldProps) {
@@ -40,6 +42,7 @@ interface TextNumberFieldProps<T> {
   placeholder?: string
   hideLabel?: boolean
   inputMode?: 'decimal'
+  info?: Explanation
 }
 
 /** The shared body of `NumberField` and `MoneyField`: owner's value in, parsed edits out. */
@@ -53,6 +56,7 @@ export function TextNumberField<T>({
   error,
   placeholder,
   hideLabel,
+  info,
 }: TextNumberFieldProps<T>) {
   const id = useId()
   const [text, setText] = useState(() => (value === 'invalid' ? '' : format(value)))
@@ -65,7 +69,7 @@ export function TextNumberField<T>({
     if (value !== 'invalid' && !Object.is(parse(text), value)) setText(format(value))
   }
   return (
-    <Field id={id} label={label} hint={hint} error={error} hideLabel={hideLabel}>
+    <Field id={id} label={label} hint={hint} error={error} hideLabel={hideLabel} info={info}>
       <input
         id={id}
         className={styles.input}

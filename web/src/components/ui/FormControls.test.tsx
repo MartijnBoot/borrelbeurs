@@ -1,11 +1,17 @@
 // @vitest-environment jsdom
-// Select, Switch, Toast and MobileSectionNav (Phase 6 T22: SD25, SD27; AC2).
+// Select, Switch, Field, Toast and MobileSectionNav (Phase 6 T22: SD25, SD27; AC2;
+// B-01 T2: the `info` prop).
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Field } from './Field'
+import type { Explanation } from './InfoButton'
 import { MobileSectionNav } from './MobileSectionNav'
 import { Select } from './Select'
 import { Switch } from './Switch'
 import { Toast } from './Toast'
+
+const STEP: Explanation = { name: 'Prijsstap (€)', paragraphs: ['Een veelvoud.'] }
+const DEMAND: Explanation = { name: 'Verwachte verkoop meetellen', paragraphs: ['Aan: ...'] }
 
 afterEach(() => {
   cleanup()
@@ -57,6 +63,44 @@ describe('Switch', () => {
     expect(onChange).toHaveBeenCalledWith(true)
     rerender(<Switch label="Vraag/aanbod actief" checked onChange={onChange} />)
     expect(toggle.getAttribute('aria-checked')).toBe('true')
+  })
+
+  it('with info, renders the (i) beside the switch and keeps its exact name (B-01 PD4)', () => {
+    const onChange = vi.fn()
+    render(<Switch label={DEMAND.name} checked={false} onChange={onChange} info={DEMAND} />)
+    const toggle = screen.getByRole('switch', { name: DEMAND.name })
+    const info = screen.getByRole('button', { name: `Uitleg: ${DEMAND.name}` })
+
+    expect(toggle.contains(info)).toBe(false)
+    expect(toggle.parentElement).toBe(info.parentElement)
+    fireEvent.click(info)
+    expect(onChange).not.toHaveBeenCalled()
+  })
+})
+
+describe('Field', () => {
+  it('with info, renders the (i) beside the label, outside it, and keeps the hint', () => {
+    render(
+      <Field id="f" label={STEP.name} hint="Leeg: standaard" info={STEP}>
+        <input id="f" />
+      </Field>,
+    )
+    const info = screen.getByRole('button', { name: `Uitleg: ${STEP.name}` })
+    const label = screen.getByText(STEP.name, { selector: 'label' })
+
+    expect(label.contains(info)).toBe(false)
+    expect(label.parentElement).toBe(info.parentElement)
+    expect(screen.getByLabelText(STEP.name, { exact: true }).id).toBe('f')
+    expect(screen.getByText('Leeg: standaard').id).toBe('f-hint')
+  })
+
+  it('without info, renders no (i)', () => {
+    render(
+      <Field id="f" label={STEP.name}>
+        <input id="f" />
+      </Field>,
+    )
+    expect(screen.queryByRole('button')).toBeNull()
   })
 })
 
