@@ -312,8 +312,14 @@ def _bm_sigma(settings: Settings, url: str, run_id: int) -> Any:
     return row[0]
 
 
-WILD = {"candle_interval_s": 30, "params": {"bm_sigma_y": 0.5, "eta": 0.9, "y_clip": 4.0}}
-CALM = {"candle_interval_s": 60, "params": {"bm_sigma_y": 0.1, "eta": 0.2, "y_clip": 6.0}}
+WILD: dict[str, Any] = {
+    "candle_interval_s": 30,
+    "params": {"bm_sigma_y": 0.5, "eta": 0.9, "y_clip": 4.0},
+}
+CALM: dict[str, Any] = {
+    "candle_interval_s": 60,
+    "params": {"bm_sigma_y": 0.1, "eta": 0.2, "y_clip": 6.0},
+}
 
 
 @pytest.fixture
