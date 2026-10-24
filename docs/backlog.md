@@ -20,6 +20,7 @@ Top is next. Every item that is not `specced` or `dropped` appears here exactly 
 | 3 | B-05 | Player wallets with a QR code | L | idea |
 | 4 | B-06 | Pay at the bar by scanning a player's wallet | M | idea |
 | 5 | B-07 | Price bounds on the Prijsstap grid | S | idea |
+| 6 | B-08 | Short keys you can read aloud | S | idea |
 
 ## Items
 
@@ -285,6 +286,46 @@ drink at the bottom for half the evening.
 **Touches.** (A guess.) Drink and config validation (`app/runtime/drinks.py`,
 `app/runtime/config.py`), the Min/Max/Startprijs and Drankjes forms, B-01's E17/E19 texts.
 `exchange/` read, never changed. Reverses nothing in an ADR; Phase 6 SD8's ranges change.
+
+### B-08 — Short keys you can read aloud
+
+- **Status:** idea
+- **Added:** 2026-10-24
+- **Size:** S (a day or less) — a guess: only how keys are made and typed changes, not who may
+  do what
+
+**Problem.** A key is about 50 characters (`bb_<id>_` plus 43 random characters). Getting one
+onto your own phone and copying it in is too much hassle; reading one aloud for a crew member
+to type in is impossible.
+
+**Idea.** Every key, admin keys included, is 9 characters: short enough to read aloud for
+someone to type in. (A guess: no look-alike characters such as `0`/`O` or `1`/`l`, and upper
+or lower case does not matter.)
+
+**Why it matters.** Handing a bar or display key to crew at the borrel takes seconds, not a
+copy-paste between devices — while the admin pages stay closed to anyone not given an admin
+key.
+
+**Not this.** (A guess, not contradicted.) No usernames or passwords, no QR code or login link,
+no change to the roles or to what each key opens. The protection around keys stays: login tries
+limited per IP, keys stored only as a hash, the 24-hour session. A failure, even if it works:
+a short key that lets someone guess or try their way into the admin pages.
+
+**Open questions.**
+- Do the 9 characters include the part that tells the server which key it is (today the
+  `<id>`), or does that come on top? Without it, login has to check every stored key
+  (`docs/design/architecture.md:199`).
+- Which characters, and how laid out: grouped for reading aloud (e.g. `K7M-4QX-9PR`)? A missing
+  or extra dash accepted?
+- Is 9 enough for admin with today's 10 tries per minute per IP (a guess: about 45 bits, far
+  out of reach), or does it also need a lockout, given Render sees many IPs? `/spec` shows the
+  numbers.
+- Do existing long keys keep working, or is every key reissued?
+
+**Touches.** (A guess.) `app/api/security.py` (minting and parsing keys), `app.cli.keys`, the
+Toegangssleutels page (`web/src/features/keys/KeysSection.tsx`), the login page,
+`scripts/smoke.py` / `BB_SMOKE_KEY`. Changes Phase 3 SD5/SD6 and Phase 6 SD30 — spec
+decisions, not an ADR. Probably no migration. Not the engine.
 
 ## Deferred work
 
