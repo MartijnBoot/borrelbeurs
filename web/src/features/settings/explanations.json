@@ -1,0 +1,193 @@
+{
+  "step_quant": {
+    "id": "E1",
+    "name": "Prijsstap (€)",
+    "paragraphs": [
+      "De prijs op het bord en aan de bar is altijd een veelvoud van dit bedrag. De grafieken lopen per cent en kunnen tussen de stappen door bewegen. Ook de Doelprijs van een sprong wordt hierop afgerond.",
+      "Hoger: grotere stappen, en een prijs blijft vaker even staan. Lager: fijnere bewegingen.",
+      "Eerste borrel: 0,10. Toegestaan: meer dan 0 en hoogstens 5, in hele centen.",
+      "Tijdens de borrel: elke koers blijft staan, afgerond op de nieuwe stap en binnen Minimumprijs en Maximumprijs. Alle lopende prijssprongen stoppen, ook die van een marktgebeurtenis; de melding van een marktgebeurtenis blijft staan."
+    ]
+  },
+  "eta": {
+    "id": "E2",
+    "name": "Beweging per bestelling",
+    "paragraphs": [
+      "Hoe groot de volle beweging van een prijs is bij één bestelling of één duwtje bij stilte. Hoeveel druk daarvoor nodig is, bepaalt Drukdrempel. Vlak bij de Minimumprijs of Maximumprijs beweegt een prijs minder ver.",
+      "Hoger: prijzen reageren heftiger. Lager: rustiger.",
+      "Eerste borrel: 0,8. Toegestaan: 0 of meer."
+    ]
+  },
+  "K": {
+    "id": "E3",
+    "name": "Drukdrempel",
+    "paragraphs": [
+      "Hoeveel druk nodig is voor de volle beweging van Beweging per bestelling. De druk komt vooral van het aantal stuks in één bestelling.",
+      "Lager: één drankje geeft al bijna de volle beweging, en een grote ronde doet weinig extra. Hoger: een los drankje beweegt de prijs weinig, een grote ronde veel meer.",
+      "Eerste borrel: 5. Toegestaan: meer dan 0."
+    ]
+  },
+  "lambda_orders": {
+    "id": "E4",
+    "name": "Concurrentie tussen drankjes",
+    "paragraphs": [
+      "Bij elke bestelling gaan de andere drankjes iets omlaag. Het effect wordt over die andere drankjes verdeeld: hoe meer drankjes, hoe minder elk afzonderlijk zakt. Een duwtje bij stilte werkt andersom: zakt een stil drankje, dan gaan de andere iets omhoog. Met Verwachte verkoop meetellen aan telt het verschil met de verwachte verkoop: verkopen de andere drankjes minder dan verwacht, dan duwt dit ze juist omhoog.",
+      "Hoger: een bestelling drukt de andere prijzen sterker. 0: een bestelling duwt de andere drankjes niet meer rechtstreeks.",
+      "Eerste borrel: 1,5. Toegestaan: 0 of meer."
+    ]
+  },
+  "alpha_price": {
+    "id": "E5",
+    "name": "Trek naar gemiddelde prijs",
+    "paragraphs": [
+      "Bij elke bestelling en elk duwtje bij stilte trekt dit dure drankjes iets omlaag en goedkope iets omhoog, naar de gemiddelde prijs van alle drankjes.",
+      "Hoger: de prijzen blijven dichter bij elkaar. 0: uit.",
+      "Eerste borrel: 0 (uit). Toegestaan: 0 of meer."
+    ]
+  },
+  "phi_persist": {
+    "id": "E6",
+    "name": "Nawerking van bestellingen",
+    "paragraphs": [
+      "Eerdere bestellingen blijven doorduwen. Een drankje dat veel besteld is, krijgt bij elke volgende bestelling en elk duwtje bij stilte een extra duw omhoog, ook als het zelf niet besteld wordt. Een drankje dat duwtjes omlaag bij stilte kreeg (of, met Verwachte verkoop meetellen aan, minder verkocht dan verwacht) krijgt een extra duw omlaag. Wat Concurrentie tussen drankjes doet, wordt niet onthouden. Hoe lang het doorduwen duurt, bepaalt Geheugen van bestellingen.",
+      "Hoger: trends houden sterker aan. 0: alleen de bestelling zelf telt.",
+      "Eerste borrel: 0,1. Toegestaan: 0 of meer."
+    ]
+  },
+  "decay_rho": {
+    "id": "E7",
+    "name": "Geheugen van bestellingen",
+    "paragraphs": [
+      "Hoeveel van de opgebouwde Nawerking van bestellingen overblijft bij elke volgende bestelling of elk duwtje bij stilte; de rest wordt vergeten. Het vergeten telt per bestelling, niet per minuut: in een stille periode zonder duwtjes vergeet de markt niets. Doet niets als Nawerking van bestellingen 0 is.",
+      "Hoger (naar 1): bestellingen werken lang door. Lager: de markt vergeet snel. 1: nooit vergeten. 0: meteen vergeten.",
+      "Eerste borrel: 0,98. Toegestaan: 0 tot en met 1."
+    ]
+  },
+  "history_window_minutes": {
+    "id": "E8",
+    "name": "Grafiekgeschiedenis (min)",
+    "paragraphs": [
+      "Hoeveel minuten koersverloop een scherm meekrijgt als het opent of opnieuw verbindt. Een scherm dat open blijft, tekent daarna gewoon door. Heeft geen invloed op de prijzen.",
+      "Hoger: langere grafieken na openen of herladen. Lager: kortere.",
+      "Eerste borrel: 15. Toegestaan: 1 tot en met 240.",
+      "Tijdens de borrel: korter geldt meteen; langer vult zich pas aan naarmate de borrel verder loopt."
+    ]
+  },
+  "refresh_minutes": {
+    "id": "E9",
+    "name": "Ritme stille drankjes (min)",
+    "paragraphs": [
+      "Om de zoveel minuten kijkt de beurs of drankjes uit Omlaag bij stilte of Omhoog bij stilte een duwtje krijgen; alleen op die momenten. Dit is niet hoe vaak de prijzen verversen: een bestelling beweegt een prijs meteen, en de ruis loopt op een eigen klok. Zonder drankjes in Omlaag bij stilte of Omhoog bij stilte doet dit niets.",
+      "Hoger: minder vaak een duwtje. Lager: vaker, dus samen sterker.",
+      "Eerste borrel: 0,2 (elke 12 seconden). Toegestaan: 0,1 tot en met 10."
+    ]
+  },
+  "candle_interval_s": {
+    "id": "E10",
+    "name": "Kaarsbreedte (sec)",
+    "paragraphs": [
+      "Hoeveel seconden één kaars in de koersgrafieken beslaat. Heeft geen invloed op de prijzen.",
+      "Hoger: minder, bredere kaarsen. Lager: meer, smallere.",
+      "Standaard: 60. Toegestaan: 5 tot en met 3600, in veelvouden van 5.",
+      "Tijdens de borrel: alle grafieken op het koersbord worden meteen opnieuw getekend, over de laatste Grafiekgeschiedenis."
+    ]
+  },
+  "demand_enabled": {
+    "id": "E11",
+    "name": "Verwachte verkoop meetellen",
+    "paragraphs": [
+      "Aan: bij elke bestelling vergelijkt de beurs wat elk drankje in die bestelling verkocht met wat bij zijn prijs verwacht wordt (Basisvraag, Prijsgevoeligheid, Vraagverschuiving en Voordeel onder gemiddelde). Minder dan verwacht duwt de prijs omlaag, meer duwt hem omhoog. Drankjes die niet in de bestelling zitten, tellen als niets verkocht: wordt er voor hen verkoop verwacht, dan zakken ze. Dat gebeurt ook bij elk duwtje bij stilte, voor alle drankjes. Bij stilte duwt Kracht omlaag of Kracht omhoog bovendien harder bij drankjes waar veel verkoop verwacht wordt.",
+      "Uit: alleen de bestellingen zelf tellen; de vier kolommen doen niets.",
+      "Eerste borrel: uit."
+    ]
+  },
+  "auto_calibrate_s0": {
+    "id": "E12",
+    "name": "Evenwicht zetten bij live zetten",
+    "paragraphs": [
+      "Aan: bij Live zetten krijgt elk drankje een Vraagverschuiving (s0) waarbij de verwachte verkoop op zijn startprijs (afgerond op de Prijsstap) precies nul is, zoals Evenwicht op huidige prijzen dat later tijdens de borrel doet. Een drankje dat je tijdens de borrel toevoegt, houdt zijn ingevulde Vraagverschuiving. Uit: de Vraagverschuiving blijft zoals ingevuld. Op de prijzen werkt het alleen als Verwachte verkoop meetellen aan staat.",
+      "Eerste borrel: uit.",
+      "Tijdens de borrel: verandert niets meer; dit gebeurt alleen bij Live zetten."
+    ]
+  },
+  "a": {
+    "id": "E13",
+    "name": "Basisvraag (a)",
+    "paragraphs": [
+      "De verkoop die bij elke bestelling voor dit drankje verwacht wordt, los van zijn prijs. De verwachte verkoop is nooit minder dan 0. Telt alleen als Verwachte verkoop meetellen aan staat.",
+      "Hoger: dit drankje moet meer verkopen om niet te zakken.",
+      "Leeg bij toevoegen: 10. Toegestaan: elk getal."
+    ]
+  },
+  "d": {
+    "id": "E14",
+    "name": "Prijsgevoeligheid (d)",
+    "paragraphs": [
+      "Hoeveel de verwachte verkoop daalt voor elke euro die dit drankje kost. Telt alleen als Verwachte verkoop meetellen aan staat.",
+      "Hoger: wordt het drankje duurder, dan verwacht de beurs snel minder verkoop, dus zakt het minder als niemand het bestelt.",
+      "Leeg bij toevoegen: 0,6. Toegestaan: elk getal."
+    ]
+  },
+  "s0": {
+    "id": "E15",
+    "name": "Vraagverschuiving (s0)",
+    "paragraphs": [
+      "Telt op bij de verwachte verkoop, net als Basisvraag. Evenwicht op huidige prijzen en Evenwicht zetten bij live zetten vullen hem zo in dat de verwachte verkoop bij de huidige prijs precies nul is. Telt alleen als Verwachte verkoop meetellen aan staat.",
+      "Hoger: meer verwachte verkoop.",
+      "Leeg bij toevoegen: 8. Toegestaan: elk getal."
+    ]
+  },
+  "c": {
+    "id": "E16",
+    "name": "Voordeel onder gemiddelde (c)",
+    "paragraphs": [
+      "Hoeveel extra verkoop verwacht wordt voor elke euro dat dit drankje goedkoper is dan het gemiddelde van alle drankjes; duurder dan gemiddeld geeft zoveel minder. Telt alleen als Verwachte verkoop meetellen aan staat.",
+      "Hoger: de beurs verwacht dat goedkope drankjes veel beter lopen.",
+      "Leeg bij toevoegen: 0,4. Toegestaan: elk getal."
+    ]
+  },
+  "p_min_cents": {
+    "id": "E17",
+    "name": "Minimumprijs (€)",
+    "paragraphs": [
+      "De koers van dit drankje komt nooit lager dan de Minimumprijs, afgerond op de Prijsstap. Kies hem als veelvoud van de Prijsstap: anders kan de koers tot een halve stap eronder uitkomen en na een Marktcrash lang op de bodem blijven hangen. Een Marktcrash zakt hierheen. Hoe dichter een prijs bij de Minimumprijs of Maximumprijs, hoe minder ver hij per stap beweegt.",
+      "Toegestaan: 0 of meer, en lager dan de Startprijs.",
+      "Tijdens de borrel: de huidige koers blijft staan, binnen de nieuwe grenzen en op de Prijsstap. Een lopende prijssprong op dit drankje stopt, ook die van een marktgebeurtenis."
+    ]
+  },
+  "p0_cents": {
+    "id": "E18",
+    "name": "Startprijs (€)",
+    "paragraphs": [
+      "De prijs waarmee dit drankje begint: bij Live zetten, of meteen als je het tijdens de borrel toevoegt. Terug naar startprijs gaat hierheen.",
+      "Toegestaan: hoger dan de Minimumprijs en lager dan de Maximumprijs.",
+      "Tijdens de borrel: de huidige koers verandert niet; alleen Terug naar startprijs gebruikt de nieuwe waarde."
+    ]
+  },
+  "p_max_cents": {
+    "id": "E19",
+    "name": "Maximumprijs (€)",
+    "paragraphs": [
+      "De koers van dit drankje komt nooit hoger dan de Maximumprijs, afgerond op de Prijsstap. Kies hem als veelvoud van de Prijsstap: anders kan de koers tot een halve stap erboven uitkomen en na een Prijsbubbel lang aan de top blijven hangen. Een Prijsbubbel stijgt hierheen. Hoe dichter een prijs bij de Minimumprijs of Maximumprijs, hoe minder ver hij per stap beweegt.",
+      "Toegestaan: hoger dan de Startprijs.",
+      "Tijdens de borrel: de huidige koers blijft staan, binnen de nieuwe grenzen en op de Prijsstap. Een lopende prijssprong op dit drankje stopt, ook die van een marktgebeurtenis."
+    ]
+  },
+  "bar_price_cents": {
+    "id": "E20",
+    "name": "Normale barprijs (€)",
+    "paragraphs": [
+      "Wat dit drankje normaal aan de bar kost. Alleen gebruikt om de omzet te vergelijken: \"Omzet tegen barprijs\" in de analyse, en in de export. De koers merkt er niets van.",
+      "Leeg bij toevoegen: de Startprijs. Toegestaan: 0 of meer.",
+      "Tijdens de borrel: geldt voor verkopen vanaf nu; eerdere verkopen houden hun barprijs."
+    ]
+  },
+  "anchor_s0": {
+    "id": "E33",
+    "name": "Evenwicht op huidige prijzen",
+    "paragraphs": [
+      "Werkt alleen tijdens een live borrel. Geeft elk drankje een Vraagverschuiving (s0) waarbij de verwachte verkoop bij zijn huidige koers precies nul is. Er beweegt geen prijs.",
+      "Je ziet: niets op het koersbord. Op de prijzen werkt het pas als Verwachte verkoop meetellen aan staat."
+    ]
+  }
+}
