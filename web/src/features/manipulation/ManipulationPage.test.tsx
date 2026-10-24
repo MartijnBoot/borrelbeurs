@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 // `/manipulation` (Phase 6 T33: SD20-SD23; AC6, AC7, AC39): news, market events
 // and the price jump, re-rendered from the store; Idle only for admin.
+// B-01 T9: the events' and the jump's names and (i) (E27-E32).
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { expectExplained } from '../../components/ui/infoTesting'
 import { applyMessage, exchangeStore, type ServerMessage, type SnapshotData } from '../exchange'
+import explanations from './explanations.json'
 import { ManipulationPage } from './ManipulationPage'
 
 const RUN = {
@@ -100,6 +103,13 @@ async function open(canEditIdle = true) {
 
 const jumpSection = () => screen.getByRole('region', { name: '⚡ Price jump' })
 
+/** The number in an explanation's "Standaard: N." (PD3: the web-only defaults). */
+function standaard(paragraphs: readonly string[]): string {
+  const match = paragraphs.join(' ').match(/Standaard: (\d+)\./)
+  if (match === null) throw new Error('no Standaard in the explanation')
+  return match[1]
+}
+
 describe('ManipulationPage', () => {
   it('shows the three sections, and Idle only when it may be edited (SD20, AC7)', async () => {
     await open(false)
@@ -152,9 +162,9 @@ describe('ManipulationPage', () => {
 
   describe('💥 Market events', () => {
     const EVENTS = [
-      ['💥 Market Crash', 'Marktcrash starten?', 'crash', 'crash'],
-      ['🔄 Terug naar start', 'Terug naar start?', 'correction', 'reset'],
-      ['🚀 Price Bubble', 'Prijsbubbel starten?', 'bubble', 'bubble'],
+      ['Marktcrash', 'Marktcrash starten?', 'crash', 'crash'],
+      ['Terug naar startprijs', 'Terug naar start?', 'correction', 'reset'],
+      ['Prijsbubbel', 'Prijsbubbel starten?', 'bubble', 'bubble'],
     ] as const
 
     for (const [button, question, kind, word] of EVENTS) {
@@ -174,6 +184,20 @@ describe('ManipulationPage', () => {
         expect(screen.getByText(`${word} gestart!`)).toBeTruthy()
       })
     }
+
+    it.each(['event_duration_s', 'crash', 'correction', 'bubble'] as const)(
+      '%s has its B-01 name and (i) (B-01 AC1, AC7)',
+      async (key) => {
+        await open()
+        expectExplained(document.body, explanations[key])
+      },
+    )
+
+    it("the duration starts at its explanation's Standaard (B-01 AC14)", async () => {
+      await open()
+      const field = screen.getByLabelText('Duur gebeurtenis (sec)') as HTMLInputElement
+      expect(field.value).toBe(standaard(explanations.event_duration_s.paragraphs))
+    })
 
     it('a running event shows its remaining seconds, on the server clock', async () => {
       vi.spyOn(Date, 'now').mockReturnValue(100_000)
@@ -222,6 +246,21 @@ describe('ManipulationPage', () => {
           JSON.stringify({ drink_id: 1, target_price_cents: 420, duration_ms: 5_000 }),
         ],
       ])
+    })
+
+    it.each(['jump_target', 'jump_duration_s'] as const)(
+      '%s has its B-01 name and (i) (B-01 AC1, AC7)',
+      async (key) => {
+        await open()
+        expect(within(jumpSection()).getByLabelText(explanations[key].name)).toBeTruthy()
+        expectExplained(jumpSection(), explanations[key])
+      },
+    )
+
+    it("the duration starts at its explanation's Standaard (B-01 AC14)", async () => {
+      await open()
+      const field = within(jumpSection()).getByLabelText('Duur sprong (sec)') as HTMLInputElement
+      expect(field.value).toBe(standaard(explanations.jump_duration_s.paragraphs))
     })
 
     it('a bar session reads no config and shows no hint', async () => {

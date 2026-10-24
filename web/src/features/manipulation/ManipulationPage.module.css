@@ -78,6 +78,12 @@
   color: var(--muted);
 }
 
+.withInfo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .check {
   display: inline-flex;
   align-items: center;
