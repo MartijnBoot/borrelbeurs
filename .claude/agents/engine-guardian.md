@@ -39,6 +39,10 @@ The trajectory is a pure function of `(spec, initial_state, run_seed, ordered li
 4. **Check the RNG.** Noise must derive from `(run_seed, rng_counter)`, both durable. If a
    live `Generator` has crept back into the state, the trajectory is no longer reproducible
    and the fixtures are worthless.
+5. **Re-check B-01's explanations.** If the diff changes lines in `exchange/` that a
+   **Bron** in `docs/specs/phase-b-01-settings-explained.md` ("The table") cites, re-read
+   those rows against the new code and report every row that is no longer true. Any doubt
+   goes to the owner, never to the builder.
 
 ## Known deliberate deviations
 
