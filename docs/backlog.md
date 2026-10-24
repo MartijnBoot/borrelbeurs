@@ -15,12 +15,12 @@ Top is next. Every item that is not `specced` or `dropped` appears here exactly 
 
 | # | ID | Feature | Size | Status |
 |---|---|---|---|---|
-| 1 | B-01 | Settings that explain themselves | M | ready |
-| 2 | B-02 | Own pixel icons instead of emoji | M | idea |
-| 3 | B-03 | Brownian settings in Globale instellingen | S | idea |
-| 4 | B-04 | Named setting profiles per type of game | M | idea |
-| 5 | B-05 | Player wallets with a QR code | L | idea |
-| 6 | B-06 | Pay at the bar by scanning a player's wallet | M | idea |
+| 1 | B-02 | Own pixel icons instead of emoji | M | idea |
+| 2 | B-03 | Brownian settings in Globale instellingen | S | idea |
+| 3 | B-04 | Named setting profiles per type of game | M | idea |
+| 4 | B-05 | Player wallets with a QR code | L | idea |
+| 5 | B-06 | Pay at the bar by scanning a player's wallet | M | idea |
+| 6 | B-07 | Price bounds on the Prijsstap grid | S | idea |
 
 ## Items
 
@@ -49,7 +49,7 @@ it brushes against. A guess is fine; mark it as one.
 
 ### B-01 — Settings that explain themselves
 
-- **Status:** ready
+- **Status:** specced → `docs/specs/phase-b-01-settings-explained.md`
 - **Added:** 2026-10-18
 - **Size:** M (a few tasks) — a guess: ~25 settings over two pages, and each explanation has
   to be true to what the engine does
@@ -251,6 +251,39 @@ it works (a guess): a wallet charged twice, charged a price nobody was shown (ro
 **Touches.** (A guess.) The bar page, the order path (`app/runtime/orders.py`: the deduction in
 the same transaction as the order), the wallet tables from B-05. `exchange/` read, never
 changed. Depends on B-05.
+
+### B-07 — Price bounds on the Prijsstap grid
+
+- **Status:** idea
+- **Added:** 2026-10-18
+- **Size:** S (a day or less) — a guess; more if existing runs need fixing up
+
+**Problem.** A Minimumprijs or Maximumprijs can be any whole number of cents, but the quoted
+price is rounded to the Prijsstap (`exchange/pricing.py:32-42`). With Minimumprijs 1,24 on a
+0,10 step the bar charges 1,20, below the minimum. The engine's "unstick" rule only fires
+when the quote sits exactly on the bound (`exchange/steps.py:113-130`), so after a Marktcrash
+such a drink stayed on the floor for 30 straight orders where an on-grid bound leaves it on
+the first (measured by `engine-guardian` while specifying B-01, 2026-10-18). B-01's popups
+now warn about it; nothing prevents it.
+
+**Idea.** The settings page only accepts bounds that are a multiple of the Prijsstap, so a
+bound is a price the bar can actually charge.
+
+**Why it matters.** The minimum and maximum mean what they say, and a crash does not strand a
+drink at the bottom for half the evening.
+
+**Not this.** No change to the pricing maths; the rounding and the unstick rule stay v1's.
+
+**Open questions.**
+- Reject an off-grid bound, or round it on save (and which way)?
+- What a live Prijsstap change does to bounds that are then off-grid: refuse the change, or
+  move the bounds too (and with Phase 6 SD9's hold rule, in which order)?
+- Existing runs and the v1 import with off-grid bounds: leave, warn, or fix up?
+- The add-drink defaults and copied drinks ("kopieer drankjes uit").
+
+**Touches.** (A guess.) Drink and config validation (`app/runtime/drinks.py`,
+`app/runtime/config.py`), the Min/Max/Startprijs and Drankjes forms, B-01's E17/E19 texts.
+`exchange/` read, never changed. Reverses nothing in an ADR; Phase 6 SD8's ranges change.
 
 ## Deferred work
 
