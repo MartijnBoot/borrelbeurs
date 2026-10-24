@@ -148,7 +148,7 @@ def test_two_concurrent_saves_of_one_new_name_make_one_row(
                     await conn.execute(text("SELECT pg_sleep(0.2)"))
                     return row
 
-            return await asyncio.gather(one(WILD), one(CALM), return_exceptions=True)
+            return list(await asyncio.gather(one(WILD), one(CALM), return_exceptions=True))
         finally:
             await engine.dispose()
 
