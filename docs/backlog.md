@@ -49,7 +49,8 @@ it brushes against. A guess is fine; mark it as one.
 
 ### B-01 — Settings that explain themselves
 
-- **Status:** specced → `docs/specs/phase-b-01-settings-explained.md`
+- **Status:** built → `docs/plans/phase-b-01-settings-explained.md` (spec:
+  `docs/specs/phase-b-01-settings-explained.md`)
 - **Added:** 2026-10-18
 - **Size:** M (a few tasks) — a guess: ~25 settings over two pages, and each explanation has
   to be true to what the engine does
