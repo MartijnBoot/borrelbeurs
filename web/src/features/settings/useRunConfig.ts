@@ -38,6 +38,12 @@ export const RunConfig = z.object({
     idle_rise_targets: z.array(z.number().int()),
     demand_enabled: z.boolean(),
     auto_calibrate_s0: z.boolean(),
+    bm_enabled: z.boolean(),
+    bm_sigma_y: z.number(),
+    bm_dt_minutes: z.number(),
+    flow_vol_amp: z.number(),
+    flow_beta: z.number(),
+    y_clip: z.number(),
   }),
   drinks: z.array(
     z.object({

@@ -42,6 +42,12 @@ const CONFIG = {
     idle_rise_targets: [],
     demand_enabled: true,
     auto_calibrate_s0: false,
+    bm_enabled: true,
+    bm_sigma_y: 0.18,
+    bm_dt_minutes: 1,
+    flow_vol_amp: 0.7,
+    flow_beta: 0.25,
+    y_clip: 6,
   },
   drinks: [
     { ...DRINK, drink_id: 11, name: 'Bier' },
