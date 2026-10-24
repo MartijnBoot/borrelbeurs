@@ -157,7 +157,7 @@ test('a crash ends at t_end_ms on server time, with the client 5 min slow and no
   })
 
   const banner = page.locator('.market-banner')
-  await expect(banner).toHaveText('⚠ MARKTCRASH')
+  await expect(banner).toHaveText('MARKTCRASH')
   await page.waitForTimeout(Math.max(0, tEnd - 1_000 - Date.now()))
   await expect(banner).toBeVisible()
 

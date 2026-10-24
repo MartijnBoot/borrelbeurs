@@ -1,0 +1,4 @@
+/* The banner's icon before its word: the gap is CSS, so the text is the word alone (B-02 PD3). */
+.icon {
+  margin-inline-end: 0.4em;
+}
