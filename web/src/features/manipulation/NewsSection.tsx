@@ -1,5 +1,5 @@
 /**
- * 📰 Nieuws (Phase 6 SD21; AC39): the store's news, newest first, with level,
+ * Nieuws (Phase 6 SD21; AC39): the store's news, newest first, with level,
  * text and time. "Toevoegen" posts text (1–500) and a level, sent lowercase;
  * "Verwijderen" asks "'{first 40 chars}' verwijderen?". No edit.
  */

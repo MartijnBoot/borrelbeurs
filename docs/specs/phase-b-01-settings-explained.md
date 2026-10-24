@@ -81,6 +81,12 @@ The planner must not reopen any of them.
   controls' new names have no emoji. That includes the market-event buttons, whose new names
   match their existing confirmations ("Marktcrash starten?", "Terug naar start?",
   "Prijsbubbel starten?", which stay unchanged).
+
+  > **Superseded in part by B-02** ([phase-b-02-pixel-icons.md](phase-b-02-pixel-icons.md)).
+  > The headings' emoji are gone: each heading now shows B-02's pixel icon before its
+  > plain name, so AC8's "Every section heading shall be unchanged" holds for the wording
+  > only. The 33 controls' names are untouched.
+
 - **SD7 — A "Tijdens de borrel" line only where a live change does more than apply from the
   next step.** That is Prijsstap, the three bounds, Normale barprijs, Grafiekgeschiedenis,
   Kaarsbreedte and Evenwicht zetten bij live zetten (Phase 6 SD9, SD10, PD18; Phase 7 T2).

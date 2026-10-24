@@ -5,13 +5,11 @@
  * Expected colours are the presets' own `--bg` (`app/runtime/theme.py`,
  * ported from v1's `theme.js`). The theme is put back to Blauw afterwards.
  */
-import { request as http, type Browser, type Page } from '@playwright/test'
-import { expect, server, submitKey, test, type Role } from './fixtures'
-
-type Preset = 'blauw' | 'rood' | 'oudgeld'
+import type { Browser, Page } from '@playwright/test'
+import { expect, server, storeTheme, submitKey, test, type Role } from './fixtures'
 
 /** Each preset's `--bg`, as `getComputedStyle` reports it. */
-const BG: Record<Preset, string> = {
+const BG: Record<'blauw' | 'rood' | 'oudgeld', string> = {
   blauw: rgb('#070b16'),
   rood: rgb('#0f0505'),
   oudgeld: rgb('#0e0c07'),
@@ -22,20 +20,6 @@ const PROPAGATION_MS = 2_000
 function rgb(hex: string): string {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16))
   return `rgb(${r}, ${g}, ${b})`
-}
-
-/** `PUT /api/theme` as admin, over HTTP rather than the UI. */
-async function storeTheme(preset: Preset): Promise<void> {
-  const base = server().base_url
-  const api = await http.newContext({ baseURL: base, extraHTTPHeaders: { Origin: base } })
-  try {
-    expect((await api.post('/api/auth/login', { data: { key: server().keys.admin } })).ok()).toBe(
-      true,
-    )
-    expect((await api.put('/api/theme', { data: { preset } })).ok()).toBe(true)
-  } finally {
-    await api.dispose()
-  }
 }
 
 async function pageAs(browser: Browser, role: Role): Promise<Page> {

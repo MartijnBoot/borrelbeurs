@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 🔒 Min/Max/Startprijs (Phase 6 T27: SD25; AC1, AC3, AC11): one row per active
+// Min/Max/Startprijs (Phase 6 T27: SD25; AC1, AC3, AC11): one row per active
 // drink, each saving only its own dirty bounds. B-01 T7: the new names (E17-E19).
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

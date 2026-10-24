@@ -1,7 +1,7 @@
 /**
- * 🧹 Systeemacties (Phase 6 SD26; AC39).
+ * Systeemacties (Phase 6 SD26; AC39).
  *
- * - **"⛔ Sluit app"** asks "Applicatie nu afsluiten?" in `ConfirmDialog`, then
+ * - **"Sluit app"** (after B-02's stop icon) asks "Applicatie nu afsluiten?" in `ConfirmDialog`, then
  *   posts `/api/admin/shutdown` and shows "App sluit nu af…" with every control
  *   disabled: the server is going away.
  * - **"Evenwicht op huidige prijzen"** (B-01 E33, with an (i)) is v1's anchor,
@@ -15,6 +15,7 @@ import { z } from 'zod'
 import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { InfoButton } from '../../components/ui/InfoButton'
+import { PixelIcon } from '../../components/ui/PixelIcon'
 import { Toast } from '../../components/ui/Toast'
 import { request } from '../../lib/http'
 import explanations from './explanations.json'
@@ -72,7 +73,8 @@ export function SystemSection() {
           <InfoButton explanation={explanations.anchor_s0} />
         </span>
         <Button disabled={disabled} onClick={() => setAsking(true)}>
-          ⛔ Sluit app
+          <PixelIcon name="stop" className={styles.buttonIcon} />
+          Sluit app
         </Button>
       </div>
       {closing && <p className={styles.muted}>App sluit nu af…</p>}

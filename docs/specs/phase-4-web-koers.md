@@ -143,6 +143,12 @@ planner must not reopen them; the human may overrule any at spec approval.
   register, "Deliberately not treated as defects"; this satisfies Phase 6's AC17 early). The
   client ends the event at `t_end_ms` on the skew-corrected clock; a late `market_event end`
   is a no-op.
+
+  > **Superseded in part by B-02** ([phase-b-02-pixel-icons.md](phase-b-02-pixel-icons.md)).
+  > The banner texts above are v1's, kept as the record. The crash and bubble banners now
+  > show B-02's own pixel icon before the plain word, and so do the ▲/▼ before a price change
+  > that SD22's verbatim tile port carried (now a named rise/fall icon).
+
 - **SD22 — One euro formatter.** `nl-NL`, two decimals, "€ 2,50". Percentages one decimal.
   Tile contents otherwise port `koers.html` verbatim.
 - **SD23 — Pulse direction compares the displayed price.** A tile pulses `rising` when its

@@ -7,8 +7,9 @@
  * it ends, that change is marked shown, so the next change pulses again.
  */
 import { useState } from 'react'
-import { deltaText, formatEuro } from '../../lib/format'
+import { deltaParts, formatEuro } from '../../lib/format'
 import { pulseDirection, useExchange, type DrinkId } from '../exchange'
+import { DeltaIcon } from './DeltaIcon'
 import styles from './KoersPage.module.css'
 import { DrinkChart } from './ui/DrinkChart'
 
@@ -20,6 +21,10 @@ export function Tile({ drinkId }: { drinkId: DrinkId }) {
   const change = `${previous}->${price}`
   const [shown, setShown] = useState<string | null>(null)
   const pulse = direction !== null && shown !== change ? direction : undefined
+  const delta =
+    price === undefined || previous === undefined
+      ? { direction: null, text: '—' }
+      : deltaParts(previous, price)
 
   return (
     <div
@@ -32,7 +37,8 @@ export function Tile({ drinkId }: { drinkId: DrinkId }) {
       <div className={styles.name}>{name}</div>
       <div className={styles.price}>{price === undefined ? '—' : formatEuro(price)}</div>
       <div className={styles.change}>
-        {price === undefined || previous === undefined ? '—' : deltaText(previous, price)}
+        <DeltaIcon direction={delta.direction} />
+        {delta.text}
       </div>
       <div className={styles.spark}>
         <DrinkChart drinkId={drinkId} />

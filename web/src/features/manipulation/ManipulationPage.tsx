@@ -1,13 +1,14 @@
 /**
- * The manipulation page (`/manipulation`, Phase 6 SD20): v1's sections 📰
- * Nieuws, 💥 Market events and ⚡ Price jump for bar and admin, and ⏳ Idle for
- * admin only (D-44). Every section reads the store, so a broadcast re-renders
+ * The manipulation page (`/manipulation`, Phase 6 SD20): v1's sections Nieuws,
+ * Market events and Price jump for bar and admin, and Idle for admin only
+ * (D-44), each title after its pixel icon (B-02 SD4). Every section reads the store, so a broadcast re-renders
  * it -- v1's drink select stayed stale (`manipulation.html:405-416`).
  *
  * `canEditIdle` is the session's role, passed in by `routes.tsx` (PD13). It
  * also decides the price jump's bounds hint, whose `GET config` is admin-only.
  */
 import type { ReactNode } from 'react'
+import { PixelIcon, type PixelIconName } from '../../components/ui/PixelIcon'
 import { IdleSection } from './IdleSection'
 import { MarketEventsSection } from './MarketEventsSection'
 import { NewsSection } from './NewsSection'
@@ -17,17 +18,17 @@ import styles from './ManipulationPage.module.css'
 export function ManipulationPage({ canEditIdle }: { canEditIdle: boolean }) {
   return (
     <div className={styles.page}>
-      <Section id="nieuws" title="📰 Nieuws">
+      <Section id="nieuws" icon="newspaper" title="Nieuws">
         <NewsSection />
       </Section>
-      <Section id="events" title="💥 Market events">
+      <Section id="events" icon="burst" title="Market events">
         <MarketEventsSection />
       </Section>
-      <Section id="jump" title="⚡ Price jump">
+      <Section id="jump" icon="bolt" title="Price jump">
         <PriceJumpSection showBounds={canEditIdle} />
       </Section>
       {canEditIdle && (
-        <Section id="idle" title="⏳ Idle">
+        <Section id="idle" icon="hourglass" title="Idle">
           <IdleSection />
         </Section>
       )}
@@ -35,10 +36,23 @@ export function ManipulationPage({ canEditIdle }: { canEditIdle: boolean }) {
   )
 }
 
-function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+function Section({
+  id,
+  icon,
+  title,
+  children,
+}: {
+  id: string
+  icon: PixelIconName
+  title: string
+  children: ReactNode
+}) {
   return (
     <section className={styles.section} aria-labelledby={`${id}-title`}>
-      <h2 id={`${id}-title`}>{title}</h2>
+      <h2 id={`${id}-title`}>
+        <PixelIcon name={icon} />
+        {title}
+      </h2>
       {children}
     </section>
   )

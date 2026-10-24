@@ -1,5 +1,5 @@
 /**
- * 🥤 Drankjes beheren (Phase 6 SD13, SD25; AC4, AC17, AC21, AC39).
+ * Drankjes beheren (Phase 6 SD13, SD25; AC4, AC17, AC21, AC39).
  *
  * **Add:** a name, the three bounds as `MoneyField`s, and an optional bar price
  * and `a/d/s0/c`, each under its B-01 name with an (i) (E13-E20) -- the same

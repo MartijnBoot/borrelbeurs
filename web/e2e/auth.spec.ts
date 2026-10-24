@@ -51,7 +51,7 @@ test.describe('navigation (AC22, AC23)', () => {
   test('bar at /bar sees the bar page (Phase 5)', async ({ page, loginAs }) => {
     await loginAs('bar')
     await expect(page).toHaveURL((url) => url.pathname === '/bar')
-    await expect(page.getByRole('heading', { name: '🍺 Bar — Bestellen' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Bar — Bestellen' })).toBeVisible()
   })
 })
 

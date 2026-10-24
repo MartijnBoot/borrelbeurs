@@ -15,12 +15,11 @@ Top is next. Every item that is not `specced` or `dropped` appears here exactly 
 
 | # | ID | Feature | Size | Status |
 |---|---|---|---|---|
-| 1 | B-02 | Own pixel icons instead of emoji | M | idea |
-| 2 | B-03 | Brownian settings in Globale instellingen | S | idea |
-| 3 | B-04 | Named setting profiles per type of game | M | idea |
-| 4 | B-05 | Player wallets with a QR code | L | idea |
-| 5 | B-06 | Pay at the bar by scanning a player's wallet | M | idea |
-| 6 | B-07 | Price bounds on the Prijsstap grid | S | idea |
+| 1 | B-03 | Brownian settings in Globale instellingen | S | idea |
+| 2 | B-04 | Named setting profiles per type of game | M | idea |
+| 3 | B-05 | Player wallets with a QR code | L | idea |
+| 4 | B-06 | Pay at the bar by scanning a player's wallet | M | idea |
+| 5 | B-07 | Price bounds on the Prijsstap grid | S | idea |
 
 ## Items
 
@@ -90,7 +89,8 @@ table in `docs/specs/phase-6-admin.md`. `exchange/` read, never changed. No ADR.
 
 ### B-02 — Own pixel icons instead of emoji
 
-- **Status:** idea
+- **Status:** built → `docs/plans/phase-b-02-pixel-icons.md` (spec:
+  `docs/specs/phase-b-02-pixel-icons.md`)
 - **Added:** 2026-10-18
 - **Size:** M (a few tasks) — a guess: a set of ~20–30 icons, swapped in across five pages
 

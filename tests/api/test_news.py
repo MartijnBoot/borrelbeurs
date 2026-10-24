@@ -69,6 +69,21 @@ def test_posting_news_persists_trims_and_broadcasts(
     assert client.get("/api/news").json() == [item]
 
 
+def test_typed_emoji_are_stored_and_shown_as_typed(
+    live_client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """B-02 SD6, AC11: the app's own text loses its emoji; text a person types keeps them."""
+    client = login("bar")
+
+    response = client.post("/api/news", json={"level": "info", "text": "Happy hour 🎉"})
+
+    assert response.status_code == 201
+    item = response.json()
+    assert item["text"] == "Happy hour 🎉"
+    assert _rows(settings, api_env) == [("info", "Happy hour 🎉", False)]
+    assert client.get("/api/news").json() == [item]
+
+
 def test_news_is_listed_newest_first(live_client: TestClient, login: Login) -> None:
     client = login("bar")
     for text_ in ("one", "two", "three"):

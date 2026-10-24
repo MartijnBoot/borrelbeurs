@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// ⏳ Idle (Phase 6 T34: SD11, SD20; AC1, AC2, AC7, AC22): v1's decay/rise minutes
+// Idle (Phase 6 T34: SD11, SD20; AC1, AC2, AC7, AC22): v1's decay/rise minutes
 // and strengths, and both target lists over active drinks, sent as a dirty-only
 // `PATCH config` of `drink_id`s. B-01 T8: the new names and (i) (E21-E26), and AC18.
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
@@ -114,7 +114,7 @@ describe('IdleSection', () => {
   it('ticking one drink sends {params:{idle_targets:[id]}} only', async () => {
     await open()
     fireEvent.click(within(decayTargets()).getByLabelText('Bier'))
-    fireEvent.click(screen.getByRole('button', { name: '💾 Opslaan idle' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Opslaan idle' }))
     await act(async () => {})
 
     expect(writes()).toEqual([
@@ -122,9 +122,16 @@ describe('IdleSection', () => {
     ])
   })
 
+  it('"Opslaan idle" is text only (B-02 SD4)', async () => {
+    await open()
+    const button = screen.getByRole('button', { name: 'Opslaan idle' })
+    expect(button.textContent).toBe('Opslaan idle')
+    expect(button.querySelector('svg')).toBeNull()
+  })
+
   it('untouched sends nothing (AC2)', async () => {
     await open()
-    fireEvent.click(screen.getByRole('button', { name: '💾 Opslaan idle' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Opslaan idle' }))
     await act(async () => {})
 
     expect(writes()).toEqual([])
@@ -162,7 +169,7 @@ describe('IdleSection', () => {
     const info = screen.getByRole('button', { name: 'Uitleg: Omlaag bij stilte' })
     fireEvent.click(info)
     fireEvent.click(info)
-    fireEvent.click(screen.getByRole('button', { name: '💾 Opslaan idle' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Opslaan idle' }))
     await act(async () => {})
 
     expect(writes()).toEqual([])
@@ -183,7 +190,7 @@ describe('IdleSection', () => {
       '0,1',
     )
     fireEvent.change(screen.getByLabelText('Kracht omlaag'), { target: { value: '2' } })
-    fireEvent.click(screen.getByRole('button', { name: '💾 Opslaan idle' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Opslaan idle' }))
     await act(async () => {})
 
     expect(writes()).toEqual([

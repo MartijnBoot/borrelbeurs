@@ -6,6 +6,7 @@ import { act, cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { exchangeStore, type ExchangeState, type MarketEventInfo } from '../exchange'
 import { KoersPage } from './KoersPage'
+import { PriceMarquee } from './PriceMarquee'
 
 vi.mock('./ui/DrinkChart', () => ({ DrinkChart: () => <div /> }))
 
@@ -33,6 +34,14 @@ function set(patch: Partial<ExchangeState>) {
 }
 
 const overlay = () => document.querySelector('.market-overlay')
+
+/** The banner's one decorative pixel icon, before its word (B-02 SD4, AC7, AC8). */
+function expectLeadingIcon(element: Element | null) {
+  const icons = element!.querySelectorAll('svg')
+  expect(icons).toHaveLength(1)
+  expect(icons[0].getAttribute('aria-hidden')).toBe('true')
+  expect(element!.firstChild).toBe(icons[0])
+}
 const banner = () => document.querySelector('.market-banner')
 const board = (container: HTMLElement) => container.querySelector('[data-market]')
 const newsAnimation = () =>
@@ -79,7 +88,9 @@ describe('MarketEventLayer', () => {
     set({ marketEvents: [event('crash', serverNow() - 1_000, serverNow() + 60_000)] })
     const { container } = render(<KoersPage />)
     expect(overlay()?.classList.contains('crash')).toBe(true)
-    expect(banner()?.textContent).toBe('⚠ MARKTCRASH')
+    expect(banner()?.textContent).toBe('MARKTCRASH')
+    expect(screen.getByRole('status', { name: 'MARKTCRASH' })).toBe(banner())
+    expectLeadingIcon(banner())
     expect(board(container)?.getAttribute('data-market')).toBe('crash')
   })
 
@@ -87,7 +98,9 @@ describe('MarketEventLayer', () => {
     set({ marketEvents: [event('bubble', serverNow() - 1_000, serverNow() + 60_000)] })
     const { container } = render(<KoersPage />)
     expect(overlay()?.classList.contains('bubble')).toBe(true)
-    expect(banner()?.textContent).toBe('▲ PRIJSBUBBEL')
+    expect(banner()?.textContent).toBe('PRIJSBUBBEL')
+    expect(screen.getByRole('status', { name: 'PRIJSBUBBEL' })).toBe(banner())
+    expectLeadingIcon(banner())
     expect(board(container)?.getAttribute('data-market')).toBe('bubble')
   })
 
@@ -95,6 +108,8 @@ describe('MarketEventLayer', () => {
     set({ marketEvents: [event('correction', serverNow() - 1_000, serverNow() + 60_000)] })
     const { container } = render(<KoersPage />)
     expect(banner()?.textContent).toBe('Terug naar start')
+    expect(screen.getByRole('status', { name: 'Terug naar start' })).toBe(banner())
+    expect(banner()?.querySelector('svg')).toBeNull()
     expect(overlay()).toBeNull()
     expect(board(container)).toBeNull()
     expect(newsAnimation().playbackRate).toBe(1)
@@ -168,5 +183,16 @@ describe('marquees', () => {
     // the tile's name and the marquee's two copies, all text
     expect(screen.getAllByText(XSS)).toHaveLength(3)
     expect(container.querySelector('img')).toBeNull()
+  })
+
+  it('puts the rise or fall icon before each copy’s delta (B-02 AC9)', () => {
+    render(<PriceMarquee />)
+    const rises = screen.getAllByRole('img', { name: 'stijgt' })
+    expect(rises).toHaveLength(2)
+    for (const icon of rises) expect(icon.nextSibling?.textContent).toBe('€ 0,30 (12,0%)')
+
+    set({ prices: { 1: price(220) } })
+    expect(screen.queryByRole('img', { name: 'stijgt' })).toBeNull()
+    expect(screen.getAllByRole('img', { name: 'daalt' })).toHaveLength(2)
   })
 })

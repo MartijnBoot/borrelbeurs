@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// ⚙️ Globale instellingen (Phase 6 T25: SD8, SD25, SD27; AC1, AC2, AC3, AC5, AC28).
+// Globale instellingen (Phase 6 T25: SD8, SD25, SD27; AC1, AC2, AC3, AC5, AC28).
 // The D-03 gate: an untouched save sends nothing; an edit sends exactly its field.
 // B-01 T5: the new names, and an (i) per field (E1-E10).
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
@@ -94,7 +94,7 @@ async function open() {
 }
 
 const save = async () => {
-  fireEvent.click(screen.getByRole('button', { name: '💾 Opslaan instellingen' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Opslaan instellingen' }))
   await settle()
 }
 
@@ -133,6 +133,13 @@ describe('GlobalSection', () => {
     await save()
     expect(patches()).toEqual([])
     expect(screen.getByRole('status').textContent).toBe('Niets te wijzigen')
+  })
+
+  it('"Opslaan instellingen" is text only (B-02 SD4)', async () => {
+    await open()
+    const button = screen.getByRole('button', { name: 'Opslaan instellingen' })
+    expect(button.textContent).toBe('Opslaan instellingen')
+    expect(button.querySelector('svg')).toBeNull()
   })
 
   it('an untouched save sends nothing and says "Niets te wijzigen" (AC2)', async () => {

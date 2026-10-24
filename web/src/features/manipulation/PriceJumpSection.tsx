@@ -1,5 +1,5 @@
 /**
- * ⚡ Price jump (Phase 6 SD23; D-46): a select over the store's active
+ * Price jump (Phase 6 SD23; D-46): a select over the store's active
  * drinks, "Doelprijs (€)" and "Duur sprong (sec)" (1–1800, default 5), each
  * with B-01's (i) (E31, E32). "Start jump" stays disabled until every field
  * parses.

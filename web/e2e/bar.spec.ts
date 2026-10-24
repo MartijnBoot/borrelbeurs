@@ -221,7 +221,7 @@ test.describe('the bar page (Phase 5)', () => {
     })
     await loginAs('bar')
     await readyPad(page)
-    await expect(page.getByRole('heading', { name: '💶 Financieel overzicht' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Financieel overzicht' })).toBeVisible()
     await expect(page.getByTestId('total-revenue')).toBeVisible()
     await expect(page.locator('canvas')).toHaveCount(0)
     expect(series).toEqual([])

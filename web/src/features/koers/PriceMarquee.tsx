@@ -4,8 +4,9 @@
  * tinted by the same direction as its tile (SD23).
  */
 import { Marquee, type MarqueeItem } from '../../components/ui/Marquee'
-import { deltaText, formatEuro } from '../../lib/format'
+import { deltaParts, formatEuro } from '../../lib/format'
 import { pulseDirection, selectActiveDrinks, useExchange, type ExchangeState } from '../exchange'
+import { DeltaIcon } from './DeltaIcon'
 import styles from './KoersPage.module.css'
 
 function row(state: ExchangeState, copy: number): MarqueeItem[] {
@@ -13,6 +14,10 @@ function row(state: ExchangeState, copy: number): MarqueeItem[] {
     const price = state.prices[drink_id]?.price_cents
     const previous = state.prevPriceCents[drink_id]
     const direction = pulseDirection(state, drink_id)
+    const delta =
+      price === undefined || previous === undefined
+        ? { direction: null, text: '—' }
+        : deltaParts(previous, price)
     return {
       key: `${copy}-${drink_id}`,
       className: direction === null ? styles.tick : `${styles.tick} ${styles[direction]}`,
@@ -20,8 +25,9 @@ function row(state: ExchangeState, copy: number): MarqueeItem[] {
         { text: name, className: styles.tickName },
         { text: price === undefined ? '—' : formatEuro(price) },
         {
-          text: price === undefined || previous === undefined ? '—' : deltaText(previous, price),
+          text: delta.text,
           className: styles.change,
+          icon: <DeltaIcon direction={delta.direction} />,
         },
       ],
     }

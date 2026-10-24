@@ -107,6 +107,22 @@ def test_given_optional_fields_are_stored(draft: int, client: TestClient, login:
     }
 
 
+def test_a_typed_emoji_in_the_name_is_stored_and_listed_as_typed(
+    draft: int, client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """B-02 SD6, AC11: a drink name keeps the emoji it was typed with."""
+    admin = login("admin")
+
+    response = admin.post(f"/api/runs/{draft}/drinks", json={**BIER, "name": "Bier 🍺"})
+
+    assert response.status_code == 201, response.text
+    drink_id = response.json()["drink_id"]
+    stored = _sql(settings, api_env, "SELECT name FROM drink WHERE drink_id = :d", d=drink_id)
+    assert stored == "Bier 🍺"
+    (listed,) = admin.get(f"/api/runs/{draft}/config").json()["drinks"]
+    assert (listed["drink_id"], listed["name"]) == (drink_id, "Bier 🍺")
+
+
 def test_the_new_slot_follows_every_row_removed_ones_included(
     draft: int, client: TestClient, login: Login, settings: Settings, api_env: str
 ) -> None:

@@ -1,5 +1,5 @@
 /**
- * 💥 Market events (Phase 6 SD22; AC39): v1's three buttons, each behind its
+ * Market events (Phase 6 SD22; AC39): v1's three buttons, each behind its
  * confirmation -- they move every price in the room. "Duur gebeurtenis (sec)" is
  * 1–600, default 30. The buttons and the duration carry B-01's names and an (i)
  * each (E27-E30), keyed by the event kind. After a start the status reads "{crash|reset|bubble}

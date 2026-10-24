@@ -193,6 +193,11 @@ human may overrule any at spec approval.
   "💶 Financieel overzicht", side by side and stacked at ≤1000 px. A two-column button grid,
   with 56 px minimum button height at ≤768 px. CSS Modules, theme tokens only, no hardcoded
   colours.
+
+  > **Superseded in part by B-02** ([phase-b-02-pixel-icons.md](phase-b-02-pixel-icons.md)).
+  > The two headings above are quoted with v1's emoji, kept as the record. They now show
+  > B-02's pixel icon before the plain name.
+
 - **SD19 — Roles are unchanged.** `/bar` and the series endpoint are for bar and admin (Phase
   3 SD2). Both see the financial panel, as in v1. Display gets "Geen toegang" (Phase 4 SD13).
 - **SD20 — The property test uses no new dependency.** A seeded PRNG generator in the test,

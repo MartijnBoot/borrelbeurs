@@ -1,12 +1,12 @@
 /**
- * ⏳ Idle (Phase 6 SD11, SD20; AC1, AC2, AC5, AC7, AC22): admin only (D-44).
+ * Idle (Phase 6 SD11, SD20; AC1, AC2, AC5, AC7, AC22): admin only (D-44).
  *
  * v1's decay/rise minutes and strengths as `NumberField`s, and a checkbox per
  * active drink for each target list, held as `drink_id`s. Each carries its
  * B-01 name and an (i) (E21-E26); a fieldset keeps `aria-label` so its name
  * stays exact with the (i) inside its legend. The form edits a
  * `useEditableRecord` copy of the live run's params (`GET config`, refetched
- * on every `config` message), and "💾 Opslaan idle" sends only what changed as
+ * on every `config` message), and "Opslaan idle" sends only what changed as
  * `PATCH config {params}` -- nothing at all when clean. A removed drink has no
  * checkbox, since the list is the store's active drinks.
  */
@@ -163,7 +163,7 @@ export function IdleSection() {
       ))}
       <div className={styles.row}>
         <Button type="submit" disabled={busy}>
-          💾 Opslaan idle
+          Opslaan idle
         </Button>
         {error !== null && <span className={styles.error}>{error}</span>}
       </div>

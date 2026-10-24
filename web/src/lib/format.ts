@@ -1,5 +1,5 @@
 /**
- * The one euro formatter, and the tile's delta text (SD22).
+ * The one euro formatter, and the tile's delta (SD22): its direction and its text.
  *
  * Prices arrive as integer cents; the division here is for display only and
  * nothing computed from it goes back to the server.
@@ -27,13 +27,21 @@ export function formatPercent(pct: number): string {
   return `${PERCENT.format(pct)}%`
 }
 
-/** Ported from v1's `deltaStr` (`koers.html:646-652`), in SD22's formats. */
-export function deltaText(prevCents: number, curCents: number): string {
+export type DeltaDirection = 'rise' | 'fall'
+
+/**
+ * Ported from v1's `deltaStr` (`koers.html:646-652`), in SD22's formats. v1's
+ * leading symbol is now `direction`, drawn as a pixel icon (B-02 PD7); `text`
+ * is the signed amount and percentage, or "—" when unchanged.
+ */
+export function deltaParts(
+  prevCents: number,
+  curCents: number,
+): { direction: DeltaDirection | null; text: string } {
   const d = curCents - prevCents
-  if (d === 0) return '—'
-  const sign = d > 0 ? '▲' : '▼'
+  if (d === 0) return { direction: null, text: '—' }
   const pct = prevCents !== 0 ? (d / prevCents) * 100 : 0
-  return `${sign} ${formatEuro(d)} (${formatPercent(pct)})`
+  return { direction: d > 0 ? 'rise' : 'fall', text: `${formatEuro(d)} (${formatPercent(pct)})` }
 }
 
 const EURO_TEXT = /^(\d+)(?:[.,](\d{1,2}))?$/

@@ -10,6 +10,7 @@
  * "{name} (verwijderd)"; the totals still sum every drink.
  */
 import { useShallow } from 'zustand/react/shallow'
+import { PixelIcon } from '../../components/ui/PixelIcon'
 import { formatEuro } from '../../lib/format'
 import { selectDrinks, selectEarnings, selectTotals, useExchange } from '../exchange'
 import styles from './FinancialPanel.module.css'
@@ -20,7 +21,10 @@ export function FinancialPanel() {
   const totals = useExchange(useShallow(selectTotals))
   return (
     <section className={styles.panel}>
-      <h2 className={styles.title}>💶 Financieel overzicht</h2>
+      <h2 className={styles.title}>
+        <PixelIcon name="banknote" />
+        Financieel overzicht
+      </h2>
       <div className={styles.kpis}>
         <div className={styles.kpi}>
           <span className={styles.label}>Totale omzet</span>

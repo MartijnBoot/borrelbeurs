@@ -9,6 +9,9 @@
 }
 
 .title {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
   margin: 0;
   font-size: 1.6rem;
   color: var(--text);
