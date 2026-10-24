@@ -465,7 +465,7 @@ T7 fills this in. No page shows the icon (T8b) before it holds "go".
 
 | Round | Date | Owner's answer | Grids redrawn |
 |---|---|---|---|
-| | | | |
+| 1 | 2026-10-24 | "go" (from the grid and `.dev/pixel-icons.html`, T6 `a4231fb`) | none |
 
 ---
 
