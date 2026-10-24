@@ -13,6 +13,7 @@
  *   patch by drink and sends one `PATCH` per changed drink, carrying only its
  *   changed coefficients. Untouched, it sends nothing: "Niets te wijzigen".
  *
+ * The table scrolls sideways in its own box, so a phone's page never does (B-01 AC6).
  * An empty or unparseable cell blocks the save (AC3). A server change while
  * editing keeps the input and offers "Overnemen" (AC5).
  */
@@ -157,51 +158,53 @@ export function DemandSection() {
         </div>
       </form>
       <form className={styles.subsection} onSubmit={saveTable}>
-        <table aria-label="Coëfficiënten" className={styles.table}>
-          <thead>
-            <tr>
-              <th>Drankje</th>
-              {COEFFICIENTS.map((field) => (
-                <th key={field}>
-                  <span className={styles.columnHeader}>
-                    <span>{explanations[field].name}</span>
-                    <InfoButton explanation={explanations[field]} />
-                  </span>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {config.drinks
-              .filter((drink) => drink.active)
-              .map((drink) => (
-                <tr key={drink.drink_id}>
-                  <th scope="row">{drink.name}</th>
-                  {COEFFICIENTS.map((field) => {
-                    const key = cell(drink.drink_id, field)
-                    const value = cells[key] ?? null
-                    return (
-                      <td key={field}>
-                        <NumberField
-                          label={`${drink.name} ${explanations[field].name}`}
-                          hideLabel
-                          value={value}
-                          onChange={(next) => table.set(key, next)}
-                          error={
-                            value === null
-                              ? 'Verplicht'
-                              : value === 'invalid'
-                                ? 'Ongeldig getal'
-                                : undefined
-                          }
-                        />
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
-          </tbody>
-        </table>
+        <div className={styles.tableScroll}>
+          <table aria-label="Coëfficiënten" className={styles.table}>
+            <thead>
+              <tr>
+                <th>Drankje</th>
+                {COEFFICIENTS.map((field) => (
+                  <th key={field}>
+                    <span className={styles.columnHeader}>
+                      <span>{explanations[field].name}</span>
+                      <InfoButton explanation={explanations[field]} />
+                    </span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {config.drinks
+                .filter((drink) => drink.active)
+                .map((drink) => (
+                  <tr key={drink.drink_id}>
+                    <th scope="row">{drink.name}</th>
+                    {COEFFICIENTS.map((field) => {
+                      const key = cell(drink.drink_id, field)
+                      const value = cells[key] ?? null
+                      return (
+                        <td key={field}>
+                          <NumberField
+                            label={`${drink.name} ${explanations[field].name}`}
+                            hideLabel
+                            value={value}
+                            onChange={(next) => table.set(key, next)}
+                            error={
+                              value === null
+                                ? 'Verplicht'
+                                : value === 'invalid'
+                                  ? 'Ongeldig getal'
+                                  : undefined
+                            }
+                          />
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
         <div className={styles.row}>
           <Button type="submit" disabled={busy}>
             💾 Opslaan coëfficiënten

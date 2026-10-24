@@ -2,6 +2,7 @@
 // `/manipulation` (Phase 6 T33: SD20-SD23; AC6, AC7, AC39): news, market events
 // and the price jump, re-rendered from the store; Idle only for admin.
 // B-01 T9: the events' and the jump's names and (i) (E27-E32).
+// B-01 T11: exactly the 12 manipulation explanations get an (i), section by section.
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectExplained } from '../../components/ui/infoTesting'
@@ -44,7 +45,14 @@ const SNAPSHOT: SnapshotData = {
 const CONFIG = {
   revision: 3,
   run: { run_id: 1, name: 'Vrijmibo', status: 'live', candle_interval_s: 60 },
-  params: {},
+  params: {
+    idle_decay_minutes: 0.1,
+    idle_rise_minutes: 0.1,
+    idle_strength: 1.5,
+    idle_rise_strength: 1.5,
+    idle_targets: [],
+    idle_rise_targets: [],
+  },
   drinks: [
     { drink_id: 1, p_min_cents: 100, p0_cents: 250, p_max_cents: 500 },
     { drink_id: 2, p_min_cents: 150, p0_cents: 300, p_max_cents: 600 },
@@ -291,5 +299,43 @@ describe('ManipulationPage', () => {
           .map((o) => o.textContent),
       ).toEqual(['Bier'])
     })
+  })
+})
+
+describe('ManipulationPage: the explanations (B-01 T11)', () => {
+  const NAMES = new Set(Object.values(explanations).map((entry) => entry.name))
+  const info = (scope: HTMLElement) => within(scope).queryAllByRole('button', { name: /^Uitleg: / })
+
+  it('every (i) names one of E21-E32 (AC10)', async () => {
+    await open()
+    const names = info(document.body).map((b) => b.getAttribute('aria-label')!.slice(8))
+    expect(names).toHaveLength(12)
+    expect(names.filter((name) => !NAMES.has(name))).toEqual([])
+  })
+
+  it.each([
+    ['📰 Nieuws', 0],
+    ['💥 Market events', 4],
+    ['⚡ Price jump', 2],
+    ['⏳ Idle', 6],
+  ])('%s has %i (i) (AC10)', async (section, count) => {
+    await open()
+    expect(info(screen.getByRole('region', { name: section }))).toHaveLength(count)
+  })
+
+  it('"Start jump" and "Drankje" have no (i) (SD2)', async () => {
+    await open()
+    expect(screen.queryByRole('button', { name: 'Uitleg: Start jump' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Uitleg: Drankje' })).toBeNull()
+  })
+
+  it('the four headings are unchanged (AC8)', async () => {
+    await open()
+    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
+      '📰 Nieuws',
+      '💥 Market events',
+      '⚡ Price jump',
+      '⏳ Idle',
+    ])
   })
 })

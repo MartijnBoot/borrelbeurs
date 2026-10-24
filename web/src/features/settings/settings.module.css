@@ -88,6 +88,15 @@
   margin-bottom: 12px;
 }
 
+/* A table wider than a phone scrolls inside this box, not the page (B-01 AC6).
+   `position: relative` makes it the containing block of the cells' visually
+   hidden labels (position: absolute), so it clips them too. */
+.tableScroll {
+  position: relative;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
 .table {
   border-collapse: collapse;
   margin-bottom: 12px;
