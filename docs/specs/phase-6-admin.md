@@ -303,6 +303,11 @@ Settled at the spec interview (2026-10-06).
     params write is admin-only, and `GET config` is admin-only too.
   - The page re-renders on every broadcast. Fixed: v1's drink select stayed stale
     (`manipulation.html:405-416`).
+
+  > **Superseded in part by B-02** ([phase-b-02-pixel-icons.md](phase-b-02-pixel-icons.md)).
+  > The section names above are quoted with v1's emoji, kept as the record. Each title now
+  > shows B-02's pixel icon before the plain name.
+
 - **SD21 — News.**
   - **The list:** newest first, showing level, text and time.
   - **"Toevoegen":** text 1–500 characters and a level select, Info / Succes / Waarschuwing /
@@ -347,6 +352,12 @@ Settled at the spec interview (2026-10-06).
     - 🔑 Toegangssleutels.
   - Each section is its own form with its own save button, and sends only its dirty fields.
   - A save with nothing dirty sends no request and shows "Niets te wijzigen" (v1's text).
+
+  > **Superseded in part by B-02** ([phase-b-02-pixel-icons.md](phase-b-02-pixel-icons.md)).
+  > The section names above are quoted with v1's emoji, kept as the record. The headings
+  > and sidebar links now show B-02's pixel icon before the plain name (Borrel has none);
+  > the narrow-screen select shows the plain names.
+
 - **SD26 — System actions are shutdown and anchor-s0. Reset is Phase 7.**
   - **"⛔ Sluit app":** a `ConfirmDialog` reading "Applicatie nu afsluiten?", then
     `POST /api/admin/shutdown`, then "App sluit nu af…" with every control disabled.
@@ -357,6 +368,11 @@ Settled at the spec interview (2026-10-06).
   - *Phase 7 update (SD4):* reset within a run is **gone, not deferred**. A fresh start is
     "Borrel afsluiten", then "Nieuwe borrel" (optionally copying the closed run's drinks);
     a price-only return to `p0` stays the "Terug naar start" market event (SD22).
+
+  > **Superseded in part by B-02** ([phase-b-02-pixel-icons.md](phase-b-02-pixel-icons.md)).
+  > "⛔ Sluit app" above is v1's text, kept as the record. The button now shows B-02's
+  > stop icon before the plain name.
+
 - **SD27 — Forms follow `docs/design/frontend-architecture.md` "Forms" exactly.**
   - The building blocks are `NumberField` (empty → `null`, never 0), `MoneyField`
     (euros → cents), `Field`, `Select`, `Switch`, `Toast` and `useEditableRecord`.
@@ -439,6 +455,10 @@ Settled at the spec interview (2026-10-06).
     - Its sessions get 401 on their next request, as today.
     - Revoking the last unrevoked admin key is 409 `last_admin_key`.
   - **Routes:** `GET/POST /api/keys`, `DELETE /api/keys/{key_id}`, all admin.
+
+  > **Superseded in part by B-02** ([phase-b-02-pixel-icons.md](phase-b-02-pixel-icons.md)).
+  > The section name above is quoted with v1's emoji, kept as the record. Its heading now
+  > shows B-02's pixel icon before the plain name.
 
 **Home hub (`/`, admin) — D-26**
 

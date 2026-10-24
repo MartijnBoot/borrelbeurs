@@ -89,7 +89,8 @@ table in `docs/specs/phase-6-admin.md`. `exchange/` read, never changed. No ADR.
 
 ### B-02 — Own pixel icons instead of emoji
 
-- **Status:** specced → `docs/specs/phase-b-02-pixel-icons.md`
+- **Status:** built → `docs/plans/phase-b-02-pixel-icons.md` (spec:
+  `docs/specs/phase-b-02-pixel-icons.md`)
 - **Added:** 2026-10-18
 - **Size:** M (a few tasks) — a guess: a set of ~20–30 icons, swapped in across five pages
 
