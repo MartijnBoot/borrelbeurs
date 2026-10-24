@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 🧹 Systeemacties (Phase 6 T29: SD26; AC39): shutdown behind a dialog, and
+// Systeemacties (Phase 6 T29: SD26; AC39): shutdown behind a dialog, and
 // anchor-s0 with none, as in v1. No reset, no export. B-01 T7: E33's name and (i).
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -50,9 +50,19 @@ async function open() {
 }
 
 describe('SystemSection', () => {
+  it('"Sluit app" is named exactly that, after one stop icon (B-02 AC7, AC8)', async () => {
+    await open()
+    const button = screen.getByRole('button', { name: 'Sluit app' })
+    expect(button.textContent).toBe('Sluit app')
+    const icons = button.querySelectorAll('svg')
+    expect(icons).toHaveLength(1)
+    expect(icons[0].getAttribute('aria-hidden')).toBe('true')
+    expect(button.firstChild).toBe(icons[0])
+  })
+
   it('shutdown asks first: Cancel sends nothing', async () => {
     await open()
-    fireEvent.click(screen.getByRole('button', { name: '⛔ Sluit app' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sluit app' }))
     expect(screen.getByRole('dialog', { name: 'Applicatie nu afsluiten?' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Annuleren' }))
     expect(posts()).toEqual([])
@@ -60,7 +70,7 @@ describe('SystemSection', () => {
 
   it('Confirm posts shutdown, says so, and disables every button', async () => {
     await open()
-    fireEvent.click(screen.getByRole('button', { name: '⛔ Sluit app' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sluit app' }))
     fireEvent.click(screen.getByRole('button', { name: 'Bevestigen' }))
     await settle()
 

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// 📈 Vraag/Aanbod (Phase 6 T28: SD25, SD27; AC1, AC2, AC3, AC5) -- the D-03 gate.
+// Vraag/Aanbod (Phase 6 T28: SD25, SD27; AC1, AC2, AC3, AC5) -- the D-03 gate.
 // v1 sent every coefficient of every drink on save, and an empty field became 0
 // (D-03). Here the real `useEditableRecord` runs: an untouched save sends nothing;
 // one edited `a` sends exactly `{a}` to that drink's PATCH.
@@ -93,7 +93,7 @@ async function open() {
 
 const table = () => within(screen.getByRole('table', { name: 'Coëfficiënten' }))
 const saveTable = async () => {
-  fireEvent.click(screen.getByRole('button', { name: '💾 Opslaan coëfficiënten' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Opslaan coëfficiënten' }))
   await settle()
 }
 
@@ -134,16 +134,25 @@ describe('DemandSection', () => {
   it('a toggle sends PATCH config with only that param', async () => {
     await open()
     fireEvent.click(screen.getByRole('switch', { name: 'Verwachte verkoop meetellen' }))
-    fireEvent.click(screen.getByRole('button', { name: '💾 Opslaan schakelaars' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Opslaan schakelaars' }))
     await settle()
     expect(writes()).toEqual([
       ['/api/runs/7/config', 'PATCH', { params: { demand_enabled: false } }],
     ])
   })
 
+  it('both "Opslaan …" buttons are text only (B-02 SD4)', async () => {
+    await open()
+    for (const name of ['Opslaan schakelaars', 'Opslaan coëfficiënten']) {
+      const button = screen.getByRole('button', { name })
+      expect(button.textContent).toBe(name)
+      expect(button.querySelector('svg')).toBeNull()
+    }
+  })
+
   it('untouched switches send nothing', async () => {
     await open()
-    fireEvent.click(screen.getByRole('button', { name: '💾 Opslaan schakelaars' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Opslaan schakelaars' }))
     await settle()
     expect(writes()).toEqual([])
   })

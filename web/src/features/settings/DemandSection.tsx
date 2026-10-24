@@ -1,5 +1,5 @@
 /**
- * 📈 Vraag/Aanbod (Phase 6 SD25, SD27; AC1, AC2, AC3, AC5) -- the D-03 gate.
+ * Vraag/Aanbod (Phase 6 SD25, SD27; AC1, AC2, AC3, AC5) -- the D-03 gate.
  *
  * v1 sent every coefficient of every drink on each save, and an emptied field
  * went out as 0 (D-03). Here:
@@ -153,7 +153,7 @@ export function DemandSection() {
             onChange={(on) => switches.set('auto_calibrate_s0', on)}
           />
           <Button type="submit" disabled={busy}>
-            💾 Opslaan schakelaars
+            Opslaan schakelaars
           </Button>
         </div>
       </form>
@@ -207,7 +207,7 @@ export function DemandSection() {
         </div>
         <div className={styles.row}>
           <Button type="submit" disabled={busy}>
-            💾 Opslaan coëfficiënten
+            Opslaan coëfficiënten
           </Button>
         </div>
       </form>

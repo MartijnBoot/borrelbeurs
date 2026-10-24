@@ -34,6 +34,11 @@
   font-size: 18px;
 }
 
+/* An icon inside a button: the gap is CSS, so the name stays exact (B-02 PD3). */
+.buttonIcon {
+  margin-inline-end: 0.4em;
+}
+
 .row {
   display: flex;
   flex-wrap: wrap;

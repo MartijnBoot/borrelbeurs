@@ -1,5 +1,5 @@
 /**
- * ⚙️ Globale instellingen (Phase 6 SD8, SD25, SD27; AC1, AC2, AC3, AC5, AC28):
+ * Globale instellingen (Phase 6 SD8, SD25, SD27; AC1, AC2, AC3, AC5, AC28):
  * v1's global params and the candle interval, each a `NumberField` under its
  * B-01 name, with an (i) carrying its explanation (`explanations.json`, E1-E10).
  *
@@ -121,7 +121,7 @@ export function GlobalSection() {
       </div>
       <div className={styles.row}>
         <Button type="submit" disabled={busy}>
-          💾 Opslaan instellingen
+          Opslaan instellingen
         </Button>
         {saveError !== null && <span className={styles.error}>{saveError}</span>}
       </div>
