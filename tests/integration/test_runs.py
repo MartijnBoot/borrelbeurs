@@ -563,22 +563,25 @@ async def _created(
 ) -> tuple[Params, int, dict[str, Any], list[str]]:
     """The new run's params, Kaarsbreedte (ms), revision 1, and drink names."""
     async with engine.connect() as conn:
-        params, candle = (
+        run = (
             await conn.execute(
                 text("SELECT params, candle_interval_ms FROM run WHERE run_id = :r"), {"r": run_id}
             )
         ).one()
+        config: dict[str, Any]
         (config,) = (
             await conn.execute(
                 text("SELECT config FROM run_config_revision WHERE run_id = :r"), {"r": run_id}
             )
         ).scalars()
-        names = (
-            await conn.execute(
-                text("SELECT name FROM drink WHERE run_id = :r ORDER BY slot"), {"r": run_id}
-            )
-        ).scalars()
-        return Params.from_dict(params), int(candle), config, list(names)
+        names: list[str] = list(
+            (
+                await conn.execute(
+                    text("SELECT name FROM drink WHERE run_id = :r ORDER BY slot"), {"r": run_id}
+                )
+            ).scalars()
+        )
+        return Params.from_dict(run.params), int(run.candle_interval_ms), config, names
 
 
 def test_a_create_with_a_profile_takes_its_22_and_the_latest_runs_rest(
