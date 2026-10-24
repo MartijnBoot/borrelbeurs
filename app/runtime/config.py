@@ -1,12 +1,14 @@
 """A run's config: the SD8 PATCH model, the config document, and draft writes.
 
 **Validation (Phase 6 SD8).** `ConfigPatch` and `ParamsPatch` have every field
-optional and forbid any other key, so a non-editable param (`bm_*`, `y_clip`,
-...) is 422 naming it. An explicit `null` is 422 naming the field: no field is
-nullable and nothing is defaulted (AC3). Numbers are strict and finite -- a
-string or a bool is not a number here, so nothing is coerced (D-03). SD8's
-"a-b" ranges include both ends (the user, 2026-10-08), as v1's `settings.html`
-`min`/`max` did. `candle_interval_s` is 5-3600 in steps of 5 (SD10).
+optional and forbid any other key, so a non-editable param (the legacy
+`bm_sigma`, `tick_interval_ms`, `quote_grace_versions`) is 422 naming it. An
+explicit `null` is 422 naming the field: no field is nullable and nothing is
+defaulted (AC3). Numbers are strict and finite -- a string or a bool is not a
+number here, so nothing is coerced (D-03). SD8's "a-b" ranges include both ends
+(the user, 2026-10-08), as v1's `settings.html` `min`/`max` did.
+`candle_interval_s` is 5-3600 in steps of 5 (SD10). The six noise params are
+editable since B-03, in its SD3's ranges.
 
 **The document (PD6).** `config_document` is the `GET` body: the newest
 revision, the run, SD8's params, and every drink in slot order, removed ones
@@ -104,6 +106,8 @@ Fraction = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=0, le=1)]
 HistoryMinutes = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=1, le=240)]
 RefreshMinutes = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=0.1, le=10)]
 IdleMinutes = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=0.1)]
+NoiseMinutes = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=0.05, le=10)]
+NoiseClip = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=1, le=20)]
 DrinkIds = list[StrictInt]
 RunName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 CandleSeconds = Annotated[int, Field(strict=True, ge=5, le=3600, multiple_of=5)]
@@ -131,6 +135,12 @@ class ParamsPatch(BaseModel):
     idle_rise_targets: DrinkIds | None = None
     demand_enabled: StrictBool | None = None
     auto_calibrate_s0: StrictBool | None = None
+    bm_enabled: StrictBool | None = None
+    bm_sigma_y: NonNegative | None = None
+    bm_dt_minutes: NoiseMinutes | None = None
+    flow_vol_amp: NonNegative | None = None
+    flow_beta: Fraction | None = None
+    y_clip: NoiseClip | None = None
 
     _no_null = field_validator("*", mode="before")(_not_null)
 
@@ -165,6 +175,12 @@ class ParamsData(BaseModel):
     idle_rise_targets: list[int]
     demand_enabled: bool
     auto_calibrate_s0: bool
+    bm_enabled: bool
+    bm_sigma_y: float
+    bm_dt_minutes: float
+    flow_vol_amp: float
+    flow_beta: float
+    y_clip: float
 
 
 class RunConfigData(BaseModel):

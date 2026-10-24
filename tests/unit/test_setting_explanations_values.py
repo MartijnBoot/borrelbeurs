@@ -5,6 +5,7 @@ T3 pins the JSON to the spec; this pins the JSON's numbers to the code. Every
 default it names, and every "Toegestaan:" range is rendered from the server's
 pydantic validation and must equal the text exactly. `mismatches` holds every
 rule; the last two tests prove it fires on a changed default and a changed range.
+B-03's E34-E39 are run parameters, so the existing rules cover them (B-03 AC15).
 """
 
 from __future__ import annotations
@@ -264,7 +265,7 @@ def test_every_quoted_value_and_range_matches_the_code() -> None:
 
 def test_every_entry_has_a_rule() -> None:
     """No row with a quoted value or range is left unchecked (T4's autonomy note)."""
-    assert len(ENTRIES) == 33
+    assert len(ENTRIES) == 39  # B-01's 33 and B-03's six
     assert not [p for p in mismatches(ENTRIES) if "nothing checks" in p or "no rule" in p]
 
 
@@ -272,6 +273,8 @@ def test_the_ranges_render_as_the_server_validates() -> None:
     assert render_range(ParamsPatch, "step_quant") == "meer dan 0 en hoogstens 5, in hele centen"
     assert render_range(ParamsPatch, "K") == "meer dan 0"
     assert render_range(ParamsPatch, "idle_decay_minutes") == "0,1 of meer"
+    assert render_range(ParamsPatch, "bm_dt_minutes") == "0,05 tot en met 10"
+    assert render_range(ParamsPatch, "y_clip") == "1 tot en met 20"
     assert render_range(ConfigPatch, "candle_interval_s") == (
         "5 tot en met 3600, in veelvouden van 5"
     )

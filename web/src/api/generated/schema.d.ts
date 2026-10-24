@@ -1123,6 +1123,18 @@ export interface components {
             demand_enabled: boolean;
             /** Auto Calibrate S0 */
             auto_calibrate_s0: boolean;
+            /** Bm Enabled */
+            bm_enabled: boolean;
+            /** Bm Sigma Y */
+            bm_sigma_y: number;
+            /** Bm Dt Minutes */
+            bm_dt_minutes: number;
+            /** Flow Vol Amp */
+            flow_vol_amp: number;
+            /** Flow Beta */
+            flow_beta: number;
+            /** Y Clip */
+            y_clip: number;
         };
         /**
          * ParamsPatch
@@ -1163,6 +1175,18 @@ export interface components {
             demand_enabled?: boolean | null;
             /** Auto Calibrate S0 */
             auto_calibrate_s0?: boolean | null;
+            /** Bm Enabled */
+            bm_enabled?: boolean | null;
+            /** Bm Sigma Y */
+            bm_sigma_y?: number | null;
+            /** Bm Dt Minutes */
+            bm_dt_minutes?: number | null;
+            /** Flow Vol Amp */
+            flow_vol_amp?: number | null;
+            /** Flow Beta */
+            flow_beta?: number | null;
+            /** Y Clip */
+            y_clip?: number | null;
         };
         /** PriceCurveData */
         PriceCurveData: {

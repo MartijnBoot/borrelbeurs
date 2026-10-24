@@ -2,6 +2,7 @@
 // Globale instellingen (Phase 6 T25: SD8, SD25, SD27; AC1, AC2, AC3, AC5, AC28).
 // The D-03 gate: an untouched save sends nothing; an edit sends exactly its field.
 // B-01 T5: the new names, and an (i) per field (E1-E10).
+// B-03 T4: the six noise controls after Kaarsbreedte (SD4-SD6; AC10-AC14; E34-E39).
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectExplained } from '../../components/ui/infoTesting'
@@ -22,6 +23,16 @@ const GLOBAL_KEYS = [
   'candle_interval_s',
 ] as const
 
+// B-03 SD4's order; Willekeurige ruis is a switch.
+const NOISE_KEYS = [
+  'bm_enabled',
+  'bm_sigma_y',
+  'bm_dt_minutes',
+  'flow_vol_amp',
+  'flow_beta',
+  'y_clip',
+] as const
+
 const PARAMS = {
   step_quant: 0.5,
   eta: 0.6,
@@ -40,6 +51,12 @@ const PARAMS = {
   idle_rise_targets: [],
   demand_enabled: true,
   auto_calibrate_s0: false,
+  bm_enabled: true,
+  bm_sigma_y: 0.18,
+  bm_dt_minutes: 1,
+  flow_vol_amp: 0.7,
+  flow_beta: 0.25,
+  y_clip: 6,
 }
 
 function config(params: Record<string, unknown> = PARAMS, candle = 60, revision = 3) {
@@ -97,6 +114,37 @@ const save = async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Opslaan instellingen' }))
   await settle()
 }
+
+/** Every PATCH is a 422 naming `loc`. */
+function refuse(loc: string[], msg: string) {
+  fetchMock.mockImplementation((path: string, init?: RequestInit) => {
+    if (init?.method === 'PATCH') {
+      return Promise.resolve(
+        json(422, {
+          error: {
+            code: 'invalid_request',
+            message: 'the request is not valid',
+            faults: [{ loc, msg }],
+          },
+        }),
+      )
+    }
+    if (path === '/api/runs/current') {
+      return Promise.resolve(json(200, { run_id: 7, name: 'Vrijmibo', status: 'live' }))
+    }
+    return Promise.resolve(json(200, served))
+  })
+}
+
+const input = (label: string) => screen.getByLabelText(label) as HTMLInputElement
+const noiseSwitch = () => screen.getByRole('switch', { name: 'Willekeurige ruis' })
+const NOISE_NUMBERS = [
+  'Sterkte ruis',
+  'Ritme ruis (min)',
+  'Extra ruis bij drukte',
+  'Reactiesnelheid drukte',
+  'Grens ruis',
+]
 
 describe('GlobalSection', () => {
   it('shows every SD8 global field with its B-01 name and the server value', async () => {
@@ -198,23 +246,7 @@ describe('GlobalSection', () => {
   })
 
   it('a 422 on candle_interval_s shows under that field', async () => {
-    fetchMock.mockImplementation((path: string, init?: RequestInit) => {
-      if (init?.method === 'PATCH') {
-        return Promise.resolve(
-          json(422, {
-            error: {
-              code: 'invalid_request',
-              message: 'the request is not valid',
-              faults: [{ loc: ['body', 'candle_interval_s'], msg: 'multiple of 5' }],
-            },
-          }),
-        )
-      }
-      if (path === '/api/runs/current') {
-        return Promise.resolve(json(200, { run_id: 7, name: 'Vrijmibo', status: 'live' }))
-      }
-      return Promise.resolve(json(200, served))
-    })
+    refuse(['body', 'candle_interval_s'], 'multiple of 5')
     await open()
     fireEvent.change(screen.getByLabelText('Kaarsbreedte (sec)'), {
       target: { value: '7' },
@@ -224,5 +256,91 @@ describe('GlobalSection', () => {
     const input = screen.getByLabelText('Kaarsbreedte (sec)')
     expect(input.getAttribute('aria-invalid')).toBe('true')
     expect(screen.getByText('multiple of 5')).toBeTruthy()
+  })
+
+  describe('the noise (B-03)', () => {
+    it('shows the six after Kaarsbreedte, in SD4 order, with the server values (AC10)', async () => {
+      await open()
+      const controls = [input('Kaarsbreedte (sec)'), noiseSwitch(), ...NOISE_NUMBERS.map(input)]
+      for (let i = 1; i < controls.length; i++) {
+        const order = controls[i - 1].compareDocumentPosition(controls[i])
+        expect(order & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      }
+      expect(noiseSwitch().getAttribute('aria-checked')).toBe('true')
+      expect(NOISE_NUMBERS.map((label) => input(label).value)).toEqual([
+        '0,18',
+        '1',
+        '0,7',
+        '0,25',
+        '6',
+      ])
+    })
+
+    it('the switch shows the server off as off (AC10)', async () => {
+      served = config({ ...PARAMS, bm_enabled: false })
+      await open()
+      expect(noiseSwitch().getAttribute('aria-checked')).toBe('false')
+    })
+
+    it.each(NOISE_KEYS)('%s has an (i) with its explanation (AC14)', async (key) => {
+      const { container } = render(<GlobalSection />)
+      await settle()
+      expectExplained(container, explanations[key])
+    })
+
+    it('editing Sterkte ruis sends {params: {bm_sigma_y}} only (AC11)', async () => {
+      await open()
+      fireEvent.change(input('Sterkte ruis'), { target: { value: '0,5' } })
+      await save()
+      expect(patches()).toEqual([{ params: { bm_sigma_y: 0.5 } }])
+    })
+
+    it('toggling Willekeurige ruis sends {params: {bm_enabled: false}} only (AC11)', async () => {
+      await open()
+      fireEvent.click(noiseSwitch())
+      await save()
+      expect(patches()).toEqual([{ params: { bm_enabled: false } }])
+    })
+
+    it('a 422 on y_clip shows under Grens ruis (AC11)', async () => {
+      refuse(['body', 'params', 'y_clip'], 'Input should be less than or equal to 20')
+      await open()
+      fireEvent.change(input('Grens ruis'), { target: { value: '25' } })
+      await save()
+      expect(input('Grens ruis').getAttribute('aria-invalid')).toBe('true')
+      expect(screen.getByText('Input should be less than or equal to 20')).toBeTruthy()
+    })
+
+    it('a 422 on bm_enabled shows beside the switch (PD5)', async () => {
+      refuse(['body', 'params', 'bm_enabled'], 'Input should be a valid boolean')
+      await open()
+      fireEvent.click(noiseSwitch())
+      await save()
+      expect(screen.getByText('Input should be a valid boolean')).toBeTruthy()
+    })
+
+    it('with the switch off the five stay editable and save (AC12)', async () => {
+      await open()
+      fireEvent.click(noiseSwitch())
+      for (const label of NOISE_NUMBERS) expect(input(label).disabled).toBe(false)
+      fireEvent.change(input('Ritme ruis (min)'), { target: { value: '0,5' } })
+      await save()
+      expect(patches()).toEqual([{ params: { bm_enabled: false, bm_dt_minutes: 0.5 } }])
+    })
+
+    it('a server change of y_clip while Sterkte ruis is dirty offers "Overnemen" (AC13)', async () => {
+      await open()
+      fireEvent.change(input('Sterkte ruis'), { target: { value: '0,5' } })
+      served = config({ ...PARAMS, y_clip: 3 }, 60, 4)
+
+      act(() => exchangeStore.setState({ params: { ...PARAMS, y_clip: 3 } }))
+      await settle()
+
+      expect(screen.getByText('Serverwaarden gewijzigd — overnemen?')).toBeTruthy()
+      expect(input('Sterkte ruis').value).toBe('0,5')
+      fireEvent.click(screen.getByRole('button', { name: 'Overnemen' }))
+      expect(input('Sterkte ruis').value).toBe('0,18')
+      expect(input('Grens ruis').value).toBe('3')
+    })
   })
 })

@@ -62,6 +62,12 @@ The planner must not reopen any of them.
 - **SD3 — The table below is the source of truth.** The build copies each new name and
   explanation verbatim, and a test pins every one. Changing a word later is a change to this
   spec.
+
+  > **Superseded in part by B-03** ([phase-b-03-brownian-settings.md](phase-b-03-brownian-settings.md)).
+  > The market controls are now 39. B-03's six noise settings have their rows, E34–E39, in
+  > B-03's own table, which is part of the same source of truth, and B-03 SD11 amends E9's
+  > first paragraph. The table below stays the record of what B-01 shipped.
+
 - **SD4 — Screen text only.** API fields, database columns, `run.params` keys, the v1
   import, the export and analytics keep their keys (`step_quant`, `lambda_orders`, …). None
   of them shows a Dutch setting name today (checked with `git grep`).
@@ -460,6 +466,10 @@ Bron: `app/runtime/config.py:465-476`, `exchange/spec.py:155-168`, Phase 6 SD9.
   (SD1, SD10).
 - Experience-based advice ("normal feels like…") or worked examples with numbers (SD5).
 - Editing `bm_*`, `flow_vol_amp`, `flow_beta`, `y_clip` (B-03); setting profiles (B-04).
+
+  > **Superseded in part by B-03** ([phase-b-03-brownian-settings.md](phase-b-03-brownian-settings.md)).
+  > Built there: the six noise settings are editable, each with an (i).
+
 - Explanations in any language but Dutch; changing the confirmation texts or the
   "{crash|reset|bubble} gestart!" status.
 - Changing a range other than SD9's, or `DEFAULT_PARAMS`.
@@ -493,6 +503,10 @@ Bron: `app/runtime/config.py:465-476`, `exchange/spec.py:155-168`, Phase 6 SD9.
 - **AC9.** Wherever a field appears more than once (E13–E20 in the table, the add-drink form,
   the bounds rows and the drink row), it shall carry the same name and the same explanation.
 - **AC10.** No control outside the 33 shall gain an (i).
+
+  > **Superseded in part by B-03** ([phase-b-03-brownian-settings.md](phase-b-03-brownian-settings.md)).
+  > "Outside the 33" reads as outside the 39: B-03's six noise controls carry an (i) too.
+
 - **AC11.** No API request body, response, database value or export shall change because of
   this item, except SD9's floor.
 

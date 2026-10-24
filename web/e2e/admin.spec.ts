@@ -118,11 +118,22 @@ test('an admin builds a borrel from nothing, and every screen follows live', asy
     ).toBeVisible()
   }
 
-  // 3. Params.
+  // 3. Params, the noise among them (B-03 T4): kept across a reload.
   const global = section(page, 'Globale instellingen')
+  const noise = global.getByRole('switch', { name: 'Willekeurige ruis' })
   await global.getByLabel('Prijsstap (€)', { exact: true }).fill('0,05')
+  await global.getByLabel('Sterkte ruis', { exact: true }).fill('0,5')
+  await noise.click()
   await global.getByRole('button', { name: 'Opslaan instellingen' }).click()
   await expect(page.getByText('Opgeslagen')).toBeVisible()
+  await page.reload()
+  await expect(global.getByLabel('Sterkte ruis', { exact: true })).toHaveValue('0,5')
+  await expect(noise).toHaveAttribute('aria-checked', 'false')
+  // Back on, so the rest of the flow runs on the noise it was written against.
+  await noise.click()
+  await global.getByRole('button', { name: 'Opslaan instellingen' }).click()
+  await expect(page.getByText('Opgeslagen')).toBeVisible()
+  await expect(noise).toHaveAttribute('aria-checked', 'true')
 
   // 4. A preset, then a custom theme.
   const colours = section(page, 'Kleurenschema')

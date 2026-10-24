@@ -141,6 +141,12 @@ const CONFIG = {
     idle_rise_targets: [],
     demand_enabled: false,
     auto_calibrate_s0: false,
+    bm_enabled: true,
+    bm_sigma_y: 0.18,
+    bm_dt_minutes: 1,
+    flow_vol_amp: 0.7,
+    flow_beta: 0.25,
+    y_clip: 6,
   },
   drinks: [
     { ...DRINK, drink_id: 11, name: 'Bier' },
@@ -188,7 +194,7 @@ async function openWithLiveRun() {
 }
 
 describe('SettingsPage: the explanations (B-01)', () => {
-  it('every (i) names one of E1-E20 or E33 (AC10)', async () => {
+  it('every (i) names one of E1-E20, E33 or E34-E39 (AC10)', async () => {
     await openWithLiveRun()
     const names = info(document.body).map((b) => b.getAttribute('aria-label')!.slice(8))
     expect(names.length).toBeGreaterThan(0)
@@ -196,7 +202,7 @@ describe('SettingsPage: the explanations (B-01)', () => {
   })
 
   it.each([
-    ['Globale instellingen', 10],
+    ['Globale instellingen', 10 + 6],
     ['Vraag/Aanbod', 6],
     ['Min/Max/Startprijs', 3 * 2],
     ['Drankjes beheren', 8 + 1 * 2],

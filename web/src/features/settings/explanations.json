@@ -77,7 +77,7 @@
     "id": "E9",
     "name": "Ritme stille drankjes (min)",
     "paragraphs": [
-      "Om de zoveel minuten kijkt de beurs of drankjes uit Omlaag bij stilte of Omhoog bij stilte een duwtje krijgen; alleen op die momenten. Dit is niet hoe vaak de prijzen verversen: een bestelling beweegt een prijs meteen, en de ruis loopt op een eigen klok. Zonder drankjes in Omlaag bij stilte of Omhoog bij stilte doet dit niets.",
+      "Om de zoveel minuten kijkt de beurs of drankjes uit Omlaag bij stilte of Omhoog bij stilte een duwtje krijgen; alleen op die momenten. Dit is niet hoe vaak de prijzen verversen: een bestelling beweegt een prijs meteen, en de ruis loopt op een eigen klok (Ritme ruis). Zonder drankjes in Omlaag bij stilte of Omhoog bij stilte doet dit niets.",
       "Hoger: minder vaak een duwtje. Lager: vaker, dus samen sterker.",
       "Eerste borrel: 0,2 (elke 12 seconden). Toegestaan: 0,1 tot en met 10."
     ]
@@ -90,6 +90,63 @@
       "Hoger: minder, bredere kaarsen. Lager: meer, smallere.",
       "Standaard: 60. Toegestaan: 5 tot en met 3600, in veelvouden van 5.",
       "Tijdens de borrel: alle grafieken op het koersbord worden meteen opnieuw getekend, over de laatste Grafiekgeschiedenis."
+    ]
+  },
+  "bm_enabled": {
+    "id": "E34",
+    "name": "Willekeurige ruis",
+    "paragraphs": [
+      "Aan: om de zoveel minuten (Ritme ruis) krijgt elk drankje een willekeurig duwtje omhoog of omlaag, ook als er niets besteld wordt. Een drankje met een grote afstand tussen Minimumprijs en Maximumprijs beweegt daarbij meer, en een druk drankje ook (Extra ruis bij drukte). Tijdens een prijssprong of marktgebeurtenis houdt die het drankje op zijn pad; de ruis is daar hooguit één tel te zien.",
+      "Uit: prijzen bewegen alleen door bestellingen, duwtjes bij stilte, marktgebeurtenissen en prijssprongen. Sterkte ruis, Ritme ruis, Extra ruis bij drukte, Reactiesnelheid drukte en Grens ruis doen dan niets aan de prijzen; de drukte wordt wel bijgehouden.",
+      "Eerste borrel: aan.",
+      "Tijdens de borrel: weer aanzetten geeft binnen een seconde één duwtje; gemiste duwtjes worden niet ingehaald."
+    ]
+  },
+  "bm_sigma_y": {
+    "id": "E35",
+    "name": "Sterkte ruis",
+    "paragraphs": [
+      "Hoe groot de willekeurige duwtjes van Willekeurige ruis zijn. De sterkte geldt per minuut: bij een korter Ritme ruis komen er meer, kleinere duwtjes, en blijft de beweging over langere tijd ongeveer gelijk. Een drankje met een grote afstand tussen Minimumprijs en Maximumprijs beweegt meer in euro's; vlak bij de Minimumprijs of Maximumprijs beweegt een prijs minder ver.",
+      "Hoger: prijzen trillen meer. 0: geen ruis.",
+      "Eerste borrel: 0,18. Toegestaan: 0 of meer."
+    ]
+  },
+  "bm_dt_minutes": {
+    "id": "E36",
+    "name": "Ritme ruis (min)",
+    "paragraphs": [
+      "Om de zoveel minuten krijgt elk drankje een duwtje van Willekeurige ruis. Hoe langer dit is, hoe groter elk duwtje, zodat de ruis over langere tijd ongeveer even sterk blijft (Sterkte ruis). Doet niets als Willekeurige ruis uit staat of Sterkte ruis 0 is.",
+      "Hoger: minder vaak, grotere duwtjes. Lager: vaker, kleinere duwtjes.",
+      "Eerste borrel: 1 (elke 60 seconden). Toegestaan: 0,05 tot en met 10.",
+      "Tijdens de borrel: een nieuwe waarde telt vanaf het laatste duwtje. Is die tijd al voorbij, dan komt het volgende duwtje binnen een seconde, één keer, zo groot als bij de nieuwe waarde hoort; gemiste duwtjes worden niet ingehaald."
+    ]
+  },
+  "flow_vol_amp": {
+    "id": "E37",
+    "name": "Extra ruis bij drukte",
+    "paragraphs": [
+      "Drankjes die in de laatste bestellingen in grote aantallen zaten, krijgen grotere duwtjes van Willekeurige ruis. Die drukte telt hoeveel stuks een drankje per bestelling verkocht, niet hoe vaak er besteld wordt; hoe snel ze meegaat, stel je in met Reactiesnelheid drukte. De drukte verandert alleen bij een nieuwe bestelling, niet door de tijd: een drankje dat vroeg op de avond druk was en daarna niemand meer iets bestelt, houdt zijn extra ruis. Doet niets als Willekeurige ruis uit staat of Sterkte ruis 0 is.",
+      "Hoger: drukke drankjes trillen sterker. 0: drukte maakt geen verschil.",
+      "Eerste borrel: 0,7. Toegestaan: 0 of meer."
+    ]
+  },
+  "flow_beta": {
+    "id": "E38",
+    "name": "Reactiesnelheid drukte",
+    "paragraphs": [
+      "Hoe snel de drukte van een drankje, die Extra ruis bij drukte gebruikt, meegaat met de nieuwste bestellingen. Bij elke bestelling schuift de drukte van elk drankje dit deel van de afstand op naar het aantal dat het in die bestelling verkocht; niet besteld telt als nul. Zonder bestellingen blijft de drukte staan. De prijzen merken er alleen via de ruis iets van: staat Willekeurige ruis uit of is Sterkte ruis 0, dan doet dit niets aan de prijzen (de drukte wordt wel bijgehouden).",
+      "Hoger: de drukte volgt de nieuwste bestellingen sneller; 1: alleen de laatste bestelling telt. Lager: de drukte verandert langzamer; 0: de drukte blijft staan waar hij staat, en aan het begin van de borrel is dat nul.",
+      "Eerste borrel: 0,25. Toegestaan: 0 tot en met 1."
+    ]
+  },
+  "y_clip": {
+    "id": "E39",
+    "name": "Grens ruis",
+    "paragraphs": [
+      "Hoe ver de ruis een prijs naar zijn Minimumprijs of Maximumprijs laat gaan. Bij elk duwtje van Willekeurige ruis wordt elk drankje dat daarna voorbij deze grens zit, teruggezet op de grens, ook als bestellingen, een Marktcrash, Prijsbubbel of prijssprong het daar bracht. Bij 6 zie je dat op het koersbord vrijwel nooit: een prijs komt nog tot zijn Minimumprijs of Maximumprijs. Bij 1 komt een prijs nog maar tot ongeveer een kwart en driekwart van de weg daartussen (bij 1 tot 3 euro: 1,50 en 2,50). Doet niets als Willekeurige ruis uit staat of Sterkte ruis 0 is.",
+      "Hoger: prijzen kunnen verder naar hun grenzen. Lager: de ruis kapt hoge en lage prijzen af. Bij ongeveer 3 of lager blijft een drankje na een Marktcrash of Prijsbubbel niet op zijn grens staan, en springt het tijdens zo'n gebeurtenis bij elk duwtje één tel terug.",
+      "Eerste borrel: 6. Toegestaan: 1 tot en met 20.",
+      "Tijdens de borrel: lager zetten zet bij het volgende duwtje van de ruis elk drankje buiten de nieuwe grens in één keer terug; op het koersbord kan dat een sprong zijn."
     ]
   },
   "demand_enabled": {
