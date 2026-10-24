@@ -109,7 +109,7 @@ async function open(canEditIdle = true) {
   await act(async () => {})
 }
 
-const jumpSection = () => screen.getByRole('region', { name: '⚡ Price jump' })
+const jumpSection = () => screen.getByRole('region', { name: 'Price jump' })
 
 /** The number in an explanation's "Standaard: N." (PD3: the web-only defaults). */
 function standaard(paragraphs: readonly string[]): string {
@@ -121,17 +121,17 @@ function standaard(paragraphs: readonly string[]): string {
 describe('ManipulationPage', () => {
   it('shows the three sections, and Idle only when it may be edited (SD20, AC7)', async () => {
     await open(false)
-    for (const name of ['📰 Nieuws', '💥 Market events', '⚡ Price jump']) {
+    for (const name of ['Nieuws', 'Market events', 'Price jump']) {
       expect(screen.getByRole('heading', { level: 2, name })).toBeTruthy()
     }
     expect(screen.queryByRole('heading', { name: /Idle/ })).toBeNull()
     cleanup()
 
     await open(true)
-    expect(screen.getByRole('heading', { level: 2, name: '⏳ Idle' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 2, name: 'Idle' })).toBeTruthy()
   })
 
-  describe('📰 Nieuws', () => {
+  describe('Nieuws', () => {
     it('lists the news newest first', async () => {
       await open()
       const items = within(screen.getByRole('list', { name: 'Nieuws' })).getAllByRole('listitem')
@@ -168,7 +168,7 @@ describe('ManipulationPage', () => {
     })
   })
 
-  describe('💥 Market events', () => {
+  describe('Market events', () => {
     const EVENTS = [
       ['Marktcrash', 'Marktcrash starten?', 'crash', 'crash'],
       ['Terug naar startprijs', 'Terug naar start?', 'correction', 'reset'],
@@ -223,7 +223,7 @@ describe('ManipulationPage', () => {
     })
   })
 
-  describe('⚡ Price jump', () => {
+  describe('Price jump', () => {
     it('an empty or "abc" target leaves "Start jump" disabled, with no request', async () => {
       await open()
       const start = within(jumpSection()).getByRole('button', { name: 'Start jump' })
@@ -314,10 +314,10 @@ describe('ManipulationPage: the explanations (B-01 T11)', () => {
   })
 
   it.each([
-    ['📰 Nieuws', 0],
-    ['💥 Market events', 4],
-    ['⚡ Price jump', 2],
-    ['⏳ Idle', 6],
+    ['Nieuws', 0],
+    ['Market events', 4],
+    ['Price jump', 2],
+    ['Idle', 6],
   ])('%s has %i (i) (AC10)', async (section, count) => {
     await open()
     expect(info(screen.getByRole('region', { name: section }))).toHaveLength(count)
@@ -329,13 +329,20 @@ describe('ManipulationPage: the explanations (B-01 T11)', () => {
     expect(screen.queryByRole('button', { name: 'Uitleg: Drankje' })).toBeNull()
   })
 
-  it('the four headings are unchanged (AC8)', async () => {
+  it('the four headings are the plain names, each after one pixel icon (B-02 AC7, AC8)', async () => {
     await open()
-    expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
-      '📰 Nieuws',
-      '💥 Market events',
-      '⚡ Price jump',
-      '⏳ Idle',
+    const headings = screen.getAllByRole('heading', { level: 2 })
+    expect(headings.map((h) => h.textContent)).toEqual([
+      'Nieuws',
+      'Market events',
+      'Price jump',
+      'Idle',
     ])
+    for (const heading of headings) {
+      const icons = heading.querySelectorAll('svg')
+      expect(icons).toHaveLength(1)
+      expect(icons[0].getAttribute('aria-hidden')).toBe('true')
+      expect(heading.firstChild).toBe(icons[0])
+    }
   })
 })
