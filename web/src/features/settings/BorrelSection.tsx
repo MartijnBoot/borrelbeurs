@@ -9,6 +9,12 @@
  * again. The form's "Kopieer drankjes uit" lists the past runs and sends the
  * choice as `copy_from_run_id`; if the list cannot be fetched, only the empty
  * option is offered and the form still works.
+ *
+ * B-04 (SD4, SD13; AC7-AC10, AC22, AC23): a "Profiel" select beside it, "—" plus
+ * every profile, sent as `profile_id` when one is picked, with no extra confirm.
+ * If the profiles cannot be fetched only "—" is offered. A profile gone meanwhile
+ * is said so and dropped; a stored value outside today's rules is named by its
+ * setting name (`names`).
  */
 import { type FormEvent, useEffect, useState } from 'react'
 import { Button } from '../../components/ui/Button'
@@ -18,6 +24,8 @@ import { HttpError, request } from '../../lib/http'
 import { fetchPastRuns, type PastRun } from './pastRuns'
 import styles from './settings.module.css'
 import { CurrentRun, fetchCurrentRun, useCurrentRun } from './useCurrentRun'
+import { bumpProfiles, useProfiles } from './useProfiles'
+import { faultsOf } from './useRunConfig'
 
 const STATUS = { draft: 'Concept', live: 'Live', ended: 'Afgelopen' } as const
 
@@ -28,20 +36,34 @@ const REFUSALS: Readonly<Record<string, string>> = {
   run_not_found: 'Deze borrel bestaat niet meer.',
   name_mismatch: 'Naam komt niet overeen.',
   run_not_live: 'Deze borrel is niet live.',
+  profile_not_found: 'Dit profiel bestaat niet meer.',
   forbidden: 'Geen toegang',
 }
 
-/** The codes first: a 422 `name_mismatch` is not a bad name for a new borrel. */
-function failureText(error: unknown): string {
+/**
+ * The codes first: a 422 `name_mismatch` is not a bad name for a new borrel. Then a
+ * 422 naming a profile's setting (B-04 PD12), before the name fallback.
+ */
+function failureText(error: unknown, names: Readonly<Record<string, string>>): string {
   if (error instanceof HttpError && REFUSALS[error.code] !== undefined) return REFUSALS[error.code]
+  const field = Object.keys(faultsOf(error)).find((key) => names[key] !== undefined)
+  if (field !== undefined)
+    return `Profiel niet toegepast: '${names[field]}' valt buiten de toegestane waarden.`
   if (error instanceof HttpError && error.status === 422) return 'Vul een naam in (1–100 tekens).'
   return 'Verbindingsfout. Probeer opnieuw.'
 }
 
-export function BorrelSection() {
+export interface BorrelSectionProps {
+  /** Wire name → the setting's name from the explanations (B-04 PD11). */
+  names: Readonly<Record<string, string>>
+}
+
+export function BorrelSection({ names }: BorrelSectionProps) {
   const { run, setRun, failed } = useCurrentRun()
+  const { profiles } = useProfiles()
   const [name, setName] = useState('')
   const [copyFrom, setCopyFrom] = useState('')
+  const [picked, setPicked] = useState('')
   const [pastRuns, setPastRuns] = useState<PastRun[]>([])
   const [asking, setAsking] = useState<'live' | 'close' | null>(null)
   const [busy, setBusy] = useState(false)
@@ -64,7 +86,11 @@ export function BorrelSection() {
     event.preventDefault()
     if (name.trim() === '') return
     setBusy(true)
-    const body = copyFrom === '' ? { name } : { name, copy_from_run_id: Number(copyFrom) }
+    const body = {
+      name,
+      ...(copyFrom === '' ? {} : { copy_from_run_id: Number(copyFrom) }),
+      ...(profile === '' ? {} : { profile_id: Number(profile) }),
+    }
     try {
       setRun(await request('POST', '/api/runs', { body, schema: CurrentRun }))
       setError(null)
@@ -73,7 +99,8 @@ export function BorrelSection() {
         setRun(await fetchCurrentRun().catch(() => null))
         setError(null)
       } else {
-        setError(failureText(failure))
+        setError(failureText(failure, names))
+        if (failure instanceof HttpError && failure.code === 'profile_not_found') bumpProfiles()
       }
     } finally {
       setBusy(false)
@@ -87,11 +114,18 @@ export function BorrelSection() {
       next(await request('POST', path, { body, schema: CurrentRun }))
       setError(null)
     } catch (failure) {
-      setError(failureText(failure))
+      setError(failureText(failure, names))
     } finally {
       setBusy(false)
     }
   }
+
+  // A picked profile deleted since (a bump refetched the list) falls back to "—".
+  const profile = profiles.some((p) => String(p.profile_id) === picked) ? picked : ''
+  const profileOptions = [
+    { value: '', label: '—' },
+    ...profiles.map((p) => ({ value: String(p.profile_id), label: p.name })),
+  ]
 
   const copyOptions = [
     { value: '', label: '—' },
@@ -120,6 +154,7 @@ export function BorrelSection() {
             options={copyOptions}
             onChange={setCopyFrom}
           />
+          <Select label="Profiel" value={profile} options={profileOptions} onChange={setPicked} />
           <Button type="submit" disabled={busy}>
             Nieuwe borrel
           </Button>

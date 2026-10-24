@@ -21,7 +21,7 @@ import { settingNames } from './settingNames'
  * `features/settings` may not import each other (sibling isolation).
  */
 const SECTIONS: readonly SettingsSection[] = [
-  { id: 'borrel', label: 'Borrel', content: <BorrelSection /> },
+  { id: 'borrel', label: 'Borrel', content: <BorrelSection names={settingNames} /> },
   { id: 'systeem', label: 'Systeemacties', icon: 'broom', content: <SystemSection /> },
   { id: 'globaal', label: 'Globale instellingen', icon: 'gear', content: <GlobalSection /> },
   {
