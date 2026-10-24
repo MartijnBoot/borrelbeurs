@@ -105,6 +105,9 @@ Settled at the spec interview (2026-10-06).
   - **`POST /api/runs {name}` (admin) creates a draft.**
     - `params` are copied from the most recently created run; with none, from `Params()`'s
       defaults.
+
+      > **Amended by B-04** ([phase-b-04-setting-profiles.md](phase-b-04-setting-profiles.md)).
+      > A setting profile picked on "Nieuwe borrel" wins for the 22 fields it holds.
     - No drinks. A random `run_seed`. `tick_interval_ms` 1000, `candle_interval_ms` 60 000,
       `quote_grace_versions` 2.
   - **It refuses:**

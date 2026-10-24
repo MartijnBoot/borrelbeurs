@@ -153,7 +153,8 @@ out-of-scope entry (`docs/specs/phase-6-admin.md`) — a spec decision, not an A
 
 ### B-04 — Named setting profiles per type of game
 
-- **Status:** specced → `docs/specs/phase-b-04-setting-profiles.md`
+- **Status:** built → `docs/plans/phase-b-04-setting-profiles.md` (spec:
+  `docs/specs/phase-b-04-setting-profiles.md`)
 - **Added:** 2026-10-18
 - **Size:** M (a few tasks) — a guess
 
