@@ -551,3 +551,18 @@ Audit notes (2026-10-24):
 - T8 split into T8a (hook and time format) and T8b (the section) for size.
 
 Audited by: MartijnBoot (owner)  Date: 2026-10-24
+
+---
+
+## Build notes (after the audit)
+
+Three files changed that the Files table does not name. None changes a task's scope or an AC:
+- `app/db/products.py` (T5): `name_key` moved here from `app/db/runs.py`, because `runs.py`
+  now imports `app/db/profiles.py`, which needs it (an import cycle). PD4's reuse holds: the
+  function still exists once, with the same body.
+- `tests/meta/test_guard_migrations_hook.py` (T1): its real-tree test names `0012` as the head,
+  as any new migration requires.
+- `web/src/app/pages/settingNames.ts` (T8b): PD11's `settingNames` lives in its own file
+  rather than inline in `SettingsPage.tsx`, so the test can import it (react-refresh lint).
+
+The `data-model.md` row was approved by the owner at `/review b-04` (2026-10-25).
