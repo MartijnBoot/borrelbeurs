@@ -73,6 +73,27 @@ function setContext(isSecure: boolean, getUserMedia?: () => Promise<MediaStream>
   })
 }
 
+/** A camera whose every frame decodes to `tok-scanned` (the `decodeQr` mock). */
+function fakeCamera() {
+  const stopTrack = vi.fn()
+  setContext(
+    true,
+    async () => ({ getTracks: () => [{ stop: stopTrack }] }) as unknown as MediaStream,
+  )
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
+  vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockReturnValue(64)
+  vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockReturnValue(64)
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+    drawImage: () => {},
+    getImageData: (_x: number, _y: number, width: number, height: number) => ({
+      data: new Uint8ClampedArray(width * height * 4),
+      width,
+      height,
+    }),
+  } as unknown as CanvasRenderingContext2D)
+  return stopTrack
+}
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -120,10 +141,54 @@ describe('KassaPage', () => {
     render(<KassaPage />)
     await find('K7Q4-M2XD')
     fireEvent.click(screen.getByRole('button', { name: 'Opwaarderen' }))
+    await act(async () => {})
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Opwaarderen' }))
     await act(async () => {})
-    expect(lookups()).toHaveLength(2)
+    // Found, again before the confirm (/review R2), and again after the booking.
+    expect(lookups()).toHaveLength(3)
     expect(screen.getByRole('region', { name: 'Jan' }).textContent).toContain(formatEuro(2500))
+  })
+
+  it('the lookup before the confirm shows the balance as it is now (/review R2)', async () => {
+    render(<KassaPage />)
+    await find('K7Q4-M2XD')
+    balance = 4500 // another kassa booked meanwhile
+    fireEvent.click(screen.getByRole('button', { name: 'Opwaarderen' }))
+    await act(async () => {})
+    expect(screen.getByRole('region', { name: 'Jan' }).textContent).toContain(formatEuro(4500))
+  })
+
+  it('a lookup that answers after a later one is dropped (/review R2)', async () => {
+    let answerJan: (response: Response) => void = () => {}
+    const PIET = { ...JAN, wallet_id: 8, name: 'Piet' }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (path: string, init?: RequestInit) => {
+        if (path === '/api/kassa/lookup') {
+          const body = JSON.parse(String(init?.body))
+          if (body.qr_token === 'tok-scanned') return json(200, PIET)
+          return new Promise<Response>((resolve) => {
+            answerJan = resolve
+          })
+        }
+        if (path === '/api/kassa/wallets/7/topups' || path === '/api/kassa/wallets/8/topups') {
+          return json(200, [])
+        }
+        throw new Error(`unexpected ${path}`)
+      }),
+    )
+    fakeCamera()
+    render(<KassaPage />)
+    // The camera is open while a typed code is still being looked up; it finds Piet first.
+    fireEvent.click(screen.getByRole('button', { name: 'Camera' }))
+    await find('K7Q4-M2XD')
+    await act(() => new Promise((resolve) => setTimeout(resolve, 300)))
+    expect(screen.getByRole('region', { name: 'Piet' })).toBeTruthy()
+
+    await act(async () => answerJan(json(200, JAN)))
+
+    expect(screen.queryByRole('region', { name: 'Jan' })).toBeNull()
+    expect(screen.getByRole('region', { name: 'Piet' })).toBeTruthy()
   })
 
   it('"Nieuwe code" asks first, then shows the new code and looks up by it (AC28)', async () => {
@@ -192,22 +257,7 @@ describe('the camera (AC14, AC42)', () => {
   })
 
   it('a scanned token is looked up as qr_token, and every track is stopped', async () => {
-    const stopTrack = vi.fn()
-    setContext(
-      true,
-      async () => ({ getTracks: () => [{ stop: stopTrack }] }) as unknown as MediaStream,
-    )
-    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
-    vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockReturnValue(64)
-    vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockReturnValue(64)
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
-      drawImage: () => {},
-      getImageData: (_x: number, _y: number, width: number, height: number) => ({
-        data: new Uint8ClampedArray(width * height * 4),
-        width,
-        height,
-      }),
-    } as unknown as CanvasRenderingContext2D)
+    const stopTrack = fakeCamera()
 
     render(<KassaPage />)
     fireEvent.click(screen.getByRole('button', { name: 'Camera' }))

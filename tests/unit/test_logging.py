@@ -23,9 +23,12 @@ def restore_root_logger() -> Iterator[None]:
     """`configure_logging()` owns the root logger; give pytest its own back."""
     root = logging.getLogger()
     handlers, level = root.handlers[:], root.level
+    access = logging.getLogger("uvicorn.access")
+    filters = access.filters[:]
     yield
     root.handlers[:] = handlers
     root.setLevel(level)
+    access.filters[:] = filters
 
 
 def _format(record: logging.LogRecord) -> dict[str, Any]:
@@ -87,3 +90,28 @@ def test_configuring_twice_leaves_one_handler() -> None:
     assert len(root.handlers) == 1
     assert isinstance(root.handlers[0].formatter, JsonFormatter)
     assert root.level == logging.WARNING
+
+
+def test_an_access_line_carries_the_path_without_its_query(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A query string can hold a player's name or the sign-up code (B-05 SD5, /review R1).
+
+    uvicorn logs the path with its query; the name would outlive its wallet in the log.
+    """
+    configure_logging("INFO")
+    configure_logging("INFO")
+    access = logging.getLogger("uvicorn.access")
+    access.info(
+        '%s - "%s %s HTTP/%s" %d', "10.0.0.7:5123", "GET", "/api/kassa/wallets?name=Jan", "1.1", 200
+    )
+    access.info(
+        '%s - "%s %s HTTP/%s" %d', "10.0.0.7:5123", "GET", "/speler?code=borrel", "1.1", 200
+    )
+
+    lines = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert [line["message"] for line in lines] == [
+        '10.0.0.7:5123 - "GET /api/kassa/wallets HTTP/1.1" 200',
+        '10.0.0.7:5123 - "GET /speler HTTP/1.1" 200',
+    ]
+    assert len(access.filters) == 1, "configuring twice must not stack the filter"

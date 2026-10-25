@@ -103,6 +103,28 @@ def test_a_funded_wallet_goes_after_twelve_months_without_an_entry(
     assert closing == [(stale_id, -3500)]
 
 
+def test_a_sweep_closing_entry_carries_no_run(settings: Settings, database_url: str) -> None:
+    """/review R3: a closing entry with the live run would key-share lock that run's
+    row until the sweep commits, so a config write under the state lock (`FOR UPDATE`
+    on it) would wait for the whole sweep. A closing entry counts towards no borrel.
+    """
+
+    async def body(engine: AsyncEngine) -> list[tuple[Any, ...]]:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "INSERT INTO run (name, status, run_seed, params)"
+                    " VALUES ('Vrijmibo', 'live', 1, '{}')"
+                )
+            )
+        stale = await _wallet(engine, "Stil", T0 - 500 * DAY)
+        await _top_up(engine, stale, 2500, T0 - 400 * DAY)
+        await sweep(engine, now_ms=T0)
+        return await _rows(engine, "SELECT run_id FROM wallet_entry WHERE kind = 'closing'")
+
+    assert _run(settings, database_url, body) == [(None,)]
+
+
 def test_a_wallet_older_than_the_months_without_any_entry_goes_too(
     settings: Settings, database_url: str
 ) -> None:

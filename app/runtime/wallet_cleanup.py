@@ -2,9 +2,10 @@
 
 `sweep` deletes, in one transaction, every live wallet the retention rules name
 (`app.db.wallets.expired`), as a player's delete does: a closing entry for any
-balance left, then the row blanked. Candidates are locked `SKIP LOCKED` and
-checked again once locked, so a wallet a kassa action holds is left for the
-next sweep, never waited on, and a top-up committed meanwhile keeps its wallet.
+balance left (with no run, /review R3), then the row blanked. Candidates are
+locked `SKIP LOCKED` and checked again once locked, so a wallet a kassa action
+holds is left for the next sweep, never waited on, and a top-up committed
+meanwhile keeps its wallet.
 
 `run_cleanup` sweeps every `CLEANUP_INTERVAL_MS` on the app clock, skipping a
 sweep while the process drains. Boot runs the first one (`app.runtime.boot`).
@@ -34,7 +35,7 @@ async def sweep(engine: AsyncEngine, *, now_ms: int) -> int:
         locked = await wallets.lock_unlocked(conn, candidates)
         still = await wallets.expired(conn, now_ms=now_ms, settings=settings, among=locked)
         for wallet_id in still:
-            await wallets.delete_wallet(conn, wallet_id, now_ms=now_ms)
+            await wallets.delete_wallet(conn, wallet_id, now_ms=now_ms, with_run=False)
         return len(still)
 
 

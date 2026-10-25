@@ -405,10 +405,14 @@ async def delete_wallet(
     now_ms: int,
     actor_key_id: int | None = None,
     actor_label: str | None = None,
+    with_run: bool = True,
 ) -> None:
     """Delete a live wallet (SD15): a `closing` entry for any balance left, then blank it.
 
-    The closing entry carries the live run, as any entry does (PD10); the entries
+    The closing entry carries the live run, as any entry does (PD10), unless
+    `with_run` is false: the clean-up's carries none, so its one long transaction
+    holds no lock on the run's row that a config write would wait for (/review
+    R3). A closing entry counts towards no borrel's total either way. The entries
     and the anonymous row stay, so a borrel's top-up totals never change (AC32).
     An unknown or already deleted wallet is `WalletNotFound`, nothing written.
     """
@@ -422,7 +426,7 @@ async def delete_wallet(
             kind="closing",
             amount_cents=-left,
             now_ms=now_ms,
-            run_id=await live_run_id(conn),
+            run_id=await live_run_id(conn) if with_run else None,
             actor_key_id=actor_key_id,
             actor_label=actor_label,
         )

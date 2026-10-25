@@ -9,8 +9,12 @@
  * 2-minute warning and the list are the server's, never a local sum. "Nieuwe
  * code" (SD14) makes the old code useless, so the page looks the wallet up
  * by the new one from then on, and shows it.
+ *
+ * Only the latest lookup is shown: one that answers after a later one (a typed
+ * code still on its way while the camera finds another wallet) is dropped
+ * (/review R2).
  */
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useRef, useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Field } from '../../components/ui/Field'
@@ -40,19 +44,32 @@ export function KassaPage() {
   const [renewed, setRenewed] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
   const [camera] = useState(canUseCamera)
+  const latest = useRef(0)
 
   async function open(query: WalletQuery) {
+    const asked = ++latest.current
     setBusy(true)
     setError(null)
     try {
       const wallet = await lookup(query)
-      setFound({ query, wallet, topups: await topups(wallet.wallet_id) })
+      const list = await topups(wallet.wallet_id)
+      if (asked === latest.current) setFound({ query, wallet, topups: list })
     } catch (failure) {
+      if (asked !== latest.current) return
       setFound(null)
       setError(refusalText(failure))
     } finally {
-      setBusy(false)
+      if (asked === latest.current) setBusy(false)
     }
+  }
+
+  /** The open wallet as it is now, for the top-up confirm (/review R2). */
+  async function refresh(query: WalletQuery): Promise<KassaWallet> {
+    const wallet = await lookup(query)
+    setFound((shown) =>
+      shown?.wallet.wallet_id === wallet.wallet_id ? { ...shown, wallet } : shown,
+    )
+    return wallet
   }
 
   function search(event: FormEvent) {
@@ -125,6 +142,7 @@ export function KassaPage() {
             key={found.wallet.wallet_id}
             wallet={found.wallet}
             onBooked={() => void open(found.query)}
+            refresh={() => refresh(found.query)}
           />
           <TopupList topups={found.topups} onReversed={() => void open(found.query)} />
           <div className={styles.actions}>

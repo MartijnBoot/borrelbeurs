@@ -833,3 +833,23 @@ Audit notes (2026-10-25):
   T17; T8's T8b split left to the builder.
 
 Audited by: MartijnBoot (owner)  Date: 2026-10-25
+
+---
+
+## Review changes (after the audit)
+
+Approved by the owner at `/review b-05` (2026-10-25). None changes an AC; R3 departs from PD10.
+
+- **C1** (`TopUpPanel.tsx`): after a network failure "Opwaarderen" is off until "Opnieuw" has an
+  answer. A fresh key under the 2-minute warning from before a lost booking would book it twice.
+- **R1** (`app/core/logging.py`): uvicorn's access lines carry the path without its query, so
+  `?name=` on the kassa search and `?code=` on the poster link never reach a log (SD5, SD15).
+- **R2** (`TopUpPanel.tsx`, `KassaPage.tsx`): the kassa looks the wallet up again before the
+  top-up confirm, so SD10's "by any key" holds across kassa phones and an old top-up no longer
+  warns; a lookup answering after a later one is dropped.
+- **R3** (`app/db/wallets.py`, `app/runtime/wallet_cleanup.py`): the clean-up's closing entries
+  carry no run. With the live run, its one transaction key-share locked the run's row, and a
+  config write under the state lock (`FOR UPDATE` on that row) waited for the whole sweep. A
+  closing entry counts towards no borrel's total, so no total changes. Player, admin and move
+  deletes keep PD10.
+- **R3**'s `data-model.md` wording was approved by the owner at `/review b-05` (2026-10-25).

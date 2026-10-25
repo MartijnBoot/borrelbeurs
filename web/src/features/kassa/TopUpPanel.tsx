@@ -1,11 +1,15 @@
 /**
  * Top up (B-05 SD10; AC15-AC18): €10 to €100 in €5 steps, starting at €10, then
  * "Opwaarderen" behind a confirm. A top-up in the last 2 minutes changes the
- * question, never the answer: the kassa may still book it (SD10).
+ * question, never the answer: the kassa may still book it (SD10). The wallet is
+ * looked up again before it asks, so a top-up from another kassa since the
+ * lookup is in the question, and an old one has left it (/review R2).
  *
  * One `Idempotency-Key` per confirmed intent. A network failure keeps the
  * intent, and "Opnieuw" resends it under the same key, so a request that did
- * reach the server is answered as a replay, not booked twice (AC18).
+ * reach the server is answered as a replay, not booked twice (AC18). Until it
+ * has an answer, "Opwaarderen" is off; opening another wallet and coming back
+ * looks this one up afresh, warning included.
  */
 import { useState } from 'react'
 import { Button } from '../../components/ui/Button'
@@ -39,9 +43,18 @@ function question(wallet: KassaWallet, amountCents: number): [string, string] {
   ]
 }
 
-export function TopUpPanel({ wallet, onBooked }: { wallet: KassaWallet; onBooked: () => void }) {
+export function TopUpPanel({
+  wallet,
+  onBooked,
+  refresh,
+}: {
+  wallet: KassaWallet
+  onBooked: () => void
+  refresh: () => Promise<KassaWallet>
+}) {
   const [amountCents, setAmountCents] = useState(MIN_CENTS)
-  const [confirming, setConfirming] = useState(false)
+  // The wallet as looked up just before the confirm opened; null while closed.
+  const [asked, setAsked] = useState<KassaWallet | null>(null)
   const [failed, setFailed] = useState<Intent | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -63,7 +76,20 @@ export function TopUpPanel({ wallet, onBooked }: { wallet: KassaWallet; onBooked
     }
   }
 
-  const [message, confirmLabel] = question(wallet, amountCents)
+  async function ask() {
+    setBusy(true)
+    setError(null)
+    try {
+      setAsked(await refresh())
+    } catch (failure) {
+      // Nothing was sent, so nothing waits for "Opnieuw".
+      setError(refusalText(failure))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const [message, confirmLabel] = question(asked ?? wallet, amountCents)
   return (
     <section className={styles.panel} aria-label="Opwaarderen">
       <div className={styles.stepper}>
@@ -88,8 +114,10 @@ export function TopUpPanel({ wallet, onBooked }: { wallet: KassaWallet; onBooked
       <button
         type="button"
         className={styles.primary}
-        disabled={busy}
-        onClick={() => setConfirming(true)}
+        // Not while an intent awaits "Opnieuw": it may have been booked, and a
+        // fresh key under the 2-minute warning from before it would book it twice.
+        disabled={busy || failed !== null}
+        onClick={() => void ask()}
       >
         Opwaarderen
       </button>
@@ -104,15 +132,15 @@ export function TopUpPanel({ wallet, onBooked }: { wallet: KassaWallet; onBooked
         </div>
       )}
       <ConfirmDialog
-        open={confirming}
+        open={asked !== null}
         message={message}
         confirmLabel={confirmLabel}
         cancelLabel="Annuleren"
         onConfirm={() => {
-          setConfirming(false)
+          setAsked(null)
           void send({ amountCents, key: newIdempotencyKey() })
         }}
-        onCancel={() => setConfirming(false)}
+        onCancel={() => setAsked(null)}
       />
     </section>
   )
