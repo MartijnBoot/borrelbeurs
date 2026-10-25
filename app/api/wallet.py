@@ -3,7 +3,9 @@
 Sign-up and the name check are public (SD6: the owner approved them for the
 public-route allowlist), behind the deployment's sign-up code and one per-IP
 limiter shaped as the login one, counted before the code or the cookie is looked
-at. A player has no crew session: the wallet is the `bb_wallet` cookie, set
+at. The player's own routes carry `require_wallet` (SD8).
+
+A player has no crew session: the wallet is the `bb_wallet` cookie, set
 `HttpOnly`, `SameSite=Strict`, `Secure` exactly as the crew cookie is, with a
 400-day max-age (SD19). Only the cookie value's SHA-256 is stored.
 """
@@ -18,13 +20,20 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from app.api import security
 from app.api.auth import RateLimited
-from app.api.deps import clock_of, db_engine, refuse_while_draining, settings_of
+from app.api.deps import (
+    WALLET_COOKIE,
+    clock_of,
+    db_engine,
+    refuse_while_draining,
+    require_wallet,
+    settings_of,
+)
+from app.db.wallets import WalletRow
 from app.runtime import wallets as actions
 from app.runtime.wallet_codes import display_short_code
 
 router = APIRouter(prefix="/wallet", tags=["wallet"])
 
-WALLET_COOKIE: Final = "bb_wallet"
 WALLET_COOKIE_MAX_AGE_S: Final = 400 * 24 * 3600
 
 WalletName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]
@@ -115,3 +124,27 @@ async def sign_up(
     else:
         set_wallet_cookie(request, response, outcome.cookie_value)
     return wallet_data(outcome.player)
+
+
+@router.get("")
+async def my_wallet(
+    request: Request, response: Response, wallet: Annotated[WalletRow, Depends(require_wallet)]
+) -> WalletData:
+    """The player's wallet; renews the cookie, same value, another 400 days (AC11)."""
+    player = await actions.player_wallet(db_engine(request), wallet)
+    set_wallet_cookie(request, response, request.cookies[WALLET_COOKIE])
+    return wallet_data(player)
+
+
+@router.delete("", status_code=204)
+async def delete_my_wallet(
+    request: Request,
+    response: Response,
+    wallet: Annotated[WalletRow, Depends(require_wallet)],
+    _: Annotated[None, Depends(refuse_while_draining)],
+) -> None:
+    """SD15: a closing entry for any balance left, the row blanked, the cookie cleared."""
+    await actions.delete_own_wallet(
+        db_engine(request), wallet.wallet_id, now_ms=clock_of(request).wall_ms()
+    )
+    response.delete_cookie(WALLET_COOKIE, path="/", **security.cookie_kwargs(settings_of(request)))

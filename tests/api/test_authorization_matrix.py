@@ -82,6 +82,10 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     ("POST", "/api/runs/{run_id}/profile"): ADMIN,
 }
 
+# B-05 SD8: the player's own routes. A player is not a role: these carry
+# `require_wallet`, and every crew session without a wallet cookie is 401 there.
+WALLET_ROUTES: Final = frozenset({("GET", "/api/wallet"), ("DELETE", "/api/wallet")})
+
 ACTORS: Final = ("anonymous", "revoked", "display", "bar", "admin", "kassa")
 
 
@@ -99,9 +103,24 @@ def _served_routes(client: TestClient) -> set[tuple[str, str]]:
 def test_the_table_covers_every_served_route(client: TestClient) -> None:
     """A route added without a row here -- or a row whose route is gone -- fails."""
     public = {key for key in PUBLIC_ROUTES if key[0] != "MOUNT"}
-    served = _served_routes(client) - public
+    served = _served_routes(client) - public - WALLET_ROUTES
 
     assert served == set(SD1)
+    assert _served_routes(client) >= WALLET_ROUTES
+
+
+@pytest.mark.parametrize("actor", ["anonymous", "display", "bar", "kassa", "admin"])
+@pytest.mark.parametrize(("method", "path"), sorted(WALLET_ROUTES))
+def test_a_player_route_needs_the_wallet_cookie_not_a_session(
+    client: TestClient, mint_key: MintKey, method: str, path: str, actor: str
+) -> None:
+    """B-05 AC38: a crew session without a wallet cookie is 401 `no_wallet`."""
+    _act(client, mint_key, actor)
+
+    response = client.request(method, path)
+
+    assert response.status_code == 401, (method, path, actor)
+    assert response.json()["error"]["code"] == "no_wallet"
 
 
 def _act(client: TestClient, mint_key: MintKey, actor: str) -> None:

@@ -18,17 +18,23 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Final
 
-from fastapi import Request
+from fastapi import Request, Response
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.api.security import read_session
+from app.api.security import cookie_kwargs, read_session
 from app.core.config import Settings
 from app.core.errors import AppError
 from app.db.keys import Role, get_key
+from app.db.wallets import NoWallet, WalletRow, get_by_cookie_hash
 from app.runtime.clock import Clock
+from app.runtime.wallet_codes import cookie_hash
 
 SESSION_COOKIE: Final = "bb_session"
 REQUIRE_ROLE_MARKER: Final = "__require_role__"
+# B-05 SD8: a player is not a role. Their routes carry `require_wallet`, found by
+# this marker, which the route audit accepts beside `require_role`'s.
+REQUIRE_WALLET_MARKER: Final = "__require_wallet__"
+WALLET_COOKIE: Final = "bb_wallet"
 ALL_ROLES: Final[tuple[Role, ...]] = ("display", "bar", "admin", "kassa")
 # The roles that read the market's own routes (`GET /api/news`). `kassa` (B-05 SD7)
 # keeps only the session's routes and the market feed (`/ws`, `GET /api/state`,
@@ -126,3 +132,34 @@ def refuse_while_draining(request: Request) -> None:
     """
     if getattr(request.app.state, "draining", False):
         raise ShuttingDown("the server is shutting down; try again in a moment")
+
+
+def _cleared_wallet_cookie(settings: Settings) -> str:
+    """The `Set-Cookie` that removes `bb_wallet`, with the attributes it was set with."""
+    response = Response()
+    response.delete_cookie(WALLET_COOKIE, path="/", **cookie_kwargs(settings))
+    return response.headers["set-cookie"]
+
+
+async def require_wallet(request: Request) -> WalletRow:
+    """The player's live wallet, from the `bb_wallet` cookie (B-05 SD8, SD19).
+
+    A missing cookie, or one whose wallet is unknown or deleted, is 401 `no_wallet`,
+    and that response clears the cookie (AC13); the route body never runs. Only
+    the cookie value's hash is looked up, so a QR token or short code sent as the
+    cookie finds nothing (AC12).
+    """
+    value = request.cookies.get(WALLET_COOKIE)
+    wallet = None
+    if value:
+        async with db_engine(request).connect() as conn:
+            wallet = await get_by_cookie_hash(conn, cookie_hash(value))
+    if wallet is None:
+        raise NoWallet(
+            "there is no wallet on this phone",
+            headers={"set-cookie": _cleared_wallet_cookie(settings_of(request))},
+        )
+    return wallet
+
+
+setattr(require_wallet, REQUIRE_WALLET_MARKER, True)

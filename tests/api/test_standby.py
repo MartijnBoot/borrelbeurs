@@ -80,6 +80,10 @@ def test_healthz_reports_standby_and_readyz_is_not_ready(standby_client: TestCli
         ("GET", "/api/auth/me"),
         ("GET", "/api/nope"),
         ("GET", "/theme.css"),  # needs the theme a standby has not built: 503, not a 500
+        # B-05 AC44: the wallet routes, the public sign-up included.
+        ("POST", "/api/wallet"),
+        ("GET", "/api/wallet"),
+        ("POST", "/api/kassa/lookup"),
     ],
 )
 def test_every_api_request_and_the_theme_is_503_standby(

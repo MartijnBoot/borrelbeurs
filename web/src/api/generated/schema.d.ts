@@ -670,14 +670,22 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * My Wallet
+         * @description The player's wallet; renews the cookie, same value, another 400 days (AC11).
+         */
+        get: operations["my_wallet_api_wallet_get"];
         put?: never;
         /**
          * Sign Up
          * @description 201 with a new wallet and its cookie, or 200 with the one the cookie holds (AC8).
          */
         post: operations["sign_up_api_wallet_post"];
-        delete?: never;
+        /**
+         * Delete My Wallet
+         * @description SD15: a closing entry for any balance left, the row blanked, the cookie cleared.
+         */
+        delete: operations["delete_my_wallet_api_wallet_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2847,6 +2855,26 @@ export interface operations {
             };
         };
     };
+    my_wallet_api_wallet_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletData"];
+                };
+            };
+        };
+    };
     sign_up_api_wallet_post: {
         parameters: {
             query?: never;
@@ -2877,6 +2905,24 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    delete_my_wallet_api_wallet_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

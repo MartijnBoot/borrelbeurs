@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from app.core.errors import AppError
 from app.db import wallets
 from app.db.products import name_key
-from app.db.wallets import WalletRow
+from app.db.wallets import NoWallet, WalletNotFound, WalletRow
 from app.runtime.wallet_codes import cookie_hash, new_cookie_value
 
 
@@ -92,3 +92,18 @@ async def sign_up(
             conn, name=name, cookie_hash=cookie_hash(value), now_ms=now_ms
         )
         return SignUp(PlayerWallet(wallet, 0), value)
+
+
+async def player_wallet(engine: AsyncEngine, wallet: WalletRow) -> PlayerWallet:
+    async with engine.connect() as conn:
+        return await _player(conn, wallet)
+
+
+async def delete_own_wallet(engine: AsyncEngine, wallet_id: int, *, now_ms: int) -> None:
+    """The player deletes their wallet (SD15). Gone meanwhile is `no_wallet`, as any
+    player route answers a deleted wallet's cookie (AC13)."""
+    try:
+        async with engine.begin() as conn:
+            await wallets.delete_wallet(conn, wallet_id, now_ms=now_ms)
+    except WalletNotFound:
+        raise NoWallet("there is no wallet on this phone") from None
