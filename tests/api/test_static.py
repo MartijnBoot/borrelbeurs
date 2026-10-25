@@ -107,6 +107,8 @@ def spa_client(
         "/manipulation",
         "/settings",
         "/analytics",
+        "/kassa",
+        "/speler",
     ],
 )
 def test_a_reload_of_an_spa_route_serves_index_html(spa_client: TestClient, path: str) -> None:
@@ -126,6 +128,8 @@ def test_the_spa_routes_are_login_plus_the_role_table() -> None:
         "/manipulation",
         "/settings",
         "/analytics",
+        "/kassa",
+        "/speler",
     } == app.main.SPA_ROUTES
 
 

@@ -15,10 +15,12 @@
   "dependencies": {
     "@fontsource/eb-garamond": "^5.3.0",
     "@fontsource/inter": "^5.3.0",
+    "jsqr": "1.4.0",
     "lightweight-charts": "^5",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router": "^8.4.0",
+    "uqr": "0.1.3",
     "zod": "^4.6.5",
     "zustand": "^5.0.15"
   },

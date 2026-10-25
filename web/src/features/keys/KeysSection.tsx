@@ -20,7 +20,7 @@ import { HttpError, request } from '../../lib/http'
 import { formatWhen } from '../../lib/time'
 import styles from './KeysSection.module.css'
 
-const Role = z.enum(['display', 'bar', 'admin'])
+const Role = z.enum(['display', 'bar', 'admin', 'kassa'])
 type Role = z.infer<typeof Role>
 
 const KeyInfo = z.object({
@@ -39,6 +39,7 @@ const ROLES = [
   { value: 'display', label: 'Scherm' },
   { value: 'bar', label: 'Bar' },
   { value: 'admin', label: 'Beheer' },
+  { value: 'kassa', label: 'Kassa' },
 ] as const satisfies readonly { value: Role; label: string }[]
 
 const ROLE_LABEL: Readonly<Record<Role, string>> = Object.fromEntries(

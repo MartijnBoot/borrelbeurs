@@ -6,7 +6,7 @@
  * ported from v1's `theme.js`). The theme is put back to Blauw afterwards.
  */
 import type { Browser, Page } from '@playwright/test'
-import { expect, server, storeTheme, submitKey, test, type Role } from './fixtures'
+import { expect, server, storeTheme, submitKey, test, type MintedRole } from './fixtures'
 
 /** Each preset's `--bg`, as `getComputedStyle` reports it. */
 const BG: Record<'blauw' | 'rood' | 'oudgeld', string> = {
@@ -22,7 +22,7 @@ function rgb(hex: string): string {
   return `rgb(${r}, ${g}, ${b})`
 }
 
-async function pageAs(browser: Browser, role: Role): Promise<Page> {
+async function pageAs(browser: Browser, role: MintedRole): Promise<Page> {
   const context = await browser.newContext({ baseURL: server().base_url })
   const page = await context.newPage()
   await page.goto('/login')

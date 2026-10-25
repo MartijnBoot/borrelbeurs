@@ -23,6 +23,7 @@ ENV_VARS = (
     "LOG_LEVEL",
     "APP_ENV",
     "LOGIN_RATE_PER_MINUTE",
+    "SIGNUP_RATE_PER_MINUTE",
     "SESSION_COOKIE_SECURE",
     "DATABASE_TIMEOUT_SECONDS",
     "HEAVY_READ_TIMEOUT_SECONDS",
@@ -388,6 +389,25 @@ def test_a_bad_login_rate_fails_naming_the_variable(
         get_settings()
 
     assert "LOGIN_RATE_PER_MINUTE" in str(excinfo.value)
+
+
+def test_the_signup_rate_defaults_to_five(monkeypatch: pytest.MonkeyPatch) -> None:
+    """B-05 SD6."""
+    _set_env(monkeypatch)
+
+    assert get_settings().signup_rate_per_minute == 5
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "banana"])
+def test_a_bad_signup_rate_fails_naming_the_variable(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    _set_env(monkeypatch, SIGNUP_RATE_PER_MINUTE=value)
+
+    with pytest.raises(ConfigError) as excinfo:
+        get_settings()
+
+    assert "SIGNUP_RATE_PER_MINUTE" in str(excinfo.value)
 
 
 # --- the database timeout (Phase 3 follow-up: no unbounded wait on a silent database) ---

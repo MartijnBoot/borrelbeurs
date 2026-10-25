@@ -68,6 +68,22 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str, ensure_ascii=False)
 
 
+class _DropQueryString(logging.Filter):
+    """Log an access line's path without its query.
+
+    A query can hold a player's name (`/api/kassa/wallets?name=`) or the sign-up
+    code (`/speler?code=`); a log line would keep the name after its wallet is
+    deleted (B-05 SD5, SD15). uvicorn's access line carries the path as its third
+    argument.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) >= 3 and isinstance(args[2], str):
+            record.args = (*args[:2], args[2].split("?", 1)[0], *args[3:])
+        return True
+
+
 def configure_logging(level: str) -> None:
     """Send JSON to stdout at `level`. Idempotent: calling it twice is calling it once."""
     handler = logging.StreamHandler(sys.stdout)
@@ -87,3 +103,7 @@ def configure_logging(level: str) -> None:
         logger = logging.getLogger(name)
         logger.handlers.clear()
         logger.propagate = True
+
+    access = logging.getLogger("uvicorn.access")
+    if not any(isinstance(existing, _DropQueryString) for existing in access.filters):
+        access.addFilter(_DropQueryString())

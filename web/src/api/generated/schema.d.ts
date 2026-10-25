@@ -646,6 +646,209 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/wallet/name-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Name Check */
+        post: operations["name_check_api_wallet_name_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/wallet": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Wallet
+         * @description The player's wallet; renews the cookie, same value, another 400 days (AC11).
+         */
+        get: operations["my_wallet_api_wallet_get"];
+        put?: never;
+        /**
+         * Sign Up
+         * @description 201 with a new wallet and its cookie, or 200 with the one the cookie holds (AC8).
+         */
+        post: operations["sign_up_api_wallet_post"];
+        /**
+         * Delete My Wallet
+         * @description SD15: a closing entry for any balance left, the row blanked, the cookie cleared.
+         */
+        delete: operations["delete_my_wallet_api_wallet_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kassa/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lookup */
+        post: operations["lookup_api_kassa_lookup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kassa/wallets/{wallet_id}/topups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Topups */
+        get: operations["list_topups_api_kassa_wallets__wallet_id__topups_get"];
+        put?: never;
+        /** Top Up */
+        post: operations["top_up_api_kassa_wallets__wallet_id__topups_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kassa/topups/{entry_id}/reversal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reverse */
+        post: operations["reverse_api_kassa_topups__entry_id__reversal_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kassa/wallets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search */
+        get: operations["search_api_kassa_wallets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kassa/wallets/{wallet_id}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move
+         * @description The `move_in` entry the move booked on `wallet_id` (SD11).
+         */
+        post: operations["move_api_kassa_wallets__wallet_id__move_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kassa/wallets/{wallet_id}/new-code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** New Code */
+        post: operations["new_code_api_kassa_wallets__wallet_id__new_code_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/wallets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Wallets Overview */
+        get: operations["wallets_overview_api_admin_wallets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/wallets/{wallet_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Wallet */
+        delete: operations["delete_wallet_api_admin_wallets__wallet_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/wallet-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Wallet Settings */
+        get: operations["get_wallet_settings_api_admin_wallet_settings_get"];
+        /** Put Wallet Settings */
+        put: operations["put_wallet_settings_api_admin_wallet_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/theme.css": {
         parameters: {
             query?: never;
@@ -769,6 +972,32 @@ export interface components {
             /** C */
             c: number;
         };
+        /** BookedEntry */
+        BookedEntry: {
+            /** Entry Id */
+            entry_id: number;
+            /** Wallet Id */
+            wallet_id: number;
+            /** Amount Cents */
+            amount_cents: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * BorrelTopups
+         * @description `run_id` and `name` are null on the row of entries without a run (PD2).
+         */
+        BorrelTopups: {
+            /** Run Id */
+            run_id: number | null;
+            /** Name */
+            name: string | null;
+            /** Net Topup Cents */
+            net_topup_cents: number;
+        };
         /** CompareRowData */
         CompareRowData: {
             /** Product Key */
@@ -837,7 +1066,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "display" | "bar" | "admin";
+            role: "display" | "bar" | "admin" | "kassa";
             /** Label */
             label: string;
         };
@@ -1017,6 +1246,25 @@ export interface components {
             /** Finished At Ms */
             finished_at_ms: number | null;
         };
+        /**
+         * FoundWallet
+         * @description A wallet the move search lists (SD11, PD17).
+         */
+        FoundWallet: {
+            /** Wallet Id */
+            wallet_id: number;
+            /** Name */
+            name: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Balance Cents */
+            balance_cents: number;
+            /** Last Topup At */
+            last_topup_at: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1047,6 +1295,23 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** KassaWalletData */
+        KassaWalletData: {
+            /** Wallet Id */
+            wallet_id: number;
+            /** Name */
+            name: string;
+            /** Balance Cents */
+            balance_cents: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Topup At */
+            last_topup_at: string | null;
+            recent_topup: components["schemas"]["RecentTopup"] | null;
+        };
         /** KeyInfo */
         KeyInfo: {
             /** Key Id */
@@ -1057,7 +1322,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "display" | "bar" | "admin";
+            role: "display" | "bar" | "admin" | "kassa";
             /**
              * Created At
              * Format: date-time
@@ -1068,6 +1333,20 @@ export interface components {
             /** Revoked */
             revoked: boolean;
         };
+        /** ListedWalletData */
+        ListedWalletData: {
+            /** Wallet Id */
+            wallet_id: number;
+            /** Name */
+            name: string;
+            /** Balance Cents */
+            balance_cents: number;
+            /**
+             * Last Activity At
+             * Format: date-time
+             */
+            last_activity_at: string;
+        };
         /** LoadProfileRequest */
         LoadProfileRequest: {
             /** Profile Id */
@@ -1077,6 +1356,16 @@ export interface components {
         LoginRequest: {
             /** Key */
             key: string;
+        };
+        /**
+         * LookupRequest
+         * @description Exactly one of a scanned QR token or a typed short code (AC14).
+         */
+        LookupRequest: {
+            /** Qr Token */
+            qr_token?: string | null;
+            /** Short Code */
+            short_code?: string | null;
         };
         /** MarketEventInfo */
         MarketEventInfo: {
@@ -1100,11 +1389,30 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "display" | "bar" | "admin";
+            role: "display" | "bar" | "admin" | "kassa";
             /** Label */
             label: string;
             /** Allowed Routes */
             allowed_routes: string[];
+        };
+        /** MoveRequest */
+        MoveRequest: {
+            /** From Wallet Id */
+            from_wallet_id: number;
+        };
+        /** NameCheck */
+        NameCheck: {
+            /** Available */
+            available: boolean;
+            /** Suggestions */
+            suggestions: string[];
+        };
+        /** NewCode */
+        NewCode: {
+            /** Qr Token */
+            qr_token: string;
+            /** Short Code */
+            short_code: string;
         };
         /** NewsItemData */
         NewsItemData: {
@@ -1304,6 +1612,16 @@ export interface components {
             /** Line Total Cents */
             line_total_cents: number;
         };
+        /** RecentTopup */
+        RecentTopup: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Amount Cents */
+            amount_cents: number;
+        };
         /** RevisionData */
         RevisionData: {
             /** Revision */
@@ -1365,6 +1683,13 @@ export interface components {
              * @default shutting_down
              */
             status: string;
+        };
+        /** SignupRequest */
+        SignupRequest: {
+            /** Name */
+            name: string;
+            /** Code */
+            code: string;
         };
         /**
          * Snapshot
@@ -1436,6 +1761,27 @@ export interface components {
             /** Font */
             font?: ("inter" | "garamond") | null;
         };
+        /** TopupData */
+        TopupData: {
+            /** Entry Id */
+            entry_id: number;
+            /** Amount Cents */
+            amount_cents: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Actor Label */
+            actor_label: string | null;
+            /** Reversed */
+            reversed: boolean;
+        };
+        /** TopupRequest */
+        TopupRequest: {
+            /** Amount Cents */
+            amount_cents: number;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -1448,6 +1794,46 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * WalletData
+         * @description The player's own wallet (SD21): the short code in its display form (PD6).
+         */
+        WalletData: {
+            /** Name */
+            name: string;
+            /** Balance Cents */
+            balance_cents: number;
+            /** Qr Token */
+            qr_token: string;
+            /** Short Code */
+            short_code: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * WalletSettingsData
+         * @description `signup_code` null is sign-up closed (SD6). A code is trimmed, and blank means null.
+         */
+        WalletSettingsData: {
+            /** Signup Code */
+            signup_code: string | null;
+            /** Unfunded Days */
+            unfunded_days: number;
+            /** Inactive Months */
+            inactive_months: number;
+        };
+        /** WalletsOverview */
+        WalletsOverview: {
+            /** Outstanding Cents */
+            outstanding_cents: number;
+            /** Per Borrel */
+            per_borrel: components["schemas"]["BorrelTopups"][];
+            /** Wallets */
+            wallets: components["schemas"]["ListedWalletData"][];
         };
     };
     responses: never;
@@ -2732,6 +3118,472 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    name_check_api_wallet_name_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NameCheck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    my_wallet_api_wallet_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletData"];
+                };
+            };
+        };
+    };
+    sign_up_api_wallet_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletData"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_my_wallet_api_wallet_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    lookup_api_kassa_lookup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LookupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KassaWalletData"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_topups_api_kassa_wallets__wallet_id__topups_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wallet_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopupData"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    top_up_api_kassa_wallets__wallet_id__topups_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                wallet_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopupRequest"];
+            };
+        };
+        responses: {
+            /** @description A replay of the stored top-up */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookedEntry"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookedEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reverse_api_kassa_topups__entry_id__reversal_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A replay of the stored reversal */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookedEntry"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookedEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_api_kassa_wallets_get: {
+        parameters: {
+            query: {
+                name: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FoundWallet"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    move_api_kassa_wallets__wallet_id__move_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                wallet_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveRequest"];
+            };
+        };
+        responses: {
+            /** @description A replay of the stored move */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookedEntry"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookedEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    new_code_api_kassa_wallets__wallet_id__new_code_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wallet_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewCode"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    wallets_overview_api_admin_wallets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletsOverview"];
+                };
+            };
+        };
+    };
+    delete_wallet_api_admin_wallets__wallet_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wallet_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_wallet_settings_api_admin_wallet_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletSettingsData"];
+                };
+            };
+        };
+    };
+    put_wallet_settings_api_admin_wallet_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WalletSettingsData"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletSettingsData"];
+                };
             };
             /** @description Validation Error */
             422: {

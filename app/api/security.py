@@ -125,7 +125,8 @@ def dummy_hash() -> str:
 ROLE_ROUTES: Final[dict[Role, tuple[str, ...]]] = {
     "display": ("/koers",),
     "bar": ("/bar", "/manipulation"),
-    "admin": ("/", "/koers", "/bar", "/manipulation", "/settings", "/analytics"),
+    "admin": ("/", "/koers", "/bar", "/manipulation", "/settings", "/analytics", "/kassa"),
+    "kassa": ("/kassa",),
 }
 
 

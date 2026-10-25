@@ -17,7 +17,7 @@
    `docker compose -f compose.yml --env-file .env stop app`, then, for each command below,
    `docker compose -f compose.yml --env-file .env run --rm --no-deps app <command>`:
    - `python -m app.cli.keys create --role admin --label <who>` (roles `admin`, `bar`,
-     `display`; the key is shown once, write it down);
+     `display`, `kassa`; the key is shown once, write it down);
    - `python -m app.cli.import_v1 --config /seed/<name>` prints a `run_id` (the file must be
      mounted into the container with `-v <host path>:/seed/<name>:ro` before `app`);
    - `python -m app.cli.runs go-live <run_id>`.
@@ -38,6 +38,9 @@
 - Dumps run by themselves every 5 minutes; `backup-now.cmd` forces one. Excel exports of the
   live run appear in `data\exports\` every 15 minutes (`...-auto.xlsx`).
 - "Sluit app" in admin stops the app for good (exit 0). Start it again with `start.cmd`.
+- Wallets (B-05) at the venue are the venue database's own, not Render's: every player signs
+  up again and starts at zero there. The venue is plain HTTP, so the kassa page offers no
+  camera: type the short code under the player's QR code ("Code typen").
 - Power cut: laptop on, Docker up, `start.cmd`. Everything acknowledged is there.
 
 ## After

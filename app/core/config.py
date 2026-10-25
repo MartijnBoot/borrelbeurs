@@ -96,6 +96,11 @@ class Settings(BaseSettings):
     # the key is parsed or hashed (Phase 3 SD7).
     login_rate_per_minute: int = Field(default=10, ge=1)
 
+    # Optional. Wallet sign-ups and name checks per client IP per rolling 60 s,
+    # one limiter for both, counted before the code or the cookie is looked at
+    # (B-05 SD6).
+    signup_rate_per_minute: int = Field(default=5, ge=1)
+
     # Optional. The session cookie's `Secure` attribute (Phase 3 SD8). Off is
     # for a plain-http local stack only; `_refuse_insecure_cookie_in_production`
     # makes production refuse it.

@@ -55,7 +55,7 @@ from app.runtime.theme import TOKEN_NAMES, PresetName, Theme, image_url
 
 PROTOCOL_VERSION: Final = 1
 
-Role = Literal["display", "bar", "admin"]
+Role = Literal["display", "bar", "admin", "kassa"]
 NewsLevel = Literal["info", "success", "warning", "danger"]
 EventKind = Literal["crash", "bubble", "correction"]
 NonNegative = Annotated[StrictInt, Field(ge=0)]

@@ -127,3 +127,15 @@ def test_an_unknown_role_is_refused(scratch: str, settings: Settings) -> None:
 
     assert excinfo.value.code == 2
     assert _rows(settings, scratch) == []
+
+
+def test_create_mints_a_kassa_key(
+    scratch: str, settings: Settings, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B-05 SD7, AC40: `create --role kassa`."""
+    parsed = parse_key(_create(capsys, "kassa", "Kassa 1"))
+    assert parsed is not None
+
+    (row,) = _rows(settings, scratch)
+
+    assert (row["key_id"], row["role"], row["label"]) == (parsed.key_id, "kassa", "Kassa 1")

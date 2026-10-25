@@ -16,7 +16,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
-from app.api.deps import ALL_ROLES, Principal, clock_of, refuse_while_draining, require_role
+from app.api.deps import MARKET_ROLES, Principal, clock_of, refuse_while_draining, require_role
 from app.core.errors import AppError
 from app.db.news import NewsItem, NewsLevel, create_news, soft_delete_news
 from app.realtime.messages import NewsItemData
@@ -49,7 +49,7 @@ def _holder(request: Request) -> MarketHolder:
 
 @router.get("")
 async def list_items(
-    request: Request, _: Annotated[Principal, Depends(require_role(*ALL_ROLES))]
+    request: Request, _: Annotated[Principal, Depends(require_role(*MARKET_ROLES))]
 ) -> list[NewsItemData]:
     return [_data(item) for item in reversed(_holder(request).news)]
 

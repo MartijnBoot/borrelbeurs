@@ -3,18 +3,18 @@
  * app (AC20-AC23, PD10).
  */
 import type { WebSocketRoute } from '@playwright/test'
-import { expect, server, submitKey, test, type Role } from './fixtures'
+import { expect, server, submitKey, test, type MintedRole } from './fixtures'
 
 // Phase 3 SD2's allowed routes per role, in order, as the nav labels them.
-const NAV: Record<Role, string[]> = {
+const NAV: Record<MintedRole, string[]> = {
   display: ['Live koersbord'],
   bar: ['Bar', 'Spel mechanica'],
-  admin: ['Home', 'Live koersbord', 'Bar', 'Spel mechanica', 'Instellingen', 'Analyse'],
+  admin: ['Home', 'Live koersbord', 'Bar', 'Spel mechanica', 'Instellingen', 'Analyse', 'Kassa'],
 }
 
-const LANDING: Record<Role, string> = { display: '/koers', bar: '/bar', admin: '/' }
+const LANDING: Record<MintedRole, string> = { display: '/koers', bar: '/bar', admin: '/' }
 
-const ROLES: Role[] = ['display', 'bar', 'admin']
+const ROLES: MintedRole[] = ['display', 'bar', 'admin']
 
 test.describe('login (AC21)', () => {
   for (const role of ROLES) {

@@ -1,0 +1,41 @@
+/* The login page's card look, without the card: two large choices under the logo. */
+.wrap {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 32px;
+  padding: 24px;
+}
+
+.logo {
+  height: 96px;
+  width: auto;
+}
+
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.choice {
+  display: block;
+  padding: 16px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 18px;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+}
+
+.choice + .choice {
+  background: var(--panel);
+  border: 1px solid var(--grid);
+  color: var(--text);
+}

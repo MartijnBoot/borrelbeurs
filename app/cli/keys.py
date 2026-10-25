@@ -1,6 +1,6 @@
 """Mint, list and revoke access keys (Phase 3 SD5).
 
-    uv run python -m app.cli.keys create --role <display|bar|admin> --label <label>
+    uv run python -m app.cli.keys create --role <display|bar|admin|kassa> --label <label>
     uv run python -m app.cli.keys list
     uv run python -m app.cli.keys revoke <key_id>
 

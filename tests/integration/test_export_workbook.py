@@ -20,7 +20,7 @@ from sqlalchemy import insert, text, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from app.core.config import Settings
-from app.db import models
+from app.db import models, wallets
 from app.db.exports import ExportSnapshot, read_snapshot
 from app.db.runs import RunNotFound, add_drink, create_draft_run
 from app.db.session import create_engine, create_heavy_read_engine
@@ -368,3 +368,52 @@ def test_no_cell_names_p0_and_text_is_never_a_formula(
     assert not [c.value for c in cells if isinstance(c.value, str) and "p0_" in c.value]
     assert {c.data_type for c in cells if c.value in {"=1+1", "=HYPERLINK(1)"}} == {"s"}
     assert build_workbook(snapshot, generated_at_ms=GENERATED) == data  # pure: same in, same out
+
+
+def test_wallets_leave_the_workbook_unchanged(settings: Settings, database_url: str) -> None:
+    """B-05 AC35: no sheet, column or value from a wallet, its entries or its settings."""
+
+    async def body(engine: AsyncEngine, heavy: AsyncEngine) -> tuple[ExportSnapshot, ...]:
+        async with engine.begin() as conn:
+            run_id = await _run(conn)
+            bier = await _drink(conn, run_id, "Bier", 0)
+            await _order(conn, run_id, 1, T0 + 1_000, [(bier, 2, 233, 250)])
+        without = await _snapshot(heavy, run_id)
+        async with engine.begin() as conn:
+            jan = await wallets.create_wallet(conn, name="Jan", cookie_hash="h-jan", now_ms=T0)
+            topup = await wallets.insert_entry(
+                conn,
+                wallet_id=jan.wallet_id,
+                kind="topup",
+                amount_cents=1500,
+                now_ms=T0,
+                run_id=run_id,
+            )
+            await wallets.insert_entry(
+                conn,
+                wallet_id=jan.wallet_id,
+                kind="reversal",
+                amount_cents=-1500,
+                now_ms=T0,
+                run_id=run_id,
+                reverses_entry_id=topup.entry_id,
+            )
+            await wallets.insert_entry(
+                conn,
+                wallet_id=jan.wallet_id,
+                kind="topup",
+                amount_cents=2000,
+                now_ms=T0,
+                run_id=run_id,
+            )
+            await wallets.put_settings(conn, wallets.WalletSettingsRow("Borrel", 7, 3))
+        return without, await _snapshot(heavy, run_id)
+
+    without, with_wallets = _run_async(settings, database_url, body)
+    before = _book(build_workbook(without, generated_at_ms=GENERATED))
+    after = _book(build_workbook(with_wallets, generated_at_ms=GENERATED))
+
+    assert with_wallets == without
+    assert after.sheetnames == before.sheetnames
+    for name in before.sheetnames:
+        assert _rows(after[name]) == _rows(before[name]), name

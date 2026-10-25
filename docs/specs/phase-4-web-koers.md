@@ -166,6 +166,10 @@ planner must not reopen them; the human may overrule any at spec approval.
   `@testing-library/react`, `jsdom`, `@playwright/test`. All are named in
   [frontend-architecture.md](../design/frontend-architecture.md) and ADR 0006; the plan still
   justifies each per `CLAUDE.md` (why not stdlib, licence, maintenance). No other dependency.
+
+  > **Amended by B-05** (SD18): two more runtime dependencies, `uqr` (QR generator) and `jsqr`
+  > (QR decoder), approved by the owner at exact versions in the B-05 plan's § Dependency
+  > approval.
 - **SD26 — Types are generated and checked for drift.** `openapi-typescript` generates
   `web/src/api/generated/` from `create_app().openapi()` in-process (Phase 3 SD3), committed.
   The check regenerates and fails on diff. A WS message fixture recorded from the real server

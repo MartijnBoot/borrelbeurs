@@ -31,7 +31,14 @@ from fastapi.routing import APIWebSocketRoute
 from starlette.routing import BaseRoute, Mount, WebSocketRoute
 
 import app.main
-from app.api.deps import REQUIRE_ROLE_MARKER, Principal, require_role
+from app.api.deps import (
+    REQUIRE_ROLE_MARKER,
+    REQUIRE_WALLET_MARKER,
+    Principal,
+    require_role,
+    require_wallet,
+)
+from app.db.wallets import WalletRow
 
 # (kind, path): SD1's public row, SD3's docs, Phase 4 SD8's theme stylesheet and
 # Phase 6 SD29's uploaded images.
@@ -48,12 +55,18 @@ PUBLIC_ROUTES: Final = frozenset(
         ("GET", "/theme.css"),
         # Phase 6 SD29: the board and the login page paint with uploaded images.
         ("GET", "/assets/{asset_id:int}"),
+        # B-05 SD6: a player signs up without any session, behind the sign-up code.
+        ("POST", "/api/wallet"),
+        ("POST", "/api/wallet/name-check"),
     }
 )
 
 
 def _guarded(dependant: Dependant) -> bool:
+    """`require_role` or, for a player's route, `require_wallet` (B-05 SD8, AC39)."""
     if getattr(dependant.call, REQUIRE_ROLE_MARKER, None):
+        return True
+    if getattr(dependant.call, REQUIRE_WALLET_MARKER, None):
         return True
     return any(_guarded(sub) for sub in dependant.dependencies)
 
@@ -91,7 +104,7 @@ def _keys(route: Any) -> Iterator[tuple[str, str]]:
 
 
 def unguarded_routes(routes: Iterable[BaseRoute]) -> list[str]:
-    """Every route with no `require_role` in its dependant tree and not on the allowlist."""
+    """Every route with neither guard in its dependant tree and not on the allowlist."""
     faults = []
     for route in flatten(routes):
         dependant = getattr(route, "dependant", None)
@@ -128,7 +141,10 @@ def test_the_walk_reaches_the_routes_that_matter(built_frontend: None) -> None:
 def test_the_allowlist_is_exactly_sd1_sd3_and_phase_4_sd8() -> None:
     """`/theme.css` was authorised by the human in Phase 4 SD8: the login page must
     paint themed too, and the tokens are not secret. `/assets/{asset_id:int}` was, in
-    the approved Phase 6 spec (SD29), for the same reason: uploaded theme images."""
+    the approved Phase 6 spec (SD29), for the same reason: uploaded theme images.
+    Wallet sign-up and the name check were, by the owner at the B-05 spec interview
+    (SD6, Q9): a player has no session, and both sit behind the sign-up code and a
+    per-IP limiter."""
     assert {path for _, path in PUBLIC_ROUTES} == {
         "/api/auth/login",
         "/healthz",
@@ -139,6 +155,8 @@ def test_the_allowlist_is_exactly_sd1_sd3_and_phase_4_sd8() -> None:
         "/redoc",
         "/theme.css",
         "/assets/{asset_id:int}",
+        "/api/wallet",
+        "/api/wallet/name-check",
     }
 
 
@@ -146,6 +164,11 @@ async def _nested(_: Annotated[Principal, Depends(require_role("display"))]) -> 
     """A dependency that itself requires a role. Module-level: under `from __future__ import
     annotations` FastAPI resolves `Depends(...)` targets from module globals only."""
     return 1
+
+
+async def _not_a_guard() -> str:
+    """A dependency that reads the wallet cookie but carries neither marker (AC39)."""
+    return "bb_wallet"
 
 
 def _fixture_app() -> FastAPI:
@@ -167,6 +190,12 @@ def _fixture_app() -> FastAPI:
     @guarded.get("/api/by-router")
     async def by_router() -> None: ...
 
+    @fixture.get("/api/wallet-guarded")
+    async def wallet_guarded(_: Annotated[WalletRow, Depends(require_wallet)]) -> None: ...
+
+    @fixture.delete("/api/wallet-open")
+    async def wallet_open(_: Annotated[str, Depends(_not_a_guard)]) -> None: ...
+
     @fixture.websocket("/ws-open")
     async def ws_open() -> None: ...
 
@@ -175,4 +204,8 @@ def _fixture_app() -> FastAPI:
 
 
 def test_the_detector_flags_an_unguarded_route_and_passes_guarded_ones() -> None:
-    assert unguarded_routes(_fixture_app().routes) == ["GET /api/open", "WS /ws-open"]
+    assert unguarded_routes(_fixture_app().routes) == [
+        "GET /api/open",
+        "DELETE /api/wallet-open",
+        "WS /ws-open",
+    ]

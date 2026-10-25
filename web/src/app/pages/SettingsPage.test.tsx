@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
-// `/settings` (Phase 6 T24: SD25, PD13): ten sections, in v1's sidebar order with
-// B-04's Profielen after Globale instellingen (SD10), each listed in the section
+// `/settings` (Phase 6 T24: SD25, PD13): eleven sections, in v1's sidebar order with
+// B-04's Profielen after Globale instellingen (SD10) and B-05's Wallets last (SD16),
+// each listed in the section
 // navigation. B-01 T11: exactly the 21 settings
 // explanations get an (i), section by section (AC8-AC10).
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
@@ -20,6 +21,7 @@ const SECTIONS = [
   'Min/Max/Startprijs',
   'Vraag/Aanbod',
   'Toegangssleutels',
+  'Wallets',
 ]
 
 /** The one decorative pixel icon before the name (B-02 SD4, AC7, AC8), or `null` without one. */
@@ -56,7 +58,7 @@ afterEach(() => {
 })
 
 describe('SettingsPage', () => {
-  it('lists the ten sections in the nav, each with its own heading', async () => {
+  it('lists the eleven sections in the nav, each with its own heading', async () => {
     render(<SettingsPage />)
     await act(async () => {})
 
@@ -173,6 +175,8 @@ const SERVED: Readonly<Record<string, unknown>> = {
   '/api/keys': [KEY],
   '/api/analytics/runs': [],
   '/api/profiles': [],
+  '/api/admin/wallets': { outstanding_cents: 0, per_borrel: [], wallets: [] },
+  '/api/admin/wallet-settings': { signup_code: null, unfunded_days: 30, inactive_months: 12 },
 }
 
 const NAMES = new Set(Object.values(explanations).map((entry) => entry.name))
@@ -216,6 +220,7 @@ describe('SettingsPage: the explanations (B-01)', () => {
     ['Kleurenschema', 0],
     ['Afbeeldingen', 0],
     ['Toegangssleutels', 0],
+    ['Wallets', 0],
   ])('%s has %i (i) with two drinks (AC10)', async (section, count) => {
     await openWithLiveRun()
     expect(info(screen.getByRole('region', { name: section }))).toHaveLength(count)
@@ -283,5 +288,22 @@ describe('SettingsPage: Profielen (B-04)', () => {
   it.each(PROFILE_FIELDS)('names %s for a 422 by its setting name (AC23)', (field) => {
     expect(settingNames[field]?.trim()).toBeTruthy()
     expect(settingNames[field]).not.toBe(field)
+  })
+})
+
+describe('SettingsPage: Wallets (B-05 SD16, AC34)', () => {
+  it('is the last section, anchored #wallets, with the wallet icon in heading and link', async () => {
+    await openWithLiveRun()
+    const nav = screen.getByRole('navigation', { name: 'Secties' })
+    const links = within(nav).getAllByRole('link')
+    const last = links[links.length - 1]
+    expect(last.textContent).toBe('Wallets')
+    expect(last.getAttribute('href')).toBe('#wallets')
+    const heading = screen.getByRole('heading', { level: 2, name: 'Wallets' })
+    expect(leadingIcon(heading)).not.toBeNull()
+    expect(leadingIcon(last)).not.toBeNull()
+    const region = screen.getByRole('region', { name: 'Wallets' })
+    expect(within(region).getByText('Aanmelden is gesloten.')).toBeTruthy()
+    expect(within(region).getByText('Nog geen wallets')).toBeTruthy()
   })
 })

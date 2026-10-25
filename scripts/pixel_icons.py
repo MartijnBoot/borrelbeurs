@@ -48,7 +48,7 @@ FAVICON_FILL: Final = "#60a5fa"
 FAVICON_OUTLINE: Final = "#070b16"
 
 # Grid -> (spot, what it replaces, the spot's colour) -- SD4, SD10, plan PD10; B-04 SD11
-# adds `floppy`, which replaces nothing.
+# adds `floppy` and B-05 SD25 `wallet`, which replace nothing.
 # A colour is a theme token, or `banner-crash` / `banner-bubble`: white on the
 # banner's own background (`styles/keyframes.css`).
 SPOTS: Final[dict[str, tuple[str, str, str]]] = {
@@ -69,6 +69,7 @@ SPOTS: Final[dict[str, tuple[str, str, str]]] = {
     "warning": ("MARKTCRASH", "⚠", "banner-crash"),
     "arrowUp": ("PRIJSBUBBEL", "▲", "banner-bubble"),
     "floppy": ("Instellingen \u203a Profielen", "(nieuw)", "--text"),
+    "wallet": ("Instellingen \u203a Wallets", "(nieuw)", "--text"),
     "stop": ("Sluit app", "⛔", "--text"),
     "rise": ("Prijs stijgt", "▲", "--muted"),
     "fall": ("Prijs daalt", "▼", "--muted"),

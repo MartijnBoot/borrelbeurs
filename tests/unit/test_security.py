@@ -38,7 +38,8 @@ def test_the_role_route_table_is_sd2s() -> None:
     assert ROLE_ROUTES == {
         "display": ("/koers",),
         "bar": ("/bar", "/manipulation"),
-        "admin": ("/", "/koers", "/bar", "/manipulation", "/settings", "/analytics"),
+        "admin": ("/", "/koers", "/bar", "/manipulation", "/settings", "/analytics", "/kassa"),
+        "kassa": ("/kassa",),
     }
 
 

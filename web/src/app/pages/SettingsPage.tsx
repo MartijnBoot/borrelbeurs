@@ -13,12 +13,13 @@ import {
   ThemeEditor,
   ThemeSection,
 } from '../../features/settings'
+import { WalletsSection } from '../../features/wallets'
 import { settingNames } from './settingNames'
 
 /**
  * `/settings` (Phase 6 SD25, PD13): v1's sidebar sections, in its order.
- * Composed here in the app layer, because `features/keys` and
- * `features/settings` may not import each other (sibling isolation).
+ * Composed here in the app layer, because `features/keys`, `features/wallets`
+ * and `features/settings` may not import each other (sibling isolation).
  */
 const SECTIONS: readonly SettingsSection[] = [
   { id: 'borrel', label: 'Borrel', content: <BorrelSection names={settingNames} /> },
@@ -46,6 +47,8 @@ const SECTIONS: readonly SettingsSection[] = [
   { id: 'prijzen', label: 'Min/Max/Startprijs', icon: 'padlock', content: <BoundsSection /> },
   { id: 'vraag', label: 'Vraag/Aanbod', icon: 'chart', content: <DemandSection /> },
   { id: 'sleutels', label: 'Toegangssleutels', icon: 'key', content: <KeysSection /> },
+  // B-05 SD16, SD25: after Toegangssleutels, with the approved `wallet` icon (T14).
+  { id: 'wallets', label: 'Wallets', icon: 'wallet', content: <WalletsSection /> },
 ]
 
 export function SettingsPage() {

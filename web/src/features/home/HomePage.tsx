@@ -34,6 +34,7 @@ const TILES = [
     'Open instellingen',
   ],
   ['/manipulation', 'Spel mechanica', 'Price jumps, nieuws, idle, reset.', 'Open spel mechanica'],
+  ['/kassa', 'Kassa', 'Wallets opwaarderen, terugdraaien en overzetten.', 'Open kassa'],
 ] as const
 
 const CurrentRun = z.object({
@@ -46,11 +47,12 @@ type CurrentRun = z.infer<typeof CurrentRun>
 const Health = z.object({ status: z.string(), last_tick_age_ms: z.number().nullable() })
 type Health = z.infer<typeof Health> | 'stale' | 'unreachable'
 
-const Connections = z.array(z.object({ role: z.enum(['display', 'bar', 'admin']) }))
+const Connections = z.array(z.object({ role: z.enum(['display', 'bar', 'admin', 'kassa']) }))
 
 const ROLES = [
   ['display', 'Scherm'],
   ['bar', 'Bar'],
+  ['kassa', 'Kassa'],
   ['admin', 'Beheer'],
 ] as const
 

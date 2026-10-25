@@ -13,6 +13,12 @@ for the same numbers).
 **Five runtime dependencies, ~120 kB gzipped:** React, React Router, Zustand,
 lightweight-charts v5, Zod — plus bundled `@fontsource` files.
 
+*Amended by B-05 (SD18):* **seven**, with `uqr` (the player page's QR code, drawn as SVG
+`<rect>`s from its matrix, never as markup) and `jsqr` (the kassa camera's decoder, imported
+on first use, so only the kassa page loads it). Both are pure JavaScript with no runtime
+dependency, bundled, with no request leaving the origin (ADR 0006). The owner approved them
+at exact versions (B-05 plan, § Dependency approval).
+
 Explicitly rejected, each for a reason:
 
 | Rejected | Why |
@@ -34,6 +40,7 @@ web/src/
     theme/        ThemeProvider, ThemeSection (preset picker); Phase 6 adds the editor.
                   The token manifest (24 tokens) is server-side, app/runtime/theme.py
     koers/  bar/  manipulation/  settings/  home/
+    player/  kassa/  wallets/   B-05: /speler, /kassa, and the Wallets section on /settings
   components/ui/  Button, Field, NumberField, Select, Switch, Marquee, NavMenu,
                   MobileSectionNav, ConfirmDialog, Toast, StatusDot
   lib/            http, ws transport, format (ONE euro formatter), useElementSize
@@ -52,7 +59,9 @@ feature; `exchange` may import nothing from `features/`. Everything else is sibl
 Without that rule, "shared core" quietly becomes "everything imports everything".
 
 Routes keep v1's paths — `/login`, `/`, `/koers`, `/bar`, `/manipulation`, `/settings` — so
-QR codes, bookmarks and muscle memory survive. **Role gating comes from the server:**
+QR codes, bookmarks and muscle memory survive. *B-05* adds `/kassa` inside the shell (the
+`kassa` role), `/speler` beside `/login` outside it (a player has no session and no WebSocket),
+and at `/`, without a crew session, the landing choice "Speler" or "Crew". **Role gating comes from the server:**
 `/auth/me` returns `allowed_routes`, and both `RequireRole` and `NavMenu` read that one list.
 In v1 the role map is duplicated in `backend/auth.py:25-29` and again in four page scripts.
 

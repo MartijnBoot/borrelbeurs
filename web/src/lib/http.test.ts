@@ -176,4 +176,27 @@ describe('request', () => {
     expect(error.details.version).toBe(42)
     expect(error.details.prices).toEqual(prices)
   })
+
+  it("keeps a 429's Retry-After in whole seconds (B-05 PD15)", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: 'rate_limited', message: 'slow down' } }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json', 'Retry-After': '42' },
+      }),
+    )
+    const error = await rejection(request('POST', '/api/wallet', { body: {}, schema: Me }))
+    expect(error.retryAfter).toBe(42)
+  })
+
+  it('has no Retry-After when the answer carries none or a date', async () => {
+    fetchMock.mockResolvedValueOnce(respond(409, { error: { code: 'x', message: 'y' } }))
+    expect((await rejection(request('GET', '/api/x', { schema: Me }))).retryAfter).toBeNull()
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: { code: 'x', message: 'y' } }), {
+        status: 429,
+        headers: { 'Retry-After': 'Wed, 21 Oct 2026 07:28:00 GMT' },
+      }),
+    )
+    expect((await rejection(request('GET', '/api/x', { schema: Me }))).retryAfter).toBeNull()
+  })
 })

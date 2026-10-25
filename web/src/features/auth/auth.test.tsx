@@ -9,19 +9,21 @@ import { AppRoutes } from '../../app/routes'
 // jsdom has no Web Animations API; the board's marquees are tested on their own.
 vi.mock('../../components/ui/Marquee', () => ({ Marquee: () => null }))
 
-type Role = 'display' | 'bar' | 'admin'
+type Role = 'display' | 'bar' | 'admin' | 'kassa'
 
 // Phase 3 SD2, as GET /api/auth/me returns it.
 const ALLOWED: Record<Role, string[]> = {
   display: ['/koers'],
   bar: ['/bar', '/manipulation'],
-  admin: ['/', '/koers', '/bar', '/manipulation', '/settings', '/analytics'],
+  admin: ['/', '/koers', '/bar', '/manipulation', '/settings', '/analytics', '/kassa'],
+  kassa: ['/kassa'],
 }
 
 const KEYS: Record<string, Role> = {
   'key-display': 'display',
   'key-bar': 'bar',
   'key-admin': 'admin',
+  'key-kassa': 'kassa',
 }
 
 let session: Role | null
@@ -65,6 +67,9 @@ beforeEach(() => {
         session = null
         return json(204)
       }
+      if (method === 'GET' && path === '/api/wallet') {
+        return json(401, { error: { code: 'no_wallet', message: 'no wallet' } })
+      }
       throw new Error(`unexpected ${method} ${path}`)
     }),
   )
@@ -103,6 +108,8 @@ describe('login (AC21)', () => {
     ['key-display', '/koers'],
     ['key-bar', '/bar'],
     ['key-admin', '/'],
+    // B-05 SD7, AC36.
+    ['key-kassa', '/kassa'],
   ])('%s lands on %s', async (key, landing) => {
     await open('/login')
     await logIn(key)
@@ -230,5 +237,59 @@ describe('routes (AC22, AC23, SD4, SD13)', () => {
     await act(async () => {})
     expect(session).toBeNull()
     expect(where()).toBe('/login')
+  })
+})
+
+describe('the landing and /speler (B-05 SD20, PD13)', () => {
+  const meCalls = () =>
+    vi.mocked(fetch).mock.calls.filter(([path]) => String(path) === '/api/auth/me').length
+
+  it('an anonymous / shows the landing choice and stays on /', async () => {
+    await open('/')
+    expect(screen.getByRole('link', { name: 'Speler' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Crew' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Menu/ })).toBeNull()
+    expect(where()).toBe('/')
+  })
+
+  it('"Crew" goes to login and a login lands as before', async () => {
+    await open('/')
+    fireEvent.click(screen.getByRole('link', { name: 'Crew' }))
+    await act(async () => {})
+    expect(where()).toBe('/login')
+    await logIn('key-admin')
+    expect(where()).toBe('/')
+    expect(screen.getByRole('button', { name: /Menu/ })).toBeTruthy()
+  })
+
+  it('an admin / is the home page inside the shell (AC1)', async () => {
+    session = 'admin'
+    await open('/')
+    expect(screen.getByRole('button', { name: /Menu/ })).toBeTruthy()
+    expect(screen.queryByRole('link', { name: 'Speler' })).toBeNull()
+  })
+
+  it('a display / still sees "Geen toegang" (AC1)', async () => {
+    session = 'display'
+    await open('/')
+    expect(screen.getByText('Geen toegang')).toBeTruthy()
+    expect(where()).toBe('/')
+  })
+
+  it('an anonymous /speler asks no /api/auth/me and stays on /speler', async () => {
+    await open('/speler')
+    expect(meCalls()).toBe(0)
+    expect(screen.getByRole('heading', { name: 'Wallet aanmaken' })).toBeTruthy()
+    expect(where()).toBe('/speler')
+  })
+
+  it('"Speler" on the landing opens sign-up without asking for a session again', async () => {
+    await open('/')
+    const before = meCalls()
+    fireEvent.click(screen.getByRole('link', { name: 'Speler' }))
+    await act(async () => {})
+    expect(where()).toBe('/speler')
+    expect(meCalls()).toBe(before)
+    expect(screen.getByRole('heading', { name: 'Wallet aanmaken' })).toBeTruthy()
   })
 })

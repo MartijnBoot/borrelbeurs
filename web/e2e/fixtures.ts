@@ -6,11 +6,13 @@
 import { test as base, expect, request as http, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 
-export type Role = 'display' | 'bar' | 'admin'
+export type Role = 'display' | 'bar' | 'admin' | 'kassa'
+/** The roles `serve.py` mints a key for; a kassa key is made by the flow that needs it. */
+export type MintedRole = Exclude<Role, 'kassa'>
 
 export interface Server {
   base_url: string
-  keys: Record<Role, string>
+  keys: Record<MintedRole, string>
 }
 
 export function server(): Server {
@@ -41,7 +43,7 @@ export async function storeTheme(preset: Preset): Promise<void> {
   }
 }
 
-export const test = base.extend<{ loginAs: (role: Role) => Promise<void> }>({
+export const test = base.extend<{ loginAs: (role: MintedRole) => Promise<void> }>({
   // `provide` is Playwright's `use`, renamed so react-hooks does not take it
   // for a hook.
   // eslint-disable-next-line no-empty-pattern -- Playwright requires the destructuring
