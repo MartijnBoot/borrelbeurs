@@ -35,7 +35,7 @@ from app.db.products import name_key
 from app.db.runs import current_run
 from app.runtime import wallet_codes
 
-EntryKind = Literal["topup", "reversal", "move_out", "move_in", "closing"]
+EntryKind = Literal["topup", "reversal", "move_out", "move_in", "closing", "payment", "refund"]
 
 CODE_ATTEMPTS: Final = 5
 DEFAULT_UNFUNDED_DAYS: Final = 30
@@ -409,6 +409,9 @@ async def delete_wallet(
 ) -> None:
     """Delete a live wallet (SD15): a `closing` entry for any balance left, then blank it.
 
+    A balance below zero is written off by a positive closing entry (B-06 SD8), so
+    admin's delete and the clean-up never refuse a wallet in debt.
+
     The closing entry carries the live run, as any entry does (PD10), unless
     `with_run` is false: the clean-up's carries none, so its one long transaction
     holds no lock on the run's row that a config write would wait for (/review
@@ -419,7 +422,7 @@ async def delete_wallet(
     if await lock_wallet(conn, wallet_id) is None:
         raise WalletNotFound(f"no wallet {wallet_id}")
     left = await balance(conn, wallet_id)
-    if left > 0:
+    if left != 0:
         await insert_entry(
             conn,
             wallet_id=wallet_id,

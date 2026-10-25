@@ -194,6 +194,26 @@ def test_a_reversal_past_zero_is_insufficient_balance(
     assert _count(settings, api_env) == 2
 
 
+def test_a_reversal_past_zero_is_refused_whatever_the_runs_limit(
+    live_run: int, kassa: TestClient, settings: Settings, api_env: str
+) -> None:
+    """B-06 AC29, SD8: a reversal of 1000 on a balance of 500 is still 409, with "Rood staan
+    tot" at its maximum on the live run."""
+    _sql(
+        settings,
+        api_env,
+        "UPDATE run SET credit_limit_cents = 5000 WHERE run_id = :r RETURNING 1",
+        r=live_run,
+    )
+    wallet = _wallet(settings, api_env)
+    topup = _entry(settings, api_env, wallet.wallet_id, 1000, run_id=live_run)
+    _entry(settings, api_env, wallet.wallet_id, -500, kind="payment", run_id=live_run)
+
+    assert _error(_reverse(kassa, topup)) == (409, "insufficient_balance")
+    assert _count(settings, api_env) == 2
+    assert _balance(settings, api_env, wallet.wallet_id) == 500
+
+
 def test_a_reversal_on_a_deleted_wallet_is_wallet_deleted(
     kassa: TestClient, settings: Settings, api_env: str
 ) -> None:
@@ -207,7 +227,9 @@ def test_a_reversal_on_a_deleted_wallet_is_wallet_deleted(
     assert _count(settings, api_env) == before
 
 
-@pytest.mark.parametrize("kind", ["reversal", "move_in", "move_out", "closing", "unknown"])
+@pytest.mark.parametrize(
+    "kind", ["reversal", "move_in", "move_out", "closing", "payment", "refund", "unknown"]
+)
 def test_only_a_top_up_is_reversible(
     kassa: TestClient, settings: Settings, api_env: str, kind: str
 ) -> None:
@@ -247,8 +269,18 @@ def test_only_a_top_up_is_reversible(
                 ),
             ).entry_id
         )
-    elif kind in {"move_out", "closing"}:
+    elif kind in {"move_out", "closing", "payment"}:
         entry_id = _entry(settings, api_env, wallet.wallet_id, -1000, kind=kind)  # type: ignore[arg-type]
+    elif kind == "refund":
+        payment = _entry(settings, api_env, wallet.wallet_id, -1000, kind="payment")
+        ((entry_id,),) = _sql(
+            settings,
+            api_env,
+            "INSERT INTO wallet_entry (wallet_id, kind, amount_cents, refunds_entry_id)"
+            " VALUES (:w, 'refund', 1000, :p) RETURNING entry_id",
+            w=wallet.wallet_id,
+            p=payment,
+        )
     before = _count(settings, api_env)
 
     assert _error(_reverse(kassa, entry_id)) == (404, "topup_not_found")
@@ -398,6 +430,39 @@ def test_a_move_carries_the_balance_and_the_name_and_deletes_the_old_wallet(
     page = kassa.get("/api/wallet")
     assert page.status_code == 200
     assert (page.json()["name"], page.json()["balance_cents"]) == ("Jan", 1500)
+
+
+def test_a_move_from_a_wallet_in_debt_carries_the_debt(
+    live_run: int, kassa: TestClient, settings: Settings, api_env: str
+) -> None:
+    """B-06 AC28, SD8: at -350 a move_out of +350 and a move_in of -350; the old row blank;
+    the new wallet's balance is -350 plus what it had."""
+    old = _wallet(settings, api_env, "Jan")
+    new = _wallet(settings, api_env, "Jan 2")
+    _entry(settings, api_env, old.wallet_id, 500)
+    _entry(settings, api_env, old.wallet_id, -850, kind="payment")
+    _entry(settings, api_env, new.wallet_id, 1000)
+
+    response = _move(kassa, new.wallet_id, old.wallet_id)
+
+    assert response.status_code == 201, response.text
+    assert response.json()["amount_cents"] == -350
+    assert _sql(
+        settings,
+        api_env,
+        "SELECT wallet_id, kind, amount_cents FROM wallet_entry"
+        " WHERE kind IN ('move_out', 'move_in') ORDER BY entry_id",
+    ) == [(old.wallet_id, "move_out", 350), (new.wallet_id, "move_in", -350)]
+    assert _sql(settings, api_env, "SELECT count(*) FROM wallet_entry WHERE kind = 'closing'") == [
+        (0,)
+    ]
+    assert _sql(
+        settings, api_env, "SELECT name FROM wallet WHERE wallet_id = :w", w=old.wallet_id
+    ) == [(None,)]
+    assert (
+        _balance(settings, api_env, old.wallet_id),
+        _balance(settings, api_env, new.wallet_id),
+    ) == (0, 650)
 
 
 def test_a_move_replay_returns_the_stored_entry(

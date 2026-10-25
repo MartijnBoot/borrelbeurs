@@ -240,6 +240,26 @@ def test_an_admin_delete_is_a_players_delete_with_the_key_on_the_closing_entry(
     assert _wallet(settings, api_env, "jan").name == "jan"
 
 
+def test_an_admin_delete_of_a_wallet_in_debt_writes_the_debt_off(
+    live_run: int, admin: TestClient, settings: Settings, api_env: str
+) -> None:
+    """B-06 AC27, SD8: at -350 a 204 and a closing of +350 with the live run and label."""
+    jan = _wallet(settings, api_env, "Jan")
+    _entry(settings, api_env, jan.wallet_id, 500, run_id=live_run)
+    _entry(settings, api_env, jan.wallet_id, -850, kind="payment", run_id=live_run)
+
+    response = admin.delete(f"/api/admin/wallets/{jan.wallet_id}")
+
+    assert response.status_code == 204
+    assert _sql(
+        settings,
+        api_env,
+        "SELECT kind, amount_cents, run_id, actor_label FROM wallet_entry WHERE kind = 'closing'",
+    ) == [("closing", 350, live_run, "Bestuur")]
+    assert _sql(settings, api_env, "SELECT sum(amount_cents) FROM wallet_entry") == [(0,)]
+    assert _sql(settings, api_env, "SELECT name FROM wallet") == [(None,)]
+
+
 def test_deleting_an_unknown_or_deleted_wallet_is_404(
     admin: TestClient, settings: Settings, api_env: str
 ) -> None:

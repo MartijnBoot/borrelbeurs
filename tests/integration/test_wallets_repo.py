@@ -257,6 +257,31 @@ def test_the_per_run_topups_are_unchanged_by_a_delete(
     assert _rows(settings, database_url, totals, r=run_id) == before == [(3500,)]
 
 
+def test_delete_of_a_wallet_in_debt_writes_the_debt_off(
+    settings: Settings, database_url: str
+) -> None:
+    """B-06 AC27, SD8: at -350 a `closing` of +350, the ledger sums to 0, the row blank."""
+    run_id = _live_run(settings, database_url)
+    wallet = _create(settings, database_url, "Jan")
+    _entry(settings, database_url, wallet.wallet_id, "topup", 500, run_id=run_id)
+    _entry(settings, database_url, wallet.wallet_id, "payment", -850, run_id=run_id)
+
+    _transaction(
+        settings,
+        database_url,
+        lambda conn: wallets.delete_wallet(conn, wallet.wallet_id, now_ms=NOW),
+    )
+
+    entries = _rows(
+        settings, database_url, "SELECT kind, amount_cents FROM wallet_entry ORDER BY entry_id"
+    )
+    assert entries == [("topup", 500), ("payment", -850), ("closing", 350)]
+    assert _balance(settings, database_url, wallet.wallet_id) == 0
+    assert _rows(settings, database_url, "SELECT name, deleted_at IS NOT NULL FROM wallet") == [
+        (None, True)
+    ]
+
+
 def test_delete_with_nothing_left_writes_no_entry(settings: Settings, database_url: str) -> None:
     wallet = _create(settings, database_url, "Jan")
 

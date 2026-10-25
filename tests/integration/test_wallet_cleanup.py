@@ -125,6 +125,32 @@ def test_a_sweep_closing_entry_carries_no_run(settings: Settings, database_url: 
     assert _run(settings, database_url, body) == [(None,)]
 
 
+def test_an_inactive_wallet_in_debt_is_swept_writing_the_debt_off(
+    settings: Settings, database_url: str
+) -> None:
+    """B-06 AC27, SD8: at -350 after the inactive period, a closing of +350 and no run."""
+
+    async def body(engine: AsyncEngine) -> tuple[Any, ...]:
+        debtor = await _wallet(engine, "Rood", T0 - 500 * DAY)
+        await _top_up(engine, debtor, 500, T0 - 400 * DAY)
+        async with engine.begin() as conn:
+            await wallets.insert_entry(
+                conn,
+                wallet_id=debtor.wallet_id,
+                kind="payment",
+                amount_cents=-850,
+                now_ms=T0 - 399 * DAY,
+            )
+        count = await sweep(engine, now_ms=T0)
+        closing = await _rows(
+            engine, "SELECT amount_cents, run_id FROM wallet_entry WHERE kind = 'closing'"
+        )
+        total = await _rows(engine, "SELECT sum(amount_cents) FROM wallet_entry")
+        return count, await _live_names(engine), closing, total
+
+    assert _run(settings, database_url, body) == (1, [], [(350, None)], [(0,)])
+
+
 def test_a_wallet_older_than_the_months_without_any_entry_goes_too(
     settings: Settings, database_url: str
 ) -> None:

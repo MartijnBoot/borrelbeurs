@@ -103,11 +103,24 @@ async def player_wallet(engine: AsyncEngine, wallet: WalletRow) -> PlayerWallet:
         return await _player(conn, wallet)
 
 
+class BalanceNegative(AppError):
+    """A player cannot delete a wallet in debt; only admin can write a debt off (B-06 SD8)."""
+
+    status_code = 409
+    code = "balance_negative"
+
+
 async def delete_own_wallet(engine: AsyncEngine, wallet_id: int, *, now_ms: int) -> None:
     """The player deletes their wallet (SD15). Gone meanwhile is `no_wallet`, as any
-    player route answers a deleted wallet's cookie (AC13)."""
+    player route answers a deleted wallet's cookie (AC13). A balance below zero is
+    `BalanceNegative`, nothing written (B-06 SD8, AC26): the wallet is locked first,
+    so a payment committing meanwhile is seen."""
     try:
         async with engine.begin() as conn:
+            if await wallets.lock_wallet(conn, wallet_id) is None:
+                raise WalletNotFound(f"no wallet {wallet_id}")
+            if await wallets.balance(conn, wallet_id) < 0:
+                raise BalanceNegative("this wallet is in debt; top it up at the kassa first")
             await wallets.delete_wallet(conn, wallet_id, now_ms=now_ms)
     except WalletNotFound:
         raise NoWallet("there is no wallet on this phone") from None
@@ -311,7 +324,8 @@ async def move(
     now_ms: int,
 ) -> Booked:
     """Move the whole balance and the name of `from_wallet_id` onto `wallet_id`, in one
-    transaction (SD11; AC26, AC27).
+    transaction (SD11; AC26, AC27). A debt moves too (B-06 SD8, AC28): only a zero
+    balance or the same wallet is `nothing_to_move`.
 
     Both wallets are locked in id order. The order inside is fixed (plan T8): the
     out and in entries, then the old wallet deleted, freeing its name, then the new
@@ -333,7 +347,7 @@ async def move(
         if target is None or source is None:
             raise WalletNotFound("one of the two wallets is deleted")
         amount = await wallets.balance(conn, from_wallet_id)
-        if amount <= 0:
+        if amount == 0:
             raise wallets.NothingToMove(f"{source.name} has no balance to move")
         run_id = await wallets.live_run_id(conn)
         out = await wallets.insert_entry(

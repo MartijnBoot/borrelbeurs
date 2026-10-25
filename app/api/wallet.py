@@ -144,6 +144,8 @@ async def delete_my_wallet(
     _: Annotated[None, Depends(refuse_while_draining)],
 ) -> None:
     """SD15: a closing entry for any balance left, the row blanked, the cookie cleared."""
+    # A wallet in debt is 409 `balance_negative`, raised before the cookie is touched
+    # (B-06 SD8, AC26); left out of the docstring so the OpenAPI schema is unchanged.
     await actions.delete_own_wallet(
         db_engine(request), wallet.wallet_id, now_ms=clock_of(request).wall_ms()
     )
