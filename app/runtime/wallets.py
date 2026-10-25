@@ -371,3 +371,47 @@ async def new_code(engine: AsyncEngine, wallet_id: int) -> WalletRow:
     """A new QR token and short code; the old ones stop working at once (SD14, AC28)."""
     async with engine.begin() as conn:
         return await wallets.replace_codes(conn, wallet_id)
+
+
+# --- admin (SD15, SD16) -------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Overview:
+    """Admin's Wallets section, one `REPEATABLE READ` snapshot so the totals and the list
+    agree, as `app.db.analytics.run_detail` reads."""
+
+    outstanding_cents: int
+    per_run: list[wallets.RunTopups]
+    wallets: list[wallets.ListedWallet]
+
+
+async def overview(engine: AsyncEngine) -> Overview:
+    async with engine.connect() as conn:
+        await conn.execution_options(isolation_level="REPEATABLE READ", postgresql_readonly=True)
+        async with conn.begin():
+            return Overview(
+                await wallets.outstanding_cents(conn),
+                await wallets.topups_per_run(conn),
+                await wallets.list_wallets(conn),
+            )
+
+
+async def delete(engine: AsyncEngine, wallet_id: int, *, actor: Actor, now_ms: int) -> None:
+    """Admin deletes a wallet, as a player does (SD15, AC30); the closing entry names the key."""
+    async with engine.begin() as conn:
+        await wallets.delete_wallet(
+            conn, wallet_id, now_ms=now_ms, actor_key_id=actor.key_id, actor_label=actor.label
+        )
+
+
+async def settings(engine: AsyncEngine) -> wallets.WalletSettingsRow:
+    async with engine.connect() as conn:
+        return await wallets.get_settings(conn)
+
+
+async def put_settings(
+    engine: AsyncEngine, value: wallets.WalletSettingsRow
+) -> wallets.WalletSettingsRow:
+    async with engine.begin() as conn:
+        return await wallets.put_settings(conn, value)

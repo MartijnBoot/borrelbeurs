@@ -63,6 +63,7 @@ from app.api.standby import StandbyGate
 from app.api.state import router as state_router
 from app.api.theme import theme_css_router, theme_router
 from app.api.wallet import router as wallet_router
+from app.api.wallets_admin import router as wallets_admin_router
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError, handle_app_error, handle_validation_error
 from app.core.logging import configure_logging
@@ -94,6 +95,7 @@ api_router.include_router(exports_router)
 api_router.include_router(profiles_router)
 api_router.include_router(wallet_router)
 api_router.include_router(kassa_router)
+api_router.include_router(wallets_admin_router)
 
 # `pnpm --dir web build` output (T6). Not built by every checkout -- a Python
 # test run has no reason to have run pnpm first -- so its absence only means

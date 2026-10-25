@@ -30,7 +30,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.core.errors import AppError
-from app.db.models import Wallet, WalletEntry, WalletSettings
+from app.db.models import Run, Wallet, WalletEntry, WalletSettings
 from app.db.products import name_key
 from app.db.runs import current_run
 from app.runtime import wallet_codes
@@ -535,3 +535,86 @@ async def search(
         key=lambda row: (row.short_code != short_code, row.name_key, row.wallet_id),
     )
     return [SearchRow(_wallet(row), int(row.balance), row.last_topup_at) for row in ordered]
+
+
+# --- admin's reads (SD16) ---------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ListedWallet:
+    """A wallet in admin's list. Last activity is its newest entry, or its creation when it
+    has none: the clean-up's rule (SD15, PD18)."""
+
+    wallet: WalletRow
+    balance_cents: int
+    last_activity_at: datetime
+
+
+@dataclass(frozen=True)
+class RunTopups:
+    """One borrel's top-ups net of their reversals (SD12, SD16). `run_id` `None` is the
+    entries with no run: none was live, or the run was deleted (PD2)."""
+
+    run_id: int | None
+    name: str | None
+    net_topup_cents: int
+
+
+async def list_wallets(conn: AsyncConnection) -> list[ListedWallet]:
+    """Every live wallet, by case-folded name (PD18)."""
+    rows = await conn.execute(
+        select(
+            *_WALLET,
+            Wallet.name_key,
+            func.coalesce(func.sum(WalletEntry.amount_cents), 0).label("balance"),
+            func.coalesce(func.max(WalletEntry.created_at), Wallet.created_at).label("active"),
+        )
+        .outerjoin(WalletEntry, WalletEntry.wallet_id == Wallet.wallet_id)
+        .where(Wallet.deleted_at.is_(None))
+        .group_by(Wallet.wallet_id)
+    )
+    ordered = sorted(rows, key=lambda row: (row.name_key, row.wallet_id))
+    return [ListedWallet(_wallet(row), int(row.balance), row.active) for row in ordered]
+
+
+async def outstanding_cents(conn: AsyncConnection) -> int:
+    """The sum of every live wallet's balance (SD16). A deleted wallet's ledger sums to 0."""
+    result = await conn.execute(
+        select(func.coalesce(func.sum(WalletEntry.amount_cents), 0))
+        .join(Wallet, Wallet.wallet_id == WalletEntry.wallet_id)
+        .where(Wallet.deleted_at.is_(None))
+    )
+    return int(result.scalar_one())
+
+
+async def topups_per_run(conn: AsyncConnection) -> list[RunTopups]:
+    """Top-ups net of reversals per run, newest borrel first (PD18); the entries without a
+    run last, only when they do not sum to zero (PD2 reading A).
+
+    A reversal carries its top-up's run (SD12), so a run's sum is already net. A closing
+    or move entry is no top-up and counts nowhere, so deleting a wallet changes no row
+    (AC32).
+    """
+    rows = (
+        await conn.execute(
+            select(
+                WalletEntry.run_id,
+                Run.name,
+                Run.started_at,
+                func.sum(WalletEntry.amount_cents).label("net"),
+            )
+            .outerjoin(Run, Run.run_id == WalletEntry.run_id)
+            .where(WalletEntry.kind.in_(("topup", "reversal")))
+            .group_by(WalletEntry.run_id, Run.name, Run.started_at)
+        )
+    ).all()
+    runs = sorted(
+        (row for row in rows if row.run_id is not None),
+        key=lambda row: (row.started_at, row.run_id),
+        reverse=True,
+    )
+    totals = [RunTopups(int(row.run_id), row.name, int(row.net)) for row in runs]
+    unrun = [int(row.net) for row in rows if row.run_id is None]
+    if unrun and unrun[0]:
+        totals.append(RunTopups(None, None, unrun[0]))
+    return totals

@@ -57,6 +57,12 @@ DRAINING_WRITES: Final[list[tuple[str, str, dict[str, Any] | None]]] = [
     ("POST", "/api/kassa/topups/999999/reversal", None),
     ("POST", "/api/kassa/wallets/999999/move", {"from_wallet_id": 999998}),
     ("POST", "/api/kassa/wallets/999999/new-code", None),
+    ("DELETE", "/api/admin/wallets/999999", None),
+    (
+        "PUT",
+        "/api/admin/wallet-settings",
+        {"signup_code": None, "unfunded_days": 30, "inactive_months": 12},
+    ),
 ]
 
 READS: Final = ("/api/state", "/api/news", "/api/auth/me", "/theme.css")

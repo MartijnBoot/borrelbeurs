@@ -797,6 +797,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/wallets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Wallets Overview */
+        get: operations["wallets_overview_api_admin_wallets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/wallets/{wallet_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Wallet */
+        delete: operations["delete_wallet_api_admin_wallets__wallet_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/wallet-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Wallet Settings */
+        get: operations["get_wallet_settings_api_admin_wallet_settings_get"];
+        /** Put Wallet Settings */
+        put: operations["put_wallet_settings_api_admin_wallet_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/theme.css": {
         parameters: {
             query?: never;
@@ -933,6 +985,18 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * BorrelTopups
+         * @description `run_id` and `name` are null on the row of entries without a run (PD2).
+         */
+        BorrelTopups: {
+            /** Run Id */
+            run_id: number | null;
+            /** Name */
+            name: string | null;
+            /** Net Topup Cents */
+            net_topup_cents: number;
         };
         /** CompareRowData */
         CompareRowData: {
@@ -1268,6 +1332,20 @@ export interface components {
             last_used_at: string | null;
             /** Revoked */
             revoked: boolean;
+        };
+        /** ListedWalletData */
+        ListedWalletData: {
+            /** Wallet Id */
+            wallet_id: number;
+            /** Name */
+            name: string;
+            /** Balance Cents */
+            balance_cents: number;
+            /**
+             * Last Activity At
+             * Format: date-time
+             */
+            last_activity_at: string;
         };
         /** LoadProfileRequest */
         LoadProfileRequest: {
@@ -1735,6 +1813,27 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * WalletSettingsData
+         * @description `signup_code` null is sign-up closed (SD6). A code is trimmed, and blank means null.
+         */
+        WalletSettingsData: {
+            /** Signup Code */
+            signup_code: string | null;
+            /** Unfunded Days */
+            unfunded_days: number;
+            /** Inactive Months */
+            inactive_months: number;
+        };
+        /** WalletsOverview */
+        WalletsOverview: {
+            /** Outstanding Cents */
+            outstanding_cents: number;
+            /** Per Borrel */
+            per_borrel: components["schemas"]["BorrelTopups"][];
+            /** Wallets */
+            wallets: components["schemas"]["ListedWalletData"][];
         };
     };
     responses: never;
@@ -3382,6 +3481,108 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NewCode"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    wallets_overview_api_admin_wallets_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletsOverview"];
+                };
+            };
+        };
+    };
+    delete_wallet_api_admin_wallets__wallet_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wallet_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_wallet_settings_api_admin_wallet_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletSettingsData"];
+                };
+            };
+        };
+    };
+    put_wallet_settings_api_admin_wallet_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WalletSettingsData"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WalletSettingsData"];
                 };
             };
             /** @description Validation Error */
