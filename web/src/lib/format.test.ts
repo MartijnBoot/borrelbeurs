@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { deltaParts, formatEuro, formatPercent, parseEuroCents } from './format'
+import { deltaParts, formatBalance, formatEuro, formatPercent, parseEuroCents } from './format'
 
 // Intl's nl-NL currency format separates the symbol with a no-break space.
 const NBSP = ' '
@@ -14,6 +14,21 @@ describe('formatEuro', () => {
     [-30, `€${NBSP}-0,30`],
   ])('formats %i cents as %s', (cents, text) => {
     expect(formatEuro(cents)).toBe(text)
+  })
+})
+
+// B-06 PD11: a balance below zero gets a leading U+2212 minus; formatEuro is unchanged.
+describe('formatBalance', () => {
+  it.each([
+    [-210, `\u2212€${NBSP}2,10`],
+    [0, `€${NBSP}0,00`],
+    [750, `€${NBSP}7,50`],
+  ])('formats %i cents as %s', (cents, text) => {
+    expect(formatBalance(cents)).toBe(text)
+  })
+
+  it('leaves formatEuro as the koers deltas need it', () => {
+    expect(formatEuro(-30)).toBe(`€${NBSP}-0,30`)
   })
 })
 

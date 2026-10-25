@@ -12,7 +12,7 @@ import { type FormEvent, useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Field } from '../../components/ui/Field'
-import { formatEuro } from '../../lib/format'
+import { formatBalance } from '../../lib/format'
 import { newIdempotencyKey } from '../../lib/idempotencyKey'
 import { formatDayMonth, formatDayMonthTime } from '../../lib/time'
 import { type FoundWallet, type KassaWallet, move, searchWallets } from './api'
@@ -22,7 +22,7 @@ import styles from './KassaPage.module.css'
 function moveQuestion(source: FoundWallet, target: KassaWallet): string {
   const created = formatDayMonth(Date.parse(source.created_at))
   return (
-    `${formatEuro(source.balance_cents)} en de naam '${source.name}' van ${source.name}` +
+    `${formatBalance(source.balance_cents)} en de naam '${source.name}' van ${source.name}` +
     ` (aangemaakt ${created}) naar ${target.name} overzetten?`
   )
 }
@@ -100,7 +100,7 @@ export function MoveDialog({
               <button type="button" disabled={busy} onClick={() => setChoice(wallet)}>
                 <strong>{wallet.name}</strong>
                 <span>aangemaakt {formatDayMonth(Date.parse(wallet.created_at))}</span>
-                <span>{formatEuro(wallet.balance_cents)}</span>
+                <span>{formatBalance(wallet.balance_cents)}</span>
                 <span>
                   {wallet.last_topup_at === null
                     ? 'nog niet opgewaardeerd'

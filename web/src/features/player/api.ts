@@ -49,6 +49,11 @@ export function isNoWallet(error: unknown): boolean {
   return error instanceof HttpError && error.status === 401
 }
 
+/** A 409 `balance_negative`: the wallet is in debt, so only admin can delete it (B-06 SD8). */
+export function isBalanceNegative(error: unknown): boolean {
+  return error instanceof HttpError && error.code === 'balance_negative'
+}
+
 /** The suggestions a 409 `name_taken` carries, or `null` for any other failure. */
 export function takenSuggestions(error: unknown): readonly string[] | null {
   if (!(error instanceof HttpError) || error.code !== 'name_taken') return null

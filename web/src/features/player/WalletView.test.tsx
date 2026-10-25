@@ -2,7 +2,7 @@
 // The player's wallet (B-05 SD21; AC9, AC29).
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { formatEuro } from '../../lib/format'
+import { formatBalance, formatEuro } from '../../lib/format'
 import { WalletView } from './WalletView'
 
 const WALLET = {
@@ -25,8 +25,10 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function show(onDeleted = vi.fn()) {
-  const view = render(<WalletView wallet={WALLET} onDeleted={onDeleted} />)
+function show(onDeleted = vi.fn(), balance = WALLET.balance_cents) {
+  const view = render(
+    <WalletView wallet={{ ...WALLET, balance_cents: balance }} onDeleted={onDeleted} />,
+  )
   return { onDeleted, view }
 }
 
@@ -53,6 +55,48 @@ describe('WalletView (AC9)', () => {
       'Wallet verwijderen',
     ])
     expect(view.container.textContent).toBe(texts.join(''))
+  })
+
+  it('shows a debt with its minus sign (B-06 SD19, AC25)', () => {
+    const { view } = show(vi.fn(), -210)
+    const texts = Array.from(view.container.querySelectorAll('h1, p, button')).map(
+      (node) => node.textContent,
+    )
+    expect(texts[1]).toBe(formatBalance(-210))
+    expect(texts[1]?.startsWith('\u2212')).toBe(true)
+  })
+})
+
+describe('deleting a wallet in debt (B-06 SD8, AC26, PD19)', () => {
+  it('says to top up first and sends nothing', () => {
+    const { onDeleted } = show(vi.fn(), -210)
+    fireEvent.click(screen.getByRole('button', { name: 'Wallet verwijderen' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('alert').textContent).toBe('Eerst aanvullen bij de kassa')
+    expect(fetch).not.toHaveBeenCalled()
+    expect(onDeleted).not.toHaveBeenCalled()
+  })
+
+  it('at exactly zero the confirm opens as before', () => {
+    show(vi.fn(), 0)
+    fireEvent.click(screen.getByRole('button', { name: 'Wallet verwijderen' }))
+    expect(screen.getByRole('dialog').textContent).toContain(
+      `Je saldo van ${formatEuro(0)} vervalt.`,
+    )
+  })
+
+  it('a 409 balance_negative (the balance fell meanwhile) shows the same text', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: { code: 'balance_negative', message: 'debt' } }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    const { onDeleted } = show()
+    confirmDelete()
+    await act(async () => {})
+    expect(onDeleted).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert').textContent).toBe('Eerst aanvullen bij de kassa')
   })
 })
 

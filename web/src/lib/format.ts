@@ -22,6 +22,15 @@ export function formatEuro(cents: number): string {
   return EUR.format(cents / 100)
 }
 
+/**
+ * A wallet balance (B-06 SD19, PD11): a debt as `−€ 2,10` with U+2212, else as
+ * `formatEuro`. Only a balance can be negative, so only a balance uses this;
+ * `formatEuro(-30)` stays `€ -0,30`, as the koers deltas spell it.
+ */
+export function formatBalance(cents: number): string {
+  return cents < 0 ? `\u2212${formatEuro(-cents)}` : formatEuro(cents)
+}
+
 /** A percentage, not a fraction: `12` → `"12,0%"`. */
 export function formatPercent(pct: number): string {
   return `${PERCENT.format(pct)}%`

@@ -20,7 +20,7 @@ import { Scanner } from '../../components/scanner/Scanner'
 import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Field } from '../../components/ui/Field'
-import { formatEuro } from '../../lib/format'
+import { formatBalance } from '../../lib/format'
 import { type KassaWallet, lookup, newCode, type Topup, topups, type WalletQuery } from './api'
 import { refusalText } from './errors'
 import styles from './KassaPage.module.css'
@@ -137,7 +137,7 @@ export function KassaPage() {
       {found !== null && (
         <section className={styles.card} aria-label={found.wallet.name}>
           <h2>{found.wallet.name}</h2>
-          <p className={styles.balance}>{formatEuro(found.wallet.balance_cents)}</p>
+          <p className={styles.balance}>{formatBalance(found.wallet.balance_cents)}</p>
           <TopUpPanel
             key={found.wallet.wallet_id}
             wallet={found.wallet}

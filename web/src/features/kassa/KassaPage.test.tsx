@@ -2,7 +2,7 @@
 // The kassa page (B-05 SD22; AC14, AC15): a typed code, the found wallet, a top-up.
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { formatEuro } from '../../lib/format'
+import { formatBalance, formatEuro } from '../../lib/format'
 import { KassaPage } from './KassaPage'
 
 vi.mock('../../components/scanner/decodeQr', () => ({ decode: vi.fn(async () => 'tok-scanned') }))
@@ -128,6 +128,15 @@ describe('KassaPage', () => {
       'listitem',
     )
     expect(rows.map((row) => row.textContent?.includes('teruggedraaid'))).toEqual([false, true])
+  })
+
+  it('shows a debt with its minus sign (B-06 SD19, AC25)', async () => {
+    balance = -210
+    render(<KassaPage />)
+    await find('K7Q4-M2XD')
+    const card = screen.getByRole('region', { name: 'Jan' })
+    expect(card.textContent).toContain(formatBalance(-210))
+    expect(card.textContent).toContain('\u2212€')
   })
 
   it('an unknown code is "Onbekende wallet" (AC14)', async () => {
