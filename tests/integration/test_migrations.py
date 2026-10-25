@@ -538,7 +538,7 @@ def test_0014_downgrade_refuses_while_a_payment_exists(
     assert alembic(empty_database, "upgrade", "head").returncode == 0
 
     async def payment(connection: AsyncConnection) -> None:
-        wallet_id = (
+        wallet_id: int = (
             await connection.execute(
                 text(
                     "INSERT INTO wallet (name, name_key, qr_token, short_code, cookie_hash) "
