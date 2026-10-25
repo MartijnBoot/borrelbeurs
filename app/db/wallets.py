@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Final, Literal
 
-from sqlalchemy import ColumnElement, Row, func, or_, select, update
+from sqlalchemy import ColumnElement, DateTime, Interval, Row, func, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -438,6 +438,60 @@ async def delete_wallet(
             deleted_at=at(now_ms),
         )
     )
+
+
+# --- the clean-up (SD15, PD11, PD19) ---------------------------------------------
+
+
+async def expired(
+    conn: AsyncConnection,
+    *,
+    now_ms: int,
+    settings: WalletSettingsRow,
+    among: list[int] | None = None,
+) -> list[int]:
+    """The live wallets the retention rules delete, in `wallet_id` order (PD19):
+
+    - no entry at all, and created more than `unfunded_days` days ago;
+    - the newest entry, or the creation without one, more than `inactive_months`
+      calendar months ago.
+
+    Only entries are activity: a visit to the player page is not (SD15).
+    """
+    now = literal(at(now_ms), DateTime(timezone=True))
+    unfunded_before = now - func.make_interval(0, 0, 0, settings.unfunded_days, type_=Interval)
+    inactive_before = now - func.make_interval(0, settings.inactive_months, type_=Interval)
+    newest = func.max(WalletEntry.created_at)
+    statement = (
+        select(Wallet.wallet_id)
+        .outerjoin(WalletEntry, WalletEntry.wallet_id == Wallet.wallet_id)
+        .where(Wallet.deleted_at.is_(None))
+        .group_by(Wallet.wallet_id)
+        .having(
+            or_(
+                (func.count(WalletEntry.entry_id) == 0) & (Wallet.created_at < unfunded_before),
+                func.coalesce(newest, Wallet.created_at) < inactive_before,
+            )
+        )
+        .order_by(Wallet.wallet_id)
+    )
+    if among is not None:
+        statement = statement.where(Wallet.wallet_id.in_(among))
+    return [int(wallet_id) for wallet_id in (await conn.execute(statement)).scalars()]
+
+
+async def lock_unlocked(conn: AsyncConnection, wallet_ids: list[int]) -> list[int]:
+    """Lock those of `wallet_ids` no other transaction holds, skipping the rest (PD11), so
+    a sweep never waits on a kassa action."""
+    if not wallet_ids:
+        return []
+    result = await conn.execute(
+        select(Wallet.wallet_id)
+        .where(Wallet.wallet_id.in_(wallet_ids), Wallet.deleted_at.is_(None))
+        .order_by(Wallet.wallet_id)
+        .with_for_update(skip_locked=True)
+    )
+    return [int(wallet_id) for wallet_id in result.scalars()]
 
 
 # --- settings -------------------------------------------------------------------

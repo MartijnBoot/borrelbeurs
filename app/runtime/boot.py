@@ -22,13 +22,14 @@ Startup, in this order, and nothing is served until the end:
    a wall clock behind its last commit raises the app clock to it (Phase 8 SD15);
 6. the hub and the publisher (the holder's sink);
 7. **interrupted exports** (Phase 7 PD9): every `queued` or `running` export a
-   stopped process left becomes `failed`, `onderbroken` (AC6);
-8. the ticker, the lock watchdog and the export worker, woken through
-   `app.state.export_wakeup`;
+   stopped process left becomes `failed`, `onderbroken` (AC6); then one wallet
+   clean-up sweep (B-05 SD15), whose failure is logged, not fatal;
+8. the ticker, the lock watchdog, the export worker, woken through
+   `app.state.export_wakeup`, and the daily wallet clean-up;
 9. ready.
 
 Shutdown (SD10): not ready, draining, the ticker finishes its slot, the
-watchdog and the export worker are cancelled (its build process is
+watchdog, the export worker and the clean-up are cancelled (its build process is
 terminated, not waited for), every socket is closed with 1012, the lock is released, the
 engines disposed. Nothing is written on the way out.
 """
@@ -66,6 +67,7 @@ from app.runtime.holder import DomainEvent, MarketHolder
 from app.runtime.rehydrate import RehydratedRun, rehydrate
 from app.runtime.theme import DEFAULT_PRESET, Theme, resolve
 from app.runtime.ticker import Ticker
+from app.runtime.wallet_cleanup import run_cleanup, sweep
 
 logger = logging.getLogger(__name__)
 
@@ -235,6 +237,13 @@ async def _boot(
         interrupted = await interrupt_unfinished(conn)
     if interrupted:
         logger.warning("exports_interrupted", extra={"count": interrupted})
+    try:
+        # B-05 SD15: the retention rules, once at boot; a failure waits for tomorrow's.
+        cleaned = await sweep(engine, now_ms=clock.wall_ms())
+    except Exception:
+        logger.exception("wallet_cleanup_failed")
+    else:
+        logger.info("wallet_cleanup", extra={"count": cleaned})
     export_wakeup = asyncio.Event()
 
     app.state.holder = holder
@@ -262,6 +271,11 @@ async def _boot(
     booted.tasks.append(
         asyncio.get_running_loop().create_task(
             run_worker(engine=engine, settings=settings, clock=clock, wakeup=export_wakeup)
+        )
+    )
+    booted.tasks.append(
+        asyncio.get_running_loop().create_task(
+            run_cleanup(engine=engine, clock=clock, draining=lambda: bool(app.state.draining))
         )
     )
     app.state.standby = False
