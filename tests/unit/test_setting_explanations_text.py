@@ -1,4 +1,4 @@
-"""The 39 explanations, pinned to the specs' tables (B-01 T3: SD3; AC7-AC9, AC12, AC13; PD1, PD2).
+"""The 41 explanations, pinned to their tables (B-01 T3: SD3; AC7-AC9, AC12, AC13; PD1, PD2).
 
 The spec is the fixture: its "The table" is parsed here, and the two JSON files
 the web renders must hold exactly its names and paragraphs. A word changed in
@@ -7,6 +7,10 @@ either place alone fails, so a change to a text is a change to the spec (SD3).
 B-03 (T3: SD10, SD11; AC14, AC16; PD2) adds E34-E39 from its own table, and
 amends E9 by one substitution applied here to B-01's row, which stays the
 record of what B-01 shipped.
+
+B-06 (T17: SD3; AC3; PD17) adds E40-E41, "Wallet verplicht" and "Rood staan tot".
+Its spec gives no text; the owner approved the wording in the B-06 plan's own
+"The table" at the audit, so that plan is the source here.
 """
 
 from __future__ import annotations
@@ -20,10 +24,11 @@ from typing import TypedDict, cast
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SPEC = REPO_ROOT / "docs" / "specs" / "phase-b-01-settings-explained.md"
 B03_SPEC = REPO_ROOT / "docs" / "specs" / "phase-b-03-brownian-settings.md"
+B06_PLAN = REPO_ROOT / "docs" / "plans" / "phase-b-06-wallet-payments.md"
 SETTINGS_JSON = REPO_ROOT / "web" / "src" / "features" / "settings" / "explanations.json"
 MANIPULATION_JSON = REPO_ROOT / "web" / "src" / "features" / "manipulation" / "explanations.json"
 
-SETTINGS_IDS = {f"E{n}" for n in (*range(1, 21), *range(33, 40))}
+SETTINGS_IDS = {f"E{n}" for n in (*range(1, 21), *range(33, 42))}
 MANIPULATION_IDS = {f"E{n}" for n in range(21, 33)}
 
 _ROW = re.compile(r"^\*\*(E\d+) — ")
@@ -104,7 +109,8 @@ def _amended(rows: dict[str, Row]) -> dict[str, Row]:
 SPEC_ROWS = parse_spec_table(SPEC.read_text(encoding="utf-8"))
 B03_TEXT = B03_SPEC.read_text(encoding="utf-8")
 B03_ROWS = parse_spec_table(B03_TEXT)
-EXPECTED_ROWS = {**_amended(SPEC_ROWS), **B03_ROWS}
+B06_ROWS = parse_spec_table(B06_PLAN.read_text(encoding="utf-8"))
+EXPECTED_ROWS = {**_amended(SPEC_ROWS), **B03_ROWS, **B06_ROWS}
 SETTINGS = _load(SETTINGS_JSON)
 MANIPULATION = _load(MANIPULATION_JSON)
 
@@ -131,6 +137,13 @@ def test_the_b03_table_has_e34_to_e39_each_a_field_row() -> None:
     ]
 
 
+def test_the_b06_table_has_e40_and_e41_each_a_field_row() -> None:
+    """B-06 PD17: one row per run column, keyed by its field."""
+    assert list(B06_ROWS) == ["E40", "E41"]
+    assert [row.field for row in B06_ROWS.values()] == ["wallet_required", "credit_limit_cents"]
+    assert [row.name for row in B06_ROWS.values()] == ["Wallet verplicht", "Rood staan tot (€)"]
+
+
 def test_e9_s_amendment_applies_once_and_b03_states_it() -> None:
     """B-03 SD11, AC16: a later edit to B-01's E9 sentence must fail here, not pass silently."""
     assert SPEC_ROWS["E9"].paragraphs[0].count(E9_OLD) == 1, "B-03 SD11 no longer applies"
@@ -140,7 +153,8 @@ def test_e9_s_amendment_applies_once_and_b03_states_it() -> None:
 
 
 def test_each_feature_holds_its_own_rows() -> None:
-    """PD2: settings holds E1-E20, E33 and B-03's E34-E39, manipulation E21-E32."""
+    """PD2: settings holds E1-E20, E33, B-03's E34-E39 and B-06's E40-E41; manipulation
+    E21-E32."""
     assert {entry["id"] for entry in SETTINGS.values()} == SETTINGS_IDS
     assert {entry["id"] for entry in MANIPULATION.values()} == MANIPULATION_IDS
     assert len(SETTINGS) == len(SETTINGS_IDS)

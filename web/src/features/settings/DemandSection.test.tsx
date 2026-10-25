@@ -26,7 +26,14 @@ const DRINK = {
 
 const CONFIG = {
   revision: 3,
-  run: { run_id: 7, name: 'Vrijmibo', status: 'live', candle_interval_s: 60 },
+  run: {
+    run_id: 7,
+    name: 'Vrijmibo',
+    status: 'live',
+    candle_interval_s: 60,
+    wallet_required: true,
+    credit_limit_cents: 0,
+  },
   params: {
     step_quant: 0.1,
     eta: 0.6,
