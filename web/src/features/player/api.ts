@@ -31,6 +31,11 @@ export function signUp(name: string, code: string): Promise<Wallet> {
   return request('POST', '/api/wallet', { body: { name, code }, schema: Wallet })
 }
 
+/** SD15: the closing entry and the cleared cookie are the server's. */
+export async function deleteWallet(): Promise<void> {
+  await request('DELETE', '/api/wallet', { schema: z.unknown() })
+}
+
 /** `null` when `name` is free; else the server's free suggestions (SD3, AC4). */
 export async function nameCheck(name: string, code: string): Promise<readonly string[] | null> {
   const checked = await request('POST', '/api/wallet/name-check', {

@@ -64,6 +64,29 @@ describe('PlayerPage', () => {
     expect(screen.getByRole('heading', { name: 'Piet' })).toBeTruthy()
   })
 
+  it('a refresh shows a served name change and a new code (AC26, AC28)', async () => {
+    await open()
+    answers = [() => json(200, { ...WALLET, name: 'Jan 2', short_code: 'AAAA-BBBB' })]
+    await act(async () => window.dispatchEvent(new Event('focus')))
+    expect(screen.getByRole('heading', { name: 'Jan 2' })).toBeTruthy()
+    expect(screen.getByText('AAAA-BBBB')).toBeTruthy()
+  })
+
+  it('a 401 on a refresh shows sign-up (AC13)', async () => {
+    await open()
+    answers = [noWallet]
+    await act(async () => window.dispatchEvent(new Event('focus')))
+    expect(screen.getByRole('heading', { name: 'Wallet aanmaken' })).toBeTruthy()
+  })
+
+  it('a failed refresh keeps the wallet shown', async () => {
+    await open()
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError('offline'))
+    await act(async () => window.dispatchEvent(new Event('focus')))
+    expect(screen.getByRole('heading', { name: 'Jan' })).toBeTruthy()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('a network failure offers a retry', async () => {
     vi.mocked(fetch).mockRejectedValueOnce(new TypeError('offline'))
     await open()

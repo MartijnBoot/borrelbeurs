@@ -100,3 +100,44 @@
     padding: 16px;
   }
 }
+
+.balance {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* Black on white whatever the theme (AC9): a scanner needs the contrast. */
+.qr {
+  display: block;
+  width: 240px;
+  height: 240px;
+  margin: 0 auto;
+  background: #fff;
+}
+
+.code {
+  margin: 0;
+  font-family: ui-monospace, monospace;
+  font-size: 24px;
+  letter-spacing: 0.1em;
+  text-align: center;
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+.danger {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--danger);
+  background: transparent;
+  color: var(--danger);
+  font: inherit;
+  cursor: pointer;
+}
