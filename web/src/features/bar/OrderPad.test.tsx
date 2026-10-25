@@ -30,6 +30,8 @@ const RUN = {
   tick_interval_ms: 1000,
   candle_interval_ms: 60000,
   quote_grace_versions: 2,
+  wallet_required: false,
+  credit_limit_cents: 0,
 }
 const STALE_TEXT = 'Geen actuele prijzen — wacht op verbinding'
 

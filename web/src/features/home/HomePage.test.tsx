@@ -163,6 +163,8 @@ describe('a closed run (Phase 7 T17: SD2, PD5)', () => {
               tick_interval_ms: 1000,
               candle_interval_ms: 60000,
               quote_grace_versions: 2,
+              wallet_required: false,
+              credit_limit_cents: 0,
             },
             drinks: [],
             params: {},

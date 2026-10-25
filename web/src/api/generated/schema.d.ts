@@ -1039,6 +1039,10 @@ export interface components {
             name?: string | null;
             /** Candle Interval S */
             candle_interval_s?: number | null;
+            /** Wallet Required */
+            wallet_required?: boolean | null;
+            /** Credit Limit Cents */
+            credit_limit_cents?: number | null;
             params?: components["schemas"]["ParamsPatch"] | null;
         };
         /**
@@ -1640,6 +1644,10 @@ export interface components {
             status: "draft" | "live" | "ended";
             /** Candle Interval S */
             candle_interval_s: number;
+            /** Wallet Required */
+            wallet_required: boolean;
+            /** Credit Limit Cents */
+            credit_limit_cents: number;
         };
         /** RunInfo */
         RunInfo: {
@@ -1651,6 +1659,10 @@ export interface components {
             candle_interval_ms: number;
             /** Quote Grace Versions */
             quote_grace_versions: number;
+            /** Wallet Required */
+            wallet_required: boolean;
+            /** Credit Limit Cents */
+            credit_limit_cents: number;
         };
         /** RunSummaryData */
         RunSummaryData: {

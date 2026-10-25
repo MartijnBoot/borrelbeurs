@@ -151,6 +151,8 @@ class ConfigChanged:
     tick_interval_ms: int
     candle_interval_ms: int
     quote_grace_versions: int
+    wallet_required: bool
+    credit_limit_cents: int
     drinks: tuple[tuple[int, str, bool], ...]
     params: Params
 
@@ -188,6 +190,10 @@ class MarketView:
     market_events: tuple[ActiveEvent, ...]
     quote_grace_versions: int
     candle_interval_ms: int
+    # "Wallet verplicht" and "Rood staan tot" (B-06 SD1, SD2): changed only under the
+    # lock, so an order is judged by them as they stand when it arrives (PD4).
+    wallet_required: bool
+    credit_limit_cents: int
 
 
 @dataclass(frozen=True)
@@ -247,6 +253,8 @@ class MarketHolder:
             market_events=run.market_events,
             quote_grace_versions=run.quote_grace_versions,
             candle_interval_ms=run.candle_interval_ms,
+            wallet_required=run.wallet_required,
+            credit_limit_cents=run.credit_limit_cents,
         )
 
     @classmethod
@@ -285,6 +293,8 @@ class MarketHolder:
             market_events=(),
             quote_grace_versions=0,
             candle_interval_ms=60_000,
+            wallet_required=False,
+            credit_limit_cents=0,
         )
 
     @classmethod
@@ -362,6 +372,14 @@ class MarketHolder:
     @property
     def candle_interval_ms(self) -> int:
         return self._view.candle_interval_ms
+
+    @property
+    def wallet_required(self) -> bool:
+        return self._view.wallet_required
+
+    @property
+    def credit_limit_cents(self) -> int:
+        return self._view.credit_limit_cents
 
     @property
     def ring(self) -> tuple[TickEntry, ...]:

@@ -80,6 +80,8 @@ NoiseClip = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=1, le=20
 DrinkIds = list[StrictInt]
 RunName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 CandleSeconds = Annotated[int, Field(strict=True, ge=5, le=3600, multiple_of=5)]
+# B-06 SD2: "Rood staan tot", €0,00 to €50,00 in €0,50 steps.
+CreditLimitCents = Annotated[int, Field(strict=True, ge=0, le=5000, multiple_of=50)]
 
 
 class ParamsPatch(BaseModel):
@@ -121,6 +123,9 @@ class ConfigPatch(BaseModel):
 
     name: RunName | None = None
     candle_interval_s: CandleSeconds | None = None
+    # B-06 SD1-SD3: run columns, not engine params, so never part of a profile.
+    wallet_required: StrictBool | None = None
+    credit_limit_cents: CreditLimitCents | None = None
     params: ParamsPatch | None = None
 
     _no_null = field_validator("*", mode="before")(_not_null)

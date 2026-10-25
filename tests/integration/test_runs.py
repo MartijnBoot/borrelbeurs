@@ -705,3 +705,71 @@ def test_draft_exists_comes_before_the_profile_is_read(
             await create_run(engine, name="Nieuw", author="a", profile_id=999_999)
 
     _with_engine(settings, database_url, body)
+
+
+# B-06 T2 (AC1, AC3; SD1-SD3, PD1): "Wallet verplicht" and "Rood staan tot" on create.
+
+
+async def _wallet_columns(engine: AsyncEngine, run_id: int) -> tuple[bool, int, bool, int]:
+    """The run's switch and limit, and revision 1's copy of both."""
+    async with engine.connect() as conn:
+        run = (
+            await conn.execute(
+                text("SELECT wallet_required, credit_limit_cents FROM run WHERE run_id = :r"),
+                {"r": run_id},
+            )
+        ).one()
+        config: dict[str, Any]
+        (config,) = (
+            await conn.execute(
+                text("SELECT config FROM run_config_revision WHERE run_id = :r"), {"r": run_id}
+            )
+        ).scalars()
+    return (
+        bool(run.wallet_required),
+        int(run.credit_limit_cents),
+        config["wallet_required"],
+        config["credit_limit_cents"],
+    )
+
+
+@pytest.mark.parametrize("source", ["plain", "profile", "copy"])
+def test_a_created_run_has_the_switch_on_and_no_credit(
+    settings: Settings, database_url: str, source: str
+) -> None:
+    """AC1, AC3: on and 0 from a plain create, a profile, or a copy of a run off at 250."""
+
+    async def body(engine: AsyncEngine) -> tuple[bool, int, bool, int]:
+        async with engine.begin() as conn:
+            old = await create_draft_run(conn, name="Vorige", params=SOURCE, run_seed=1)
+            await _bier(conn, old)
+            await conn.execute(
+                text("UPDATE run SET credit_limit_cents = 250 WHERE run_id = :r"), {"r": old}
+            )
+        await _end(engine, old)
+        extra: dict[str, int] = {}
+        if source == "profile":
+            extra["profile_id"] = await _profile(engine)
+        if source == "copy":
+            extra["copy_from_run_id"] = old
+        return await _wallet_columns(
+            engine, await create_run(engine, name="Nieuw", author="a", **extra)
+        )
+
+    assert _with_engine(settings, database_url, body) == (True, 0, True, 0)
+
+
+def test_a_draft_made_directly_has_the_switch_off(settings: Settings, database_url: str) -> None:
+    """PD1 A: only `create_run` turns it on; `create_draft_run` keeps the column default."""
+
+    async def body(connection: AsyncConnection) -> tuple[Any, ...]:
+        run_id = await _draft(connection)
+        row = (
+            await connection.execute(
+                text("SELECT wallet_required, credit_limit_cents FROM run WHERE run_id = :r"),
+                {"r": run_id},
+            )
+        ).one()
+        return tuple(row)
+
+    assert _transaction(settings, database_url, body) == (False, 0)

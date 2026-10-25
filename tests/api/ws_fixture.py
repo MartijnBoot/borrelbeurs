@@ -247,6 +247,8 @@ async def _publish_config(client: TestClient) -> None:
         tick_interval_ms=state.tick_interval_ms,
         candle_interval_ms=holder.candle_interval_ms,
         quote_grace_versions=holder.quote_grace_versions,
+        wallet_required=holder.wallet_required,
+        credit_limit_cents=holder.credit_limit_cents,
         drinks=tuple(
             (d, name, name != "Fris")
             for d, name in zip(holder.drink_ids, holder.spec.names, strict=True)

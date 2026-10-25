@@ -371,6 +371,27 @@ def test_a_load_replaces_the_22_and_nothing_else(
     ]
 
 
+def test_neither_the_switch_nor_the_limit_travels_in_a_profile(
+    stocked: int, login: Login, settings: Settings, api_env: str
+) -> None:
+    """B-06 AC3, SD3: a profile saved from a run off at 250 holds neither, and loading it
+    onto a run on at 0 leaves both as they were."""
+    admin = login("admin")
+    off = {"wallet_required": False, "credit_limit_cents": 250}
+    assert admin.patch(f"/api/runs/{stocked}/config", json=off).status_code == 200
+    profile_id = _wild_profile(admin, stocked)
+    (stored,) = _stored(settings, api_env)
+    on = {"wallet_required": True, "credit_limit_cents": 0}
+    assert admin.patch(f"/api/runs/{stocked}/config", json=on).status_code == 200
+
+    response = _load(admin, stocked, profile_id)
+
+    assert response.status_code == 200, response.text
+    assert not {"wallet_required", "credit_limit_cents"} & set(stored["settings"])
+    run = admin.get(f"/api/runs/{stocked}/config").json()["run"]
+    assert (run["wallet_required"], run["credit_limit_cents"]) == (True, 0)
+
+
 def test_loading_an_equal_profile_appends_no_revision(
     stocked: int, login: Login, settings: Settings, api_env: str
 ) -> None:

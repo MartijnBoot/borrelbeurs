@@ -45,6 +45,7 @@ from pydantic import (
     ConfigDict,
     Field,
     JsonValue,
+    StrictBool,
     StrictInt,
     TypeAdapter,
     field_validator,
@@ -101,6 +102,9 @@ class RunInfo(_Closed):
     tick_interval_ms: StrictInt
     candle_interval_ms: StrictInt
     quote_grace_versions: NonNegative
+    # B-06 SD17: the bar follows "Wallet verplicht" and "Rood staan tot" live.
+    wallet_required: StrictBool
+    credit_limit_cents: NonNegative
 
 
 class ConfigRunInfo(RunInfo):

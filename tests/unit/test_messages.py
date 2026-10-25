@@ -234,7 +234,12 @@ def test_every_server_type_round_trips() -> None:
         "snapshot": Snapshot(
             version=7,
             run=RunInfo(
-                run_id=1, tick_interval_ms=1000, candle_interval_ms=60_000, quote_grace_versions=2
+                run_id=1,
+                tick_interval_ms=1000,
+                candle_interval_ms=60_000,
+                quote_grace_versions=2,
+                wallet_required=True,
+                credit_limit_cents=250,
             ),
             drinks=[DrinkInfo(drink_id=101, name="Bier", active=True)],
             params=params_to_json(Params()),
@@ -272,6 +277,8 @@ def test_every_server_type_round_trips() -> None:
                 tick_interval_ms=1000,
                 candle_interval_ms=60_000,
                 quote_grace_versions=2,
+                wallet_required=False,
+                credit_limit_cents=0,
             ),
             drinks=[
                 DrinkInfo(drink_id=101, name="Bier", active=True),

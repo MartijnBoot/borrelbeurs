@@ -60,6 +60,8 @@ class RehydratedRun:
     market_events: tuple[ActiveEvent, ...]
     quote_grace_versions: int
     candle_interval_ms: int
+    wallet_required: bool
+    credit_limit_cents: int
 
 
 async def rehydrate(
@@ -77,6 +79,8 @@ async def rehydrate(
                         Run.params,
                         Run.quote_grace_versions,
                         Run.candle_interval_ms,
+                        Run.wallet_required,
+                        Run.credit_limit_cents,
                     ).where(Run.status == "live")
                 )
             ).one_or_none()
@@ -147,4 +151,6 @@ async def rehydrate(
         market_events=events,
         quote_grace_versions=int(run.quote_grace_versions),
         candle_interval_ms=int(run.candle_interval_ms),
+        wallet_required=bool(run.wallet_required),
+        credit_limit_cents=int(run.credit_limit_cents),
     )

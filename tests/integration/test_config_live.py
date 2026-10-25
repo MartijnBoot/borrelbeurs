@@ -569,3 +569,36 @@ def test_y_is_an_array_the_bitwise_check_can_see() -> None:
     """Anti-vacuity: `tobytes` differs when any element does."""
     a = np.array([0.1, 0.2])
     assert a.tobytes() != np.array([0.1, 0.2000000000000001]).tobytes()
+
+
+def test_a_live_switch_or_limit_change_is_one_transition_into_the_view(
+    settings: Settings, database_url: str
+) -> None:
+    """B-06 PD4, SD1, SD17: version + 1, one config frame carrying both, `y` unchanged, and
+    the holder's view holds the new values, so the next order is judged by them."""
+
+    async def scenario() -> None:
+        async with _live(settings, database_url) as runtime:
+            state = runtime.holder.state
+            assert state is not None
+            y, version = state.y.tobytes(), state.version
+            assert runtime.holder.view.wallet_required is False
+            frames = len(await runtime.frames("config"))
+
+            await runtime.patch({"wallet_required": True, "credit_limit_cents": 250})
+
+            after = runtime.holder.state
+            assert after is not None
+            assert after.version == version + 1
+            assert after.y.tobytes() == y
+            view = runtime.holder.view
+            assert (view.wallet_required, view.credit_limit_cents) == (True, 250)
+            config = await runtime.frames("config")
+            assert len(config) == frames + 1
+            assert config[-1]["data"]["run"]["wallet_required"] is True
+            assert config[-1]["data"]["run"]["credit_limit_cents"] == 250
+            data = snapshot(runtime.holder, tick_interval_ms=1_000)
+            assert data is not None
+            assert (data.run.wallet_required, data.run.credit_limit_cents) == (True, 250)
+
+    asyncio.run(scenario())

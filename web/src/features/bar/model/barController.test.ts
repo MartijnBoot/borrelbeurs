@@ -26,6 +26,8 @@ const RUN = {
   tick_interval_ms: 1000,
   candle_interval_ms: 60000,
   quote_grace_versions: 2,
+  wallet_required: false,
+  credit_limit_cents: 0,
 }
 
 function envelope<T extends ServerMessage['type']>(
