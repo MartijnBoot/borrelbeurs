@@ -837,7 +837,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "display" | "bar" | "admin";
+            role: "display" | "bar" | "admin" | "kassa";
             /** Label */
             label: string;
         };
@@ -1057,7 +1057,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "display" | "bar" | "admin";
+            role: "display" | "bar" | "admin" | "kassa";
             /**
              * Created At
              * Format: date-time
@@ -1100,7 +1100,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "display" | "bar" | "admin";
+            role: "display" | "bar" | "admin" | "kassa";
             /** Label */
             label: string;
             /** Allowed Routes */

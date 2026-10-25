@@ -19,7 +19,10 @@ from app.cli.keys import main as keys_main
 from tests.api.conftest import MintKey
 from tests.meta.test_route_authorization import PUBLIC_ROUTES, flatten
 
-ALL: Final = frozenset({"display", "bar", "admin"})
+# B-05 SD7 (plan PD1 reading A): a kassa session keeps its own routes and the market
+# feed; every other route below is 403 for it (AC36).
+ALL: Final = frozenset({"display", "bar", "admin", "kassa"})
+MARKET: Final = frozenset({"display", "bar", "admin"})
 WRITERS: Final = frozenset({"bar", "admin"})
 ADMIN: Final = frozenset({"admin"})
 
@@ -28,7 +31,7 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     ("POST", "/api/auth/logout"): ALL,
     ("GET", "/api/auth/me"): ALL,
     ("GET", "/api/state"): ALL,
-    ("GET", "/api/news"): ALL,
+    ("GET", "/api/news"): MARKET,
     ("WS", "/ws"): ALL,
     ("POST", "/api/orders"): WRITERS,
     ("POST", "/api/news"): WRITERS,
@@ -79,7 +82,7 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     ("POST", "/api/runs/{run_id}/profile"): ADMIN,
 }
 
-ACTORS: Final = ("anonymous", "revoked", "display", "bar", "admin")
+ACTORS: Final = ("anonymous", "revoked", "display", "bar", "admin", "kassa")
 
 
 def _served_routes(client: TestClient) -> set[tuple[str, str]]:

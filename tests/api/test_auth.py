@@ -66,7 +66,9 @@ def test_login_sets_a_secure_httponly_samesite_strict_cookie(
     [
         ("display", ["/koers"]),
         ("bar", ["/bar", "/manipulation"]),
-        ("admin", ["/", "/koers", "/bar", "/manipulation", "/settings", "/analytics"]),
+        ("admin", ["/", "/koers", "/bar", "/manipulation", "/settings", "/analytics", "/kassa"]),
+        # B-05 SD7, AC36.
+        ("kassa", ["/kassa"]),
     ],
 )
 def test_me_returns_sd2s_routes_per_role(login: Login, role: str, routes: list[str]) -> None:

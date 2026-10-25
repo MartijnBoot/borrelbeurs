@@ -29,7 +29,11 @@ from app.runtime.clock import Clock
 
 SESSION_COOKIE: Final = "bb_session"
 REQUIRE_ROLE_MARKER: Final = "__require_role__"
-ALL_ROLES: Final[tuple[Role, ...]] = ("display", "bar", "admin")
+ALL_ROLES: Final[tuple[Role, ...]] = ("display", "bar", "admin", "kassa")
+# The roles that read the market's own routes (`GET /api/news`). `kassa` (B-05 SD7)
+# keeps only the session's routes and the market feed (`/ws`, `GET /api/state`,
+# plan PD1 reading A), so widening `ALL_ROLES` grants it nothing else.
+MARKET_ROLES: Final[tuple[Role, ...]] = ("display", "bar", "admin")
 
 
 class Unauthenticated(AppError):
