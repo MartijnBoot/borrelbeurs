@@ -11,15 +11,18 @@
  * With `confirmText` (Phase 7 PD18) the dialog also asks the user to type that
  * text: focus starts on the input, the trap cycles input, confirm, cancel, and
  * confirm stays disabled until the trimmed input equals it exactly.
+ *
+ * `message` may be a node (B-06 PD22), so a question can carry a list; a string
+ * renders in a `<p>` as before, a node in a `<div>`.
  */
-import { useEffect, useId, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react'
 import { Button } from './Button'
 import { Field } from './Field'
 import styles from './ConfirmDialog.module.css'
 
 export interface ConfirmDialogProps {
   open: boolean
-  message: string
+  message: ReactNode
   confirmLabel: string
   cancelLabel: string
   /** When set, confirm is enabled only once this text has been typed. */
@@ -101,9 +104,15 @@ function OpenDialog({
         aria-labelledby={messageId}
         className={styles.dialog}
       >
-        <p id={messageId} className={styles.message}>
-          {message}
-        </p>
+        {typeof message === 'string' ? (
+          <p id={messageId} className={styles.message}>
+            {message}
+          </p>
+        ) : (
+          <div id={messageId} className={styles.message}>
+            {message}
+          </div>
+        )}
         {confirmText !== undefined && (
           <Field id={inputId} label={`Typ de naam '${confirmText}' om te bevestigen`}>
             <input

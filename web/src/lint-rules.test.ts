@@ -182,6 +182,22 @@ describe('revenue arithmetic', () => {
     )
   })
 
+  it("exempts the bar's basket, whose total is the price on screen (B-06 PD13)", async () => {
+    expect(
+      await ruleIds(lineFn('line.qty * line.unit_price_cents'), 'src/features/bar/model/basket.ts'),
+    ).toEqual([])
+  })
+
+  it.each([
+    'src/features/bar/model/orderIntents.ts',
+    'src/features/bar/model/barController.ts',
+    'src/features/bar/OrderPad.tsx',
+    'src/features/bar/PendingOrders.tsx',
+    'src/features/bar/FinancialPanel.tsx',
+  ])('still forbids it in every other bar file: %s (B-06 PD13)', async (filePath) => {
+    expect(await ruleIds(lineFn('qty * price'), filePath)).toContain('no-restricted-syntax')
+  })
+
   it.each([
     ['a unit test', 'src/features/exchange/a.test.ts'],
     ['a component test', 'src/features/exchange/A.test.tsx'],

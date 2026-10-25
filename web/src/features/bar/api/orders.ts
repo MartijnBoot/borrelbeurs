@@ -48,6 +48,9 @@ export const PriceChangedBody = z.object({
 export type Receipt = z.infer<typeof Receipt>
 export type PriceChangedBody = z.infer<typeof PriceChangedBody>
 
+/** A wallet exactly as scanned or typed (B-06 SD13); the server resolves it. */
+export type WalletQuery = { readonly qr_token: string } | { readonly short_code: string }
+
 export interface OrderBody {
   readonly quote_version: number
   readonly lines: readonly {
@@ -55,6 +58,8 @@ export interface OrderBody {
     readonly qty: number
     readonly unit_price_cents: number
   }[]
+  /** The paying wallet; absent for an order without one (B-06 SD5). */
+  readonly wallet?: WalletQuery
 }
 
 export type OrderOutcome =

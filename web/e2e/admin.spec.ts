@@ -12,7 +12,6 @@ import { readFileSync } from 'node:fs'
 import { startServer, stopServer, type ServerProcess } from './serverProcess'
 
 const TILE = '[class^="_tile_"]' // see board.spec.ts
-const DRINK = /^\+1 /
 const CUSTOM_BG = '#123456'
 const DRINKS = [
   ['Bier', '1,00', '2,50', '5,00'],
@@ -194,7 +193,7 @@ test('an admin builds a borrel from nothing, and every screen follows live', asy
 
   // The bar: one button per drink; the admin removes one and its button goes (AC23).
   const bar = await signedIn(browser, barKey)
-  await expect(bar.getByRole('button', { name: DRINK })).toHaveCount(3)
+  await expect(bar.getByRole('group', { name: 'Drankjes' }).getByRole('button')).toHaveCount(3)
   const wijn = section(page, 'Drankjes beheren').getByRole('group', {
     name: 'Wijn',
     exact: true,
@@ -202,10 +201,10 @@ test('an admin builds a borrel from nothing, and every screen follows live', asy
   await wijn.getByRole('button', { name: 'Verwijderen' }).click()
   await expect(page.getByRole('dialog', { name: "'Wijn' verwijderen?" })).toBeVisible()
   await page.getByRole('button', { name: 'Annuleren' }).click()
-  await expect(bar.getByRole('button', { name: DRINK })).toHaveCount(3)
+  await expect(bar.getByRole('group', { name: 'Drankjes' }).getByRole('button')).toHaveCount(3)
   await wijn.getByRole('button', { name: 'Verwijderen' }).click()
   await page.getByRole('button', { name: 'Bevestigen' }).click()
-  await expect(bar.getByRole('button', { name: DRINK })).toHaveCount(2)
+  await expect(bar.getByRole('group', { name: 'Drankjes' }).getByRole('button')).toHaveCount(2)
   await expect(bar.getByRole('button', { name: /Wijn/ })).toHaveCount(0)
   await expect(display.locator(TILE)).toHaveCount(2)
 

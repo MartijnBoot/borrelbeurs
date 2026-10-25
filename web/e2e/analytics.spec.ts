@@ -19,7 +19,6 @@ import { readFileSync, statSync } from 'node:fs'
 import { startServer, stopServer, type ServerProcess } from './serverProcess'
 
 const TILE = '[class^="_tile_"]' // see board.spec.ts
-const DRINK = /^\+1 /
 const DRINKS = [
   ['Bier', '1,00', '2,50', '5,00'],
   ['Wijn', '1,50', '3,00', '6,00'],
@@ -134,9 +133,9 @@ async function closeBorrel(page: Page, name: string) {
   await expect(borrel.getByText('Geen borrel')).toBeVisible()
 }
 
-/** One tap on the bar's first drink, until the server has booked it (201). */
+/** The bar's first drink into the basket and "Afrekenen", until the server has booked it (201). */
 async function order(bar: Page) {
-  const button = bar.getByRole('button', { name: DRINK }).first()
+  const button = bar.getByRole('group', { name: 'Drankjes' }).getByRole('button').first()
   await expect(button).toBeEnabled()
   let booked = false
   const listener = (response: {
@@ -154,6 +153,7 @@ async function order(bar: Page) {
   }
   bar.on('response', listener)
   await button.click()
+  await bar.getByRole('button', { name: /^Afrekenen zonder wallet/ }).click()
   // A price that moved mid-tap asks first (Phase 5 SD9); confirming books it.
   await expect(async () => {
     const dialog = bar.getByRole('dialog')

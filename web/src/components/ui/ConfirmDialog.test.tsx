@@ -33,6 +33,38 @@ describe('ConfirmDialog', () => {
     expect(dialog.getAttribute('aria-modal')).toBe('true')
   })
 
+  it('a string message is a paragraph, as before (B-06 PD22)', () => {
+    renderDialog()
+    expect(screen.getByRole('dialog').querySelector('p')?.textContent).toBe(
+      'Bier: prijs is nu € 2,70 — bevestigen?',
+    )
+  })
+
+  it('takes a node, so a question can carry a list, and is labelled by it (B-06 PD22)', () => {
+    render(
+      <ConfirmDialog
+        open
+        message={
+          <>
+            <span>Prijzen zijn veranderd:</span>
+            <ul>
+              <li>Bier: € 2,50 → € 2,70</li>
+            </ul>
+          </>
+        }
+        confirmLabel="Bevestigen"
+        cancelLabel="Annuleren"
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+    const dialog = screen.getByRole('dialog', {
+      name: 'Prijzen zijn veranderd: Bier: € 2,50 → € 2,70',
+    })
+    expect(dialog.querySelector('p')).toBeNull()
+    expect(dialog.querySelectorAll('li')).toHaveLength(1)
+  })
+
   it('puts focus on confirm first', () => {
     renderDialog()
     expect(document.activeElement).toBe(confirmButton())

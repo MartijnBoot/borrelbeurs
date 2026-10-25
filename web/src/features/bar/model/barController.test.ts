@@ -3,6 +3,7 @@
 // transport.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createStore, type StoreApi } from 'zustand/vanilla'
+import { HttpError } from '../../../lib/http'
 import {
   applyMessage,
   initialState,
@@ -64,7 +65,12 @@ function tick(seq: number, version: number, cents: number): ServerMessage {
 
 let store: StoreApi<ExchangeState>
 let controller: BarController
-let posts: { key: string; body: OrderBody; resolve(o: OrderOutcome): void }[]
+let posts: {
+  key: string
+  body: OrderBody
+  resolve(o: OrderOutcome): void
+  reject(error: unknown): void
+}[]
 let seq: number
 
 function dispatch(message: ServerMessage) {
@@ -82,7 +88,7 @@ beforeEach(() => {
     setTimeout: (fn, ms) => setTimeout(fn, ms),
     clearTimeout: (id) => clearTimeout(id),
     post: ({ key, body }) =>
-      new Promise<OrderOutcome>((resolve) => posts.push({ key, body, resolve })),
+      new Promise<OrderOutcome>((resolve, reject) => posts.push({ key, body, resolve, reject })),
     newKey: () => `key-${String(posts.length).padStart(4, '0')}-${Math.random()}`,
   })
   dispatch(
@@ -104,6 +110,11 @@ afterEach(() => {
 })
 
 const price = () => controller.view.displayed?.prices[1]
+/** B-06: a drink into the basket, then "Afrekenen". */
+const buy = (drinkId: number) => {
+  controller.add(drinkId)
+  return controller.checkout()
+}
 
 describe('the bar controller', () => {
   it('offers each new store quote to the hold buffer', () => {
@@ -112,11 +123,11 @@ describe('the bar controller', () => {
     expect(price()).toBe(260)
   })
 
-  it('a tap posts the displayed quote, not the latest, inside a hold (PD8)', () => {
+  it('a checkout posts the displayed quote, not the latest, inside a hold (PD8)', () => {
     controller.press()
     dispatch(tick(++seq, 6, 260))
     controller.release()
-    controller.tap(1)
+    buy(1)
     expect(posts[0].body).toEqual({
       quote_version: 5,
       lines: [{ drink_id: 1, qty: 1, unit_price_cents: 250 }],
@@ -134,7 +145,7 @@ describe('the bar controller', () => {
 
   it('a 409 force-promotes inside a hold, and an accepted order does too (SD3)', async () => {
     controller.press()
-    controller.tap(1)
+    buy(1)
     dispatch(tick(++seq, 6, 260))
     expect(price()).toBe(250)
     posts[0].resolve({
@@ -171,27 +182,27 @@ describe('the bar controller', () => {
     expect(price()).toBe(260)
   })
 
-  it('refuses a tap while a conflict is open (AC14)', async () => {
-    controller.tap(1)
+  it('refuses a checkout while a conflict is open (AC14)', async () => {
+    buy(1)
     posts[0].resolve({
       kind: 'price_changed',
       body: { version: 6, prices: [{ drink_id: 1, price_cents: 260 }] },
     })
     await vi.advanceTimersByTimeAsync(0)
-    expect(controller.tap(1)).toBeNull()
+    expect(buy(1)).toBeNull()
     expect(posts).toHaveLength(1)
   })
 
-  it('refuses a tap when the latest quote is stale (AC8), and accepts one after a fresh tick', () => {
+  it('refuses a checkout when the latest quote is stale (AC8), and accepts one after a fresh tick', () => {
     vi.advanceTimersByTime(STALE_MS + 1)
-    expect(controller.tap(1)).toBeNull()
+    expect(buy(1)).toBeNull()
     expect(posts).toHaveLength(0)
     dispatch(tick(++seq, 6, 260))
-    expect(controller.tap(1)).not.toBeNull()
+    expect(buy(1)).not.toBeNull()
     expect(posts).toHaveLength(1)
   })
 
-  it('refuses a tap with no displayed quote', () => {
+  it('refuses a checkout with no displayed quote', () => {
     dispatch(
       envelope('hello', 1, null, {
         boot_id: 'OTHER',
@@ -203,7 +214,70 @@ describe('the bar controller', () => {
       }),
     )
     expect(controller.view.displayed).toBeNull()
-    expect(controller.tap(1)).toBeNull()
+    expect(buy(1)).toBeNull()
+  })
+
+  it('a drink tap only adds to the basket: no request (B-06 SD4)', () => {
+    controller.add(1)
+    controller.add(1)
+    expect(controller.view.basket).toEqual([{ drinkId: 1, qty: 2 }])
+    expect(posts).toHaveLength(0)
+    controller.remove(1)
+    expect(controller.view.basket).toEqual([{ drinkId: 1, qty: 1 }])
+    controller.clear()
+    expect(controller.view.basket).toEqual([])
+  })
+
+  it('an empty basket does not check out', () => {
+    expect(controller.checkout()).toBeNull()
+    expect(posts).toHaveLength(0)
+  })
+
+  it('locks the basket while its order is open, and clears it once accepted (PD12)', async () => {
+    buy(1)
+    expect(controller.view.basketLocked).toBe(true)
+    controller.add(1)
+    controller.clear()
+    expect(controller.view.basket).toEqual([{ drinkId: 1, qty: 1 }])
+    expect(controller.checkout()).toBeNull()
+    expect(posts).toHaveLength(1)
+    posts[0].resolve({
+      kind: 'accepted',
+      receipt: {
+        order_id: 1,
+        version: 6,
+        wall_ts_ms: 0,
+        quote_version: 5,
+        lines: [{ drink_id: 1, qty: 1, unit_price_cents: 250, line_total_cents: 250 }],
+        total_cents: 250,
+        wallet: null,
+      },
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(controller.view.basket).toEqual([])
+    expect(controller.view.basketLocked).toBe(false)
+  })
+
+  it('keeps the basket through a 409 and a cancel, unlocked (AC11)', async () => {
+    buy(1)
+    posts[0].resolve({
+      kind: 'price_changed',
+      body: { version: 6, prices: [{ drink_id: 1, price_cents: 260 }] },
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(controller.view.basketLocked).toBe(true)
+    controller.cancel()
+    expect(controller.view.basket).toEqual([{ drinkId: 1, qty: 1 }])
+    expect(controller.view.basketLocked).toBe(false)
+  })
+
+  it('keeps the basket on a refusal, unlocked (B-06 SD15)', async () => {
+    buy(1)
+    posts[0].reject(new HttpError(409, 'wallet_required', 'scan one'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(controller.view.entries[0].state).toBe('refused')
+    expect(controller.view.basket).toEqual([{ drinkId: 1, qty: 1 }])
+    expect(controller.view.basketLocked).toBe(false)
   })
 
   it('notifies subscribers with a new view, and stops after dispose()', () => {

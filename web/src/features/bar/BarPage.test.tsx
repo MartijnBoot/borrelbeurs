@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // BarPage (Phase 5 T15): the layout and the empty state (SD14, SD18, AC27).
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyMessage, exchangeStore, type ServerMessage, type SnapshotData } from '../exchange'
 import { BarPage } from './BarPage'
@@ -62,7 +62,10 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const drinkButtons = () => screen.queryAllByRole('button', { name: /^\+1 / })
+const drinkButtons = () =>
+  screen.queryByRole('group', { name: 'Drankjes' }) === null
+    ? []
+    : within(screen.getByRole('group', { name: 'Drankjes' })).getAllByRole('button')
 
 describe('BarPage', () => {
   it('with no live run shows only "Geen actieve borrel"; a snapshot shows the pad without remount (AC27)', () => {

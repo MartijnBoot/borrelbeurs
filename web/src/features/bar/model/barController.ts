@@ -6,9 +6,14 @@
  * - a `snapshotGen` change -- any snapshot, WebSocket or poll -- promotes
  *   (PD3), as do an accepted order or a 409 (`onPromote`) and `refresh()`
  *   ("Ververs") (SD3);
- * - `tap(drinkId)` reads `displayed` **once** and hands that `Quote` to the
- *   intents. It is refused with no displayed quote, a stale latest one (AC8)
- *   or an open conflict (AC14).
+ * - B-06 (SD4, PD12): a drink tap `add`s to the basket and sends nothing;
+ *   `remove` and `clear` edit it. `checkout()` reads `displayed` **once** and
+ *   hands that `Quote` and the basket to the intents. It is refused with no
+ *   displayed quote, a stale latest one (AC8), an open conflict (AC14), an
+ *   empty basket, or a basket whose order is still open.
+ * - While the basket's order is open (sending, retrying, a conflict, unknown)
+ *   the basket is shown but locked. Accepted, it clears; refused, cancelled,
+ *   failed or dismissed, it stays, unlocked (AC11, AC12, AC18).
  *
  * Components call only this, through `useBarController`; the property test
  * drives the same object. `view` is a new frozen object on every change, so
@@ -16,6 +21,7 @@
  */
 import type { DrinkId, ExchangeState, Quote } from '../../exchange'
 import type { OrderBody, OrderOutcome } from '../api/orders'
+import { add, EMPTY, remove, type Basket } from './basket'
 import { createHoldBuffer, isStale, type PressId } from './holdBuffer'
 import { createOrderIntents, type Conflict, type OrderEntry } from './orderIntents'
 
@@ -24,7 +30,13 @@ export interface BarView {
   readonly latest: Quote | null
   readonly entries: readonly OrderEntry[]
   readonly headConflict: Conflict | null
+  readonly basket: Basket
+  /** The basket's order is open: the basket is shown, never edited (PD12). */
+  readonly basketLocked: boolean
 }
+
+/** An entry in one of these states has settled; its basket is free again. */
+const SETTLED = new Set(['accepted', 'failed', 'unavailable', 'cancelled', 'dismissed', 'refused'])
 
 export interface BarControllerDeps<Id = unknown> {
   store: {
@@ -45,8 +57,13 @@ export interface BarController {
   subscribe(listener: () => void): () => void
   press(id?: PressId): void
   release(id?: PressId): void
-  /** The new entry's id, or `null` when the tap is refused. */
-  tap(drinkId: DrinkId): number | null
+  /** One more of the drink in the basket (SD4); no request. */
+  add(drinkId: DrinkId): void
+  remove(drinkId: DrinkId): void
+  /** "Leegmaken". */
+  clear(): void
+  /** "Afrekenen": the new entry's id, or `null` when it is refused. */
+  checkout(): number | null
   refresh(): void
   confirm(): void
   cancel(): void
@@ -58,10 +75,31 @@ export interface BarController {
 export function createBarController<Id>(deps: BarControllerDeps<Id>): BarController {
   const listeners = new Set<() => void>()
   let view: BarView | null = null
+  let basket: Basket = EMPTY
+  /** The id of the basket's order while it is open, else `null`. */
+  let open: number | null = null
 
   function changed() {
     view = null
     for (const listener of listeners) listener()
+  }
+
+  /** The intents changed: let go of the basket's order once it has settled. */
+  function settle() {
+    if (open !== null) {
+      const entry = intents.entries.find((e) => e.id === open)
+      if (entry === undefined || SETTLED.has(entry.state)) {
+        if (entry?.state === 'accepted') basket = EMPTY
+        open = null
+      }
+    }
+    changed()
+  }
+
+  function editBasket(next: Basket) {
+    if (open !== null || next === basket) return
+    basket = next
+    changed()
   }
 
   const hold = createHoldBuffer({
@@ -75,7 +113,7 @@ export function createBarController<Id>(deps: BarControllerDeps<Id>): BarControl
     now: deps.now,
     setTimeout: deps.setTimeout,
     clearTimeout: deps.clearTimeout,
-    onChange: changed,
+    onChange: settle,
     onPromote: () => hold.promote(),
   })
 
@@ -99,6 +137,8 @@ export function createBarController<Id>(deps: BarControllerDeps<Id>): BarControl
         latest: hold.latest,
         entries: intents.entries,
         headConflict: intents.headConflict,
+        basket,
+        basketLocked: open !== null,
       })
       return view
     },
@@ -108,11 +148,19 @@ export function createBarController<Id>(deps: BarControllerDeps<Id>): BarControl
     },
     press: (id) => hold.pressStart(id),
     release: (id) => hold.pressEnd(id),
-    tap(drinkId) {
+    add: (drinkId) => editBasket(add(basket, drinkId)),
+    remove: (drinkId) => editBasket(remove(basket, drinkId)),
+    clear: () => editBasket(EMPTY),
+    checkout() {
       const displayed = hold.displayed
       if (displayed === null || isStale(hold.latest, deps.now())) return null
-      if (intents.headConflict !== null) return null
-      return intents.create(displayed, drinkId)
+      if (intents.headConflict !== null || open !== null) return null
+      const id = intents.create(displayed, basket, null)
+      if (id !== null) {
+        open = id
+        changed()
+      }
+      return id
     },
     refresh: () => hold.promote(),
     confirm: () => intents.confirm(),

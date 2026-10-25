@@ -1,6 +1,6 @@
 /**
  * The bar page (`/bar`, Phase 5 SD18): v1's layout -- "Bar — Bestellen",
- * then a "Bestellingen" card (pad, pending list, 409 dialog) beside a
+ * then a "Bestellingen" card (pad and basket, pending list, 409 dialog) beside a
  * "Financieel overzicht" card (panel and revenue chart), stacked at
  * ≤1000 px.
  *

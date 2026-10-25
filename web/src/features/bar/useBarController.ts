@@ -19,7 +19,10 @@ import type { PressId } from './model/holdBuffer'
 export interface BarActions {
   press(id?: PressId): void
   release(id?: PressId): void
-  tap(drinkId: DrinkId): void
+  add(drinkId: DrinkId): void
+  remove(drinkId: DrinkId): void
+  clear(): void
+  checkout(): void
   refresh(): void
   confirm(): void
   cancel(): void
@@ -32,6 +35,8 @@ const EMPTY_VIEW: BarView = Object.freeze({
   latest: null,
   entries: [],
   headConflict: null,
+  basket: [],
+  basketLocked: false,
 })
 
 function createSlot() {
@@ -42,7 +47,10 @@ function createSlot() {
   const actions: BarActions = {
     press: (id) => controller?.press(id),
     release: (id) => controller?.release(id),
-    tap: (drinkId) => void controller?.tap(drinkId),
+    add: (drinkId) => controller?.add(drinkId),
+    remove: (drinkId) => controller?.remove(drinkId),
+    clear: () => controller?.clear(),
+    checkout: () => void controller?.checkout(),
     refresh: () => controller?.refresh(),
     confirm: () => controller?.confirm(),
     cancel: () => controller?.cancel(),
