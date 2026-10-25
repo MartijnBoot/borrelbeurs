@@ -472,3 +472,31 @@ def test_0011_seeds_the_rollback_floor_and_downgrades_cleanly(
 
     assert alembic(empty_database, "downgrade", "0010").returncode == 0
     assert "schema_compat" not in asyncio.run(_tables(empty_database))
+
+
+def test_0013_admits_the_kassa_role_and_its_downgrade_restores_three(
+    empty_database: str, alembic: RunAlembic
+) -> None:
+    """B-05 T1 (SD7): `kassa` is accepted at head; the downgrade refuses while a kassa
+    key exists, and once it is gone drops the wallet tables and refuses `kassa`."""
+    assert alembic(empty_database, "upgrade", "head").returncode == 0
+
+    async def kassa_key(connection: AsyncConnection) -> None:
+        await connection.execute(
+            text("INSERT INTO auth_key (label, role, secret_hash) VALUES ('K', 'kassa', 'x')")
+        )
+
+    async def remove_it(connection: AsyncConnection) -> None:
+        await connection.execute(text("DELETE FROM auth_key WHERE role = 'kassa'"))
+
+    _in_transaction(empty_database, kassa_key)
+    refused = alembic(empty_database, "downgrade", "0012")
+    assert refused.returncode != 0, "the downgrade must fail loudly while a kassa key exists"
+    assert "auth_key_role_check" in refused.stderr
+
+    _in_transaction(empty_database, remove_it)
+    step = alembic(empty_database, "downgrade", "0012")
+    assert step.returncode == 0, step.stderr
+    assert not {"wallet", "wallet_entry", "wallet_settings"} & asyncio.run(_tables(empty_database))
+    with pytest.raises(IntegrityError, match="auth_key_role_check"):
+        _in_transaction(empty_database, kassa_key)

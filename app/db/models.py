@@ -272,7 +272,7 @@ class AuthKey(Base):
 
     __tablename__ = "auth_key"
     __table_args__ = (
-        CheckConstraint("role IN ('display', 'bar', 'admin')", name="auth_key_role_check"),
+        CheckConstraint("role IN ('display', 'bar', 'admin', 'kassa')", name="auth_key_role_check"),
         CheckConstraint("char_length(label) BETWEEN 1 AND 100", name="auth_key_label_check"),
     )
 
@@ -440,3 +440,109 @@ class SchemaCompat(Base):
 
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, autoincrement=False)
     min_code_revision: Mapped[str] = mapped_column(Text)
+
+
+class Wallet(Base):
+    """A player's wallet (B-05 SD9, SD14, SD19). The five identifying columns are all
+    set while it lives and all NULL once deleted (SD15, PD4); the row itself stays so
+    its ledger keeps summing to zero. `cookie_hash` is the cookie value's SHA-256."""
+
+    __tablename__ = "wallet"
+    __table_args__ = (
+        CheckConstraint("char_length(btrim(name)) BETWEEN 1 AND 40", name="wallet_name_check"),
+        CheckConstraint(
+            "(deleted_at IS NULL AND name IS NOT NULL AND name_key IS NOT NULL AND "
+            "qr_token IS NOT NULL AND short_code IS NOT NULL AND cookie_hash IS NOT NULL) OR "
+            "(deleted_at IS NOT NULL AND name IS NULL AND name_key IS NULL AND "
+            "qr_token IS NULL AND short_code IS NULL AND cookie_hash IS NULL)",
+            name="wallet_deleted_check",
+        ),
+        Index("wallet_name_key", "name_key", unique=True),
+        Index("wallet_qr_token", "qr_token", unique=True),
+        Index("wallet_short_code", "short_code", unique=True),
+        Index("wallet_cookie_hash", "cookie_hash", unique=True),
+    )
+
+    wallet_id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    name: Mapped[str | None] = mapped_column(Text)
+    name_key: Mapped[str | None] = mapped_column(Text)
+    qr_token: Mapped[str | None] = mapped_column(Text)
+    short_code: Mapped[str | None] = mapped_column(Text)
+    cookie_hash: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WalletEntry(Base):
+    """One append-only ledger entry in integer cents (B-05 SD9); the sign is fixed by
+    the kind. `run_id` is the run live when it was written, or NULL (SD13)."""
+
+    __tablename__ = "wallet_entry"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('topup', 'reversal', 'move_out', 'move_in', 'closing')",
+            name="wallet_entry_kind_check",
+        ),
+        CheckConstraint(
+            "(kind IN ('topup', 'move_in') AND amount_cents > 0) OR "
+            "(kind IN ('reversal', 'move_out', 'closing') AND amount_cents < 0)",
+            name="wallet_entry_amount_check",
+        ),
+        CheckConstraint(
+            "(kind = 'reversal') = (reverses_entry_id IS NOT NULL)",
+            name="wallet_entry_reversal_check",
+        ),
+        CheckConstraint(
+            "(kind = 'move_in') = (counterpart_entry_id IS NOT NULL)",
+            name="wallet_entry_counterpart_check",
+        ),
+        UniqueConstraint("reverses_entry_id", name="wallet_entry_reverses_entry_id_key"),
+        UniqueConstraint("idempotency_key", name="wallet_entry_idempotency_key_key"),
+        Index("wallet_entry_wallet_id", "wallet_id"),
+        Index("wallet_entry_run_id", "run_id"),
+    )
+
+    entry_id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    wallet_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("wallet.wallet_id"))
+    kind: Mapped[str] = mapped_column(Text)
+    amount_cents: Mapped[int] = mapped_column(Integer)
+    run_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("run.run_id", ondelete="SET NULL")
+    )
+    reverses_entry_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("wallet_entry.entry_id")
+    )
+    counterpart_entry_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("wallet_entry.entry_id")
+    )
+    actor_key_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("auth_key.key_id"))
+    actor_label: Mapped[str | None] = mapped_column(Text)
+    idempotency_key: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class WalletSettings(Base):
+    """The sign-up code and the two retention periods (B-05 SD6, SD15). A single row,
+    `id = 1`, as `theme`; no row means sign-up closed, 30 days and 12 months."""
+
+    __tablename__ = "wallet_settings"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="wallet_settings_id_check"),
+        CheckConstraint(
+            "char_length(btrim(signup_code)) BETWEEN 1 AND 40",
+            name="wallet_settings_signup_code_check",
+        ),
+        CheckConstraint(
+            "unfunded_days BETWEEN 1 AND 365", name="wallet_settings_unfunded_days_check"
+        ),
+        CheckConstraint(
+            "inactive_months BETWEEN 1 AND 60", name="wallet_settings_inactive_months_check"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        SmallInteger, primary_key=True, autoincrement=False, server_default=text("1")
+    )
+    signup_code: Mapped[str | None] = mapped_column(Text)
+    unfunded_days: Mapped[int] = mapped_column(Integer)
+    inactive_months: Mapped[int] = mapped_column(Integer)

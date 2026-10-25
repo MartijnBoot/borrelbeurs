@@ -34,6 +34,7 @@ PHASE_6_TABLES = frozenset({"asset"})
 PHASE_7_TABLES = frozenset({"product", "export"})
 PHASE_8_TABLES = frozenset({"schema_compat"})
 B_04_TABLES = frozenset({"settings_profile"})
+B_05_TABLES = frozenset({"wallet", "wallet_entry", "wallet_settings"})
 
 # PD4: SD5's three columns plus the singleton key; Phase 6 adds the custom
 # theme (SD28) and one pointer per image slot (SD29).
@@ -108,7 +109,7 @@ def money_violations(columns: Iterable[Column]) -> list[str]:
 
 
 def test_the_application_tables_are_the_ones_inspected(database_url: str) -> None:
-    """Anti-vacuity: the inspection below reaches every table, Phase 2 SD4 through B-04."""
+    """Anti-vacuity: the inspection below reaches every table, Phase 2 SD4 through B-05."""
     tables = {table for table, _, _ in asyncio.run(_columns(database_url))}
 
     assert tables == (
@@ -119,6 +120,7 @@ def test_the_application_tables_are_the_ones_inspected(database_url: str) -> Non
         | PHASE_7_TABLES
         | PHASE_8_TABLES
         | B_04_TABLES
+        | B_05_TABLES
     )
 
 
@@ -341,9 +343,11 @@ async def _auth_key(connection: AsyncConnection, *, role: str = "bar", label: st
     return int(result.scalar_one())
 
 
-def test_the_three_roles_are_accepted(database_url: str) -> None:
+def test_the_four_roles_are_accepted(database_url: str) -> None:
+    """B-05 SD7 adds `kassa`."""
+
     async def write(connection: AsyncConnection) -> None:
-        for role in ("display", "bar", "admin"):
+        for role in ("display", "bar", "admin", "kassa"):
             await _auth_key(connection, role=role)
 
     _in_transaction(database_url, write)
@@ -658,4 +662,297 @@ def test_a_theme_slot_points_at_an_existing_asset(database_url: str) -> None:
         await connection.execute(text("UPDATE theme SET promo_asset_id = :a"), {"a": asset_id + 1})
 
     with pytest.raises(IntegrityError, match="theme_promo_asset_id_fkey"):
+        _in_transaction(database_url, write)
+
+
+# B-05 (T1): the wallet, its ledger and its settings (plan PD4).
+
+
+async def _wallet(connection: AsyncConnection, name: str = "Jan") -> int:
+    result = await connection.execute(
+        text(
+            "INSERT INTO wallet (name, name_key, qr_token, short_code, cookie_hash) "
+            "VALUES (:name, :key, :token, :code, :hash) RETURNING wallet_id"
+        ),
+        {
+            "name": name,
+            "key": name.strip().casefold(),
+            "token": f"t-{name}",
+            "code": f"C{name}",
+            "hash": f"h-{name}",
+        },
+    )
+    return int(result.scalar_one())
+
+
+async def _entry(
+    connection: AsyncConnection,
+    wallet_id: int,
+    kind: str,
+    amount: int,
+    *,
+    run_id: int | None = None,
+    reverses: int | None = None,
+    counterpart: int | None = None,
+) -> int:
+    result = await connection.execute(
+        text(
+            "INSERT INTO wallet_entry (wallet_id, kind, amount_cents, run_id, "
+            "reverses_entry_id, counterpart_entry_id) "
+            "VALUES (:w, :kind, :amount, :run, :rev, :cp) RETURNING entry_id"
+        ),
+        {
+            "w": wallet_id,
+            "kind": kind,
+            "amount": amount,
+            "run": run_id,
+            "rev": reverses,
+            "cp": counterpart,
+        },
+    )
+    return int(result.scalar_one())
+
+
+def test_a_live_and_a_deleted_wallet_are_accepted(database_url: str) -> None:
+    """SD15, AC47: alive with all five identifying columns, deleted with none."""
+
+    async def write(connection: AsyncConnection) -> None:
+        await _wallet(connection)
+        await connection.execute(text("INSERT INTO wallet (deleted_at) VALUES (now())"))
+
+    _in_transaction(database_url, write)
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "INSERT INTO wallet (name, deleted_at) VALUES ('Jan', now())",
+        "INSERT INTO wallet (name, name_key, short_code, cookie_hash) "
+        "VALUES ('Jan', 'jan', 'C', 'h')",
+        "INSERT INTO wallet (deleted_at, cookie_hash) VALUES (now(), 'h')",
+    ],
+    ids=["deleted-with-a-name", "live-without-a-token", "deleted-with-a-cookie-hash"],
+)
+def test_a_wallet_is_either_whole_or_blank(database_url: str, statement: str) -> None:
+    """AC47: a deleted row holds no name, token, short code or cookie hash."""
+
+    async def write(connection: AsyncConnection) -> None:
+        await connection.execute(text(statement))
+
+    with pytest.raises(IntegrityError, match="wallet_deleted_check"):
+        _in_transaction(database_url, write)
+
+
+@pytest.mark.parametrize("name", ["   ", "x" * 41], ids=["blank", "41-chars"])
+def test_a_wallet_name_is_one_to_forty_characters_after_trim(database_url: str, name: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        await _wallet(connection, name)
+
+    with pytest.raises(IntegrityError, match="wallet_name_check"):
+        _in_transaction(database_url, write)
+
+
+@pytest.mark.parametrize("column", ["name_key", "qr_token", "short_code", "cookie_hash"])
+def test_two_live_wallets_may_not_share_a_name_or_a_code(database_url: str, column: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        first = await _wallet(connection, "Jan")
+        second = await _wallet(connection, "Piet")
+        await connection.execute(
+            text(
+                f"UPDATE wallet SET {column} = (SELECT {column} FROM wallet WHERE wallet_id = :a) "
+                "WHERE wallet_id = :b"
+            ),
+            {"a": first, "b": second},
+        )
+
+    with pytest.raises(IntegrityError, match=f"wallet_{column}"):
+        _in_transaction(database_url, write)
+
+
+def test_deleted_wallets_free_their_name_and_codes(database_url: str) -> None:
+    """SD3: NULLs are distinct, so many blank rows coexist and a name is reusable."""
+
+    async def write(connection: AsyncConnection) -> None:
+        old = await _wallet(connection, "Jan")
+        await connection.execute(
+            text(
+                "UPDATE wallet SET name = NULL, name_key = NULL, qr_token = NULL, "
+                "short_code = NULL, cookie_hash = NULL, deleted_at = now() WHERE wallet_id = :w"
+            ),
+            {"w": old},
+        )
+        await connection.execute(text("INSERT INTO wallet (deleted_at) VALUES (now())"))
+        await _wallet(connection, "Jan")
+
+    _in_transaction(database_url, write)
+
+
+def test_the_five_entry_kinds_with_their_signs_are_accepted(database_url: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        wallet_id = await _wallet(connection)
+        topup = await _entry(connection, wallet_id, "topup", 1500)
+        await _entry(connection, wallet_id, "reversal", -1500, reverses=topup)
+        out = await _entry(connection, wallet_id, "move_out", -500)
+        await _entry(connection, wallet_id, "move_in", 500, counterpart=out)
+        await _entry(connection, wallet_id, "closing", -500)
+
+    _in_transaction(database_url, write)
+
+
+@pytest.mark.parametrize(
+    ("kind", "amount"),
+    [("topup", -100), ("reversal", 100), ("move_in", 0), ("closing", 100), ("move_out", 100)],
+)
+def test_an_entrys_sign_is_fixed_by_its_kind(database_url: str, kind: str, amount: int) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        wallet_id = await _wallet(connection)
+        topup = await _entry(connection, wallet_id, "topup", 1000)
+        await _entry(
+            connection,
+            wallet_id,
+            kind,
+            amount,
+            reverses=topup if kind == "reversal" else None,
+            counterpart=topup if kind == "move_in" else None,
+        )
+
+    with pytest.raises(IntegrityError, match="wallet_entry_amount_check"):
+        _in_transaction(database_url, write)
+
+
+def test_an_unknown_entry_kind_is_rejected(database_url: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        wallet_id = await _wallet(connection)
+        await _entry(connection, wallet_id, "payment", -100)
+
+    # An unknown kind fails the sign rule too; Postgres names whichever it checks first.
+    with pytest.raises(IntegrityError, match=r"wallet_entry_(kind|amount)_check"):
+        _in_transaction(database_url, write)
+
+
+def test_a_reversal_must_name_its_entry_and_only_a_reversal_may(database_url: str) -> None:
+    async def bare_reversal(connection: AsyncConnection) -> None:
+        wallet_id = await _wallet(connection)
+        await _entry(connection, wallet_id, "reversal", -100)
+
+    async def topup_naming_one(connection: AsyncConnection) -> None:
+        wallet_id = await _wallet(connection)
+        topup = await _entry(connection, wallet_id, "topup", 1000)
+        await _entry(connection, wallet_id, "topup", 1000, reverses=topup)
+
+    for body in (bare_reversal, topup_naming_one):
+        with pytest.raises(IntegrityError, match="wallet_entry_reversal_check"):
+            _in_transaction(database_url, body)
+
+
+def test_a_move_in_must_name_its_counterpart(database_url: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        wallet_id = await _wallet(connection)
+        await _entry(connection, wallet_id, "move_in", 100)
+
+    with pytest.raises(IntegrityError, match="wallet_entry_counterpart_check"):
+        _in_transaction(database_url, write)
+
+
+def test_a_topup_is_reversed_at_most_once(database_url: str) -> None:
+    """SD12: once per top-up, by a unique constraint."""
+
+    async def write(connection: AsyncConnection) -> None:
+        wallet_id = await _wallet(connection)
+        topup = await _entry(connection, wallet_id, "topup", 1000)
+        await _entry(connection, wallet_id, "reversal", -1000, reverses=topup)
+        await _entry(connection, wallet_id, "reversal", -1000, reverses=topup)
+
+    with pytest.raises(IntegrityError, match="wallet_entry_reverses_entry_id_key"):
+        _in_transaction(database_url, write)
+
+
+def test_an_entry_idempotency_key_is_unique(database_url: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        wallet_id = await _wallet(connection)
+        for _ in range(2):
+            await connection.execute(
+                text(
+                    "INSERT INTO wallet_entry (wallet_id, kind, amount_cents, idempotency_key) "
+                    "VALUES (:w, 'topup', 1000, 'k-1')"
+                ),
+                {"w": wallet_id},
+            )
+
+    with pytest.raises(IntegrityError, match="wallet_entry_idempotency_key_key"):
+        _in_transaction(database_url, write)
+
+
+def test_deleting_a_run_keeps_its_wallet_entries_without_a_run(database_url: str) -> None:
+    """SD13: `ON DELETE SET NULL`."""
+    found: list[tuple[object, ...]] = []
+
+    async def write(connection: AsyncConnection) -> None:
+        run_id, _ = await _run_and_drink(connection)
+        await connection.execute(text("DELETE FROM drink WHERE run_id = :r"), {"r": run_id})
+        wallet_id = await _wallet(connection)
+        entry = await _entry(connection, wallet_id, "topup", 1000, run_id=run_id)
+        await connection.execute(text("DELETE FROM run WHERE run_id = :r"), {"r": run_id})
+        row = (
+            await connection.execute(
+                text("SELECT run_id, amount_cents FROM wallet_entry WHERE entry_id = :e"),
+                {"e": entry},
+            )
+        ).one()
+        found.append(tuple(row))
+
+    _in_transaction(database_url, write)
+
+    assert found == [(None, 1000)]
+
+
+def test_the_wallet_settings_row_defaults_to_id_1(database_url: str) -> None:
+    found: list[int] = []
+
+    async def write(connection: AsyncConnection) -> None:
+        await connection.execute(
+            text(
+                "INSERT INTO wallet_settings (signup_code, unfunded_days, inactive_months) "
+                "VALUES (NULL, 1, 1)"
+            )
+        )
+        await connection.execute(
+            text(
+                "UPDATE wallet_settings SET signup_code = 'ABC', unfunded_days = 365, "
+                "inactive_months = 60"
+            )
+        )
+        row = (await connection.execute(text("SELECT id FROM wallet_settings"))).one()
+        found.append(int(row[0]))
+
+    _in_transaction(database_url, write)
+
+    assert found == [1]
+
+
+@pytest.mark.parametrize(
+    ("values", "constraint"),
+    [
+        ("2, NULL, 30, 12", "wallet_settings_id_check"),
+        ("1, NULL, 0, 12", "wallet_settings_unfunded_days_check"),
+        ("1, NULL, 366, 12", "wallet_settings_unfunded_days_check"),
+        ("1, NULL, 30, 0", "wallet_settings_inactive_months_check"),
+        ("1, NULL, 30, 61", "wallet_settings_inactive_months_check"),
+        ("1, '   ', 30, 12", "wallet_settings_signup_code_check"),
+        ("1, repeat('x', 41), 30, 12", "wallet_settings_signup_code_check"),
+    ],
+    ids=["second-row", "days-0", "days-366", "months-0", "months-61", "blank-code", "code-41"],
+)
+def test_the_wallet_settings_are_bounded(database_url: str, values: str, constraint: str) -> None:
+    """AC33 (database half)."""
+
+    async def write(connection: AsyncConnection) -> None:
+        await connection.execute(
+            text(
+                "INSERT INTO wallet_settings (id, signup_code, unfunded_days, inactive_months) "
+                f"VALUES ({values})"
+            )
+        )
+
+    with pytest.raises(IntegrityError, match=constraint):
         _in_transaction(database_url, write)
