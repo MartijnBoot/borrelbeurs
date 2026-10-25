@@ -1,0 +1,102 @@
+/* After the login page's card (`features/auth/LoginPage.module.css`), which a feature may not import. */
+.wrap {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px;
+  gap: 20px;
+}
+
+.logo {
+  height: 64px;
+  width: auto;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--grid);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 380px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card h1 {
+  margin: 0;
+  font-size: 20px;
+  text-align: center;
+}
+
+.card input {
+  width: 100%;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 16px;
+  padding: 12px 14px;
+  font-family: inherit;
+}
+
+.card input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.primary {
+  width: 100%;
+  padding: 13px;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 16px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.suggestions p {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 14px;
+}
+
+.suggestions button {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.err {
+  padding: 10px 14px;
+  border: 1px solid var(--danger);
+  border-radius: 10px;
+  font-size: 14px;
+  color: var(--danger);
+}
+
+@media (max-width: 480px) {
+  .wrap {
+    padding: 16px;
+  }
+}

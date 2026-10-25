@@ -8,6 +8,10 @@
  * Phase 5 builds `/bar` (T15); Phase 6 builds `/manipulation` (T33) and `/`
  * (T35); Phase 7 builds `/analytics` (T19). An unknown path is "Geen
  * toegang" inside the shell.
+ *
+ * B-05 PD13: `/speler` stands beside `/login`, outside the shell and needing no
+ * session. `/` without a crew session is the landing choice; with one, the
+ * shell and `HomePage` as before.
  */
 import { useEffect, type ReactNode } from 'react'
 import { Outlet, Route, Routes, useNavigate } from 'react-router'
@@ -17,14 +21,15 @@ import { BarPage } from '../features/bar'
 import { HomePage } from '../features/home'
 import { KoersPage } from '../features/koers'
 import { ManipulationPage } from '../features/manipulation'
+import { PlayerPage } from '../features/player'
 import { setOnUnauthenticated } from '../lib/http'
 import { AppShell } from './AppShell'
+import { LandingPage } from './pages/LandingPage'
 import { NoAccess } from './pages/NoAccess'
 import { SettingsPage } from './pages/SettingsPage'
 import { Providers } from './providers'
 
 const PAGES: readonly (readonly [string, ReactNode])[] = [
-  ['/', <HomePage />],
   ['/koers', <KoersPage />],
   ['/bar', <BarPage />],
   ['/manipulation', <ManipulationRoute />],
@@ -63,6 +68,20 @@ function ShellLayout() {
   )
 }
 
+/** PD13: the landing choice without a crew session, else the shell around `HomePage`. */
+function RootLayout() {
+  const { session } = useSession()
+  return session.status === 'anonymous' ? <LandingPage /> : <ShellLayout />
+}
+
+function guarded(path: string, page: ReactNode) {
+  return (
+    <RequireRole route={path} fallback={<NoAccess />}>
+      {page}
+    </RequireRole>
+  )
+}
+
 /** SD12: any request's 401 goes to login. */
 function UnauthenticatedHook() {
   const goToLogin = useGoToLogin()
@@ -80,17 +99,13 @@ export function AppRoutes() {
       <Providers />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/speler" element={<PlayerPage />} />
+        <Route element={<RootLayout />}>
+          <Route path="/" element={guarded('/', <HomePage />)} />
+        </Route>
         <Route element={<ShellLayout />}>
           {PAGES.map(([path, page]) => (
-            <Route
-              key={path}
-              path={path}
-              element={
-                <RequireRole route={path} fallback={<NoAccess />}>
-                  {page}
-                </RequireRole>
-              }
-            />
+            <Route key={path} path={path} element={guarded(path, page)} />
           ))}
           <Route path="*" element={<NoAccess />} />
         </Route>

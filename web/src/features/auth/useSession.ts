@@ -7,6 +7,10 @@
  * HTTP wrapper's 401 hook and the WebSocket client's `onSessionLost` both
  * call it. It also ends the held session, so the next login is a new one and
  * everything keyed on it -- the live client above all -- starts again.
+ *
+ * B-05 PD13: `/speler` is a public page beside `/login`. Neither asks
+ * `/api/auth/me`, and a 401 there (a player's `no_wallet`) goes nowhere. At
+ * `/` a 401 only ends the session, so `/` shows the landing choice in place.
  */
 import {
   createContext,
@@ -44,13 +48,16 @@ interface SessionApi {
 
 const SessionContext = createContext<SessionApi | null>(null)
 
+/** Outside the crew shell, with no session to ask for (PD13). */
+const PUBLIC_PAGES: ReadonlySet<string> = new Set(['/login', '/speler'])
+
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SessionState>({ status: 'loading' })
   const { pathname } = useLocation()
-  const onLoginPage = pathname === '/login'
+  const onPublicPage = PUBLIC_PAGES.has(pathname)
 
   useEffect(() => {
-    if (onLoginPage || session.status !== 'loading') return
+    if (onPublicPage || session.status !== 'loading') return
     let cancelled = false
     request('GET', '/api/auth/me', { schema: Me }).then(
       (me) => !cancelled && setSession({ status: 'ready', me }),
@@ -59,7 +66,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [onLoginPage, session.status])
+  }, [onPublicPage, session.status])
 
   const signedIn = useCallback((me: MeData) => setSession({ status: 'ready', me }), [])
   const lost = useCallback(
@@ -87,13 +94,17 @@ export function useSession(): SessionApi {
   return api
 }
 
-/** SD12: to `/login?next=<the current route>`. */
+/** SD12: to `/login?next=<the current route>`; on `/`, the landing instead (PD13). */
 export function useGoToLogin(): () => void {
   const navigate = useNavigate()
   const location = useLocation()
   const { lost } = useSession()
   return useCallback(() => {
-    if (location.pathname === '/login') return
+    if (PUBLIC_PAGES.has(location.pathname)) return
+    if (location.pathname === '/') {
+      lost()
+      return
+    }
     const next = encodeURIComponent(location.pathname + location.search)
     navigate(`/login?next=${next}`, { replace: true })
     lost()
