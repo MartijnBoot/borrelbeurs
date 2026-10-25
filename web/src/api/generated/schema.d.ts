@@ -1361,16 +1361,6 @@ export interface components {
             /** Key */
             key: string;
         };
-        /**
-         * LookupRequest
-         * @description Exactly one of a scanned QR token or a typed short code (AC14).
-         */
-        LookupRequest: {
-            /** Qr Token */
-            qr_token?: string | null;
-            /** Short Code */
-            short_code?: string | null;
-        };
         /** MarketEventInfo */
         MarketEventInfo: {
             /** Event Id */
@@ -1448,6 +1438,7 @@ export interface components {
             quote_version: number;
             /** Lines */
             lines: components["schemas"]["OrderLine"][];
+            wallet?: components["schemas"]["WalletQuery"] | null;
         };
         /** OrderLine */
         OrderLine: {
@@ -1457,6 +1448,17 @@ export interface components {
             qty: number;
             /** Unit Price Cents */
             unit_price_cents: number;
+        };
+        /**
+         * PaidWallet
+         * @description The wallet that paid, as the bar shows it (B-06 SD7, SD16): stored with the
+         *     receipt, so a replay shows the balance as it was, whatever has happened since.
+         */
+        PaidWallet: {
+            /** Name */
+            name: string;
+            /** Balance After Cents */
+            balance_after_cents: number;
         };
         /** ParamsData */
         ParamsData: {
@@ -1590,6 +1592,10 @@ export interface components {
         /**
          * Receipt
          * @description SD19's receipt, plus `quote_version` (PD6), exactly as returned and replayed.
+         *
+         *     `wallet` is set on every receipt B-06 writes, `null` for an unpaid order. A
+         *     receipt stored before B-06 has none, and `body()` leaves what was never set
+         *     out, so it replays byte for byte as it was first sent (B-06 PD6).
          */
         Receipt: {
             /** Order Id */
@@ -1604,6 +1610,7 @@ export interface components {
             lines: components["schemas"]["ReceiptLine"][];
             /** Total Cents */
             total_cents: number;
+            wallet?: components["schemas"]["PaidWallet"] | null;
         };
         /** ReceiptLine */
         ReceiptLine: {
@@ -1825,6 +1832,16 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+        };
+        /**
+         * WalletQuery
+         * @description Exactly one of a scanned QR token or a typed short code (AC14).
+         */
+        WalletQuery: {
+            /** Qr Token */
+            qr_token?: string | null;
+            /** Short Code */
+            short_code?: string | null;
         };
         /**
          * WalletSettingsData
@@ -3255,7 +3272,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LookupRequest"];
+                "application/json": components["schemas"]["WalletQuery"];
             };
         };
         responses: {

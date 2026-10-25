@@ -34,6 +34,9 @@ export const Receipt = z.strictObject({
     )
     .min(1),
   total_cents: NonNegative,
+  // B-06 SD16: the wallet that paid, `null` unpaid; absent on a receipt stored before B-06
+  // (PD6), which replays byte for byte.
+  wallet: z.strictObject({ name: z.string(), balance_after_cents: Int }).nullable().optional(),
 })
 
 /** A 409 `price_changed`'s extra fields (`HttpError.details`): the live version and prices. */

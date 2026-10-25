@@ -1,4 +1,7 @@
-"""The order domain (Phase 3 T18: SD17-SD21, SD24; AC7, AC9-AC13, AC14a, AC23 charge half)."""
+"""The order domain (Phase 3 T18: SD17-SD21, SD24; AC7, AC9-AC13, AC14a, AC23 charge half).
+
+B-06 T4: a wallet order under the same lock (AC12, AC34, AC37; PD5).
+"""
 
 from __future__ import annotations
 
@@ -14,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 import app.runtime.orders as orders_module
 from app.core.config import Settings
+from app.db import wallets
 from app.db.codec import tick_prices
 from app.db.engine_state import save_transition
 from app.db.mapping import cents_from_quantised
@@ -38,6 +42,7 @@ from app.runtime.orders import (
     OrderRequest,
     PriceChangedError,
     Receipt,
+    ScannedWallet,
     place_order,
 )
 from app.runtime.rehydrate import RehydratedRun, rehydrate
@@ -584,3 +589,218 @@ def test_the_engine_moves_by_the_ordered_qty_not_the_honoured_price(
 
     at_live, honoured = asyncio.run(scenario())
     assert at_live == honoured
+
+
+# --- B-06 T4: a wallet order under the lock (SD13-SD15, SD21; AC12, AC34, AC37; PD5) ------
+
+
+async def _wallet(m: Market, amount: int = 10_000) -> wallets.WalletRow:
+    async with m.engine.begin() as conn:
+        wallet = await wallets.create_wallet(conn, name="Jan", cookie_hash="h-jan", now_ms=T0)
+        await wallets.insert_entry(
+            conn, wallet_id=wallet.wallet_id, kind="topup", amount_cents=amount, now_ms=T0
+        )
+    return wallet
+
+
+def _paid(request: OrderRequest, wallet: wallets.WalletRow) -> OrderRequest:
+    return dataclasses.replace(request, wallet=ScannedWallet(qr_token=wallet.qr_token))
+
+
+async def _place_paid(m: Market, request: OrderRequest) -> orders_module.PlacedOrder:
+    return await place_order(
+        m.holder, request, actor_key_id=None, actor_label="Bar 1", clock=m.clock
+    )
+
+
+async def _payments(m: Market) -> int:
+    async with m.engine.connect() as conn:
+        return int(
+            (
+                await conn.execute(text("SELECT count(*) FROM wallet_entry WHERE kind = 'payment'"))
+            ).scalar_one()
+        )
+
+
+# The statements a wallet order runs that a failure can hit, in order (the SELECTs
+# included: the wallet's lock and its balance). tests/integration/test_orders.py pins
+# their count.
+WALLET_ORDER_STATEMENTS = (
+    "SET LOCAL lock_timeout",
+    "SELECT wallet.wallet_id",
+    "SELECT coalesce(sum(wallet_entry.amount_cents)",
+    "UPDATE engine_state",
+    'INSERT INTO "order"',
+    "INSERT INTO order_line",
+    "INSERT INTO wallet_entry",
+    'UPDATE "order"',
+    "INSERT INTO price_tick",
+)
+
+
+@pytest.mark.parametrize("statement", WALLET_ORDER_STATEMENTS)
+def test_a_failure_at_any_statement_of_a_wallet_order_is_503_and_changes_nothing(
+    settings: Settings, database_url: str, statement: str
+) -> None:
+    """AC34: no order without its payment, no payment without its order; a retry pays once."""
+
+    async def scenario() -> None:
+        async with _market(settings, database_url) as m:
+            wallet = await _wallet(m)
+            bier = m.drinks[0]
+            request = _paid(m.request("k-wallet-09", {bier: (2, m.live()[bier])}), wallet)
+            before, state = (await m.counts(), await _payments(m)), m.holder.state
+
+            def fail(*args: Any) -> None:
+                if args[2].lstrip().startswith(statement):
+                    raise OSError(f"injected at {statement}")
+
+            event.listen(m.engine.sync_engine, "before_cursor_execute", fail)
+            try:
+                with pytest.raises(PersistenceUnavailable):
+                    await _place_paid(m, request)
+            finally:
+                event.remove(m.engine.sync_engine, "before_cursor_execute", fail)
+
+            assert (await m.counts(), await _payments(m)) == before
+            assert m.holder.state is state
+            placed = await _place_paid(m, request)
+            assert not placed.replay and await _payments(m) == 1
+
+    asyncio.run(scenario())
+
+
+def test_every_statement_of_a_wallet_order_is_covered(
+    settings: Settings, database_url: str
+) -> None:
+    """Anti-vacuity for the parametrisation above."""
+
+    async def scenario() -> list[str]:
+        async with _market(settings, database_url) as m:
+            wallet = await _wallet(m)
+            seen: list[str] = []
+
+            def record(*args: Any) -> None:
+                seen.append(args[2].lstrip())
+
+            bier = m.drinks[0]
+            request = _paid(m.request("k-wallet-10", {bier: (1, m.live()[bier])}), wallet)
+            event.listen(m.engine.sync_engine, "before_cursor_execute", record)
+            try:
+                await _place_paid(m, request)
+            finally:
+                event.remove(m.engine.sync_engine, "before_cursor_execute", record)
+            return seen
+
+    seen = asyncio.run(scenario())
+    in_transaction = seen[seen.index(next(s for s in seen if s.startswith("SET LOCAL"))) :]
+    assert [
+        next(p for p in WALLET_ORDER_STATEMENTS if s.startswith(p)) for s in in_transaction
+    ] == list(WALLET_ORDER_STATEMENTS)
+
+
+def test_a_wallet_held_elsewhere_is_a_503_within_the_lock_timeout(
+    settings: Settings, database_url: str
+) -> None:
+    """PD5: a wallet locked by another transaction (the clean-up, a kassa action) holds
+    the market lock for at most about 2 s; the order is 503, the holder not diverged,
+    and a retry with the same key books it once the lock is gone."""
+
+    async def scenario() -> None:
+        async with _market(settings, database_url) as m:
+            wallet = await _wallet(m)
+            bier = m.drinks[0]
+            request = _paid(m.request("k-wallet-11", {bier: (1, m.live()[bier])}), wallet)
+            state = m.holder.state
+            async with m.engine.connect() as other:
+                transaction = await other.begin()
+                await wallets.lock_wallet(other, wallet.wallet_id)
+                loop = asyncio.get_running_loop()
+                started = loop.time()
+                with pytest.raises(PersistenceUnavailable):
+                    await _place_paid(m, request)
+                waited = loop.time() - started
+                await transaction.rollback()
+
+            assert 1.5 <= waited < 5.0, waited
+            assert m.holder.state is state
+            assert await _payments(m) == 0
+            placed = await _place_paid(m, request)
+            assert not placed.replay and await _payments(m) == 1
+
+    asyncio.run(scenario())
+
+
+def test_a_new_code_committed_while_the_order_waits_is_404(
+    settings: Settings, database_url: str
+) -> None:
+    """Plan risk "unverified", PD5: the credential is in the `FOR UPDATE`'s `WHERE`, so under
+    READ COMMITTED a "Nieuwe code" that commits while the order waits leaves no row."""
+
+    async def scenario() -> None:
+        async with _market(settings, database_url) as m:
+            wallet = await _wallet(m)
+            bier = m.drinks[0]
+            request = _paid(m.request("k-wallet-12", {bier: (1, m.live()[bier])}), wallet)
+            before, state = (await m.counts(), await _payments(m)), m.holder.state
+            async with m.engine.connect() as other:
+                transaction = await other.begin()
+                await wallets.replace_codes(other, wallet.wallet_id)
+                order = asyncio.create_task(_place_paid(m, request))
+                await asyncio.sleep(0.5)
+                assert not order.done()
+                await transaction.commit()
+                with pytest.raises(wallets.WalletNotFound):
+                    await order
+
+            assert (await m.counts(), await _payments(m)) == before
+            assert m.holder.state is state
+
+    asyncio.run(scenario())
+
+
+def test_the_engine_moves_the_same_whoever_pays(settings: Settings, database_url: str) -> None:
+    """AC37, SD21: one order sequence, paid by a wallet or not, ends in the same state and
+    the same receipts' prices."""
+
+    async def scenario() -> list[tuple[bytes, int, list[Any]]]:
+        results = []
+        for paid in (False, True):
+            async with _market(settings, database_url) as m:
+                wallet = await _wallet(m, 50_000)
+                bier, wijn, fris = m.drinks
+                receipts = []
+                for n, qtys in enumerate(({bier: 2}, {wijn: 1, fris: 3}, {bier: 1, wijn: 4})):
+                    live = m.live()
+                    request = m.request(
+                        f"k-same-{n:04d}", {d: (q, live[d]) for d, q in qtys.items()}
+                    )
+                    placed = await _place_paid(m, _paid(request, wallet) if paid else request)
+                    receipts.append(
+                        (
+                            placed.receipt.version,
+                            [
+                                (ln.drink_id, ln.qty, ln.unit_price_cents)
+                                for ln in placed.receipt.lines
+                            ],
+                            placed.receipt.total_cents,
+                        )
+                    )
+                    await m.tick()
+                assert m.holder.state is not None
+                results.append((m.holder.state.y.tobytes(), m.holder.state.version, receipts))
+            cleaner = _engine(settings, database_url)
+            try:
+                async with cleaner.begin() as conn:
+                    await conn.execute(
+                        text(
+                            'TRUNCATE wallet_entry, wallet, "order", order_line, price_tick,'
+                            " engine_state, drink, run RESTART IDENTITY CASCADE"
+                        )
+                    )
+            finally:
+                await cleaner.dispose()
+        return results
+
+    unpaid, paid = asyncio.run(scenario())
+    assert unpaid == paid

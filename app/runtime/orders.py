@@ -13,15 +13,22 @@
 3. **The grace rule (SD18)** against the live `price_cents` (`cents_from_quantised`
    of `p_q`, SD24). A rejection is 409 `price_changed` with the current version
    and every line's live price; nothing is charged, written or moved.
-4. `advance(orders=qty_vector)` on the live state: the engine moves on the
-   ordered quantities, whatever the honoured price (SD19).
-5. `write_order` in one transaction: the state, the order, its lines at the
-   charged (= quoted) prices, the receipt and the price tick.
-6. The receipt, built from what was written, and `OrderCommitted`.
+4. **The switch (B-06 SD1, SD15).** With "Wallet verplicht" on in the view, an
+   order that names no wallet is 409 `wallet_required`.
+5. `advance(orders=qty_vector)` on the live state: the engine moves on the
+   ordered quantities, whatever the honoured price (SD19). Who pays never
+   changes this (B-06 SD21, AC37).
+6. `write_order` in one transaction: with a wallet, first its lock and the
+   balance against the view's limit (404 `wallet_not_found`, 409
+   `insufficient_balance`; B-06 SD15 steps 5 and 6); then the state, the order,
+   its lines at the charged (= quoted) prices, the payment, the receipt and the
+   price tick.
+7. The receipt, built from what was written, and `OrderCommitted`.
 
 The receipt is one model, `Receipt`. The first response and every replay are
 `Receipt.model_validate(stored).model_dump_json()`, so a replay is
-byte-identical even though `jsonb` reorders keys (plan PD7).
+byte-identical even though `jsonb` reorders keys (plan PD7). A receipt stored
+before B-06 has no `wallet` key and is dumped without one (B-06 PD6).
 
 A unique violation on the key at commit -- another writer won the race -- is
 re-read and replayed (SD20). Any other failure leaves memory as it was and
@@ -48,7 +55,14 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from app.core.errors import AppError
 from app.db.codec import tick_prices
 from app.db.mapping import cents_from_quantised
-from app.db.orders import OrderLineInput, StoredOrder, find_order_by_key, write_order
+from app.db.orders import (
+    OrderLineInput,
+    PaymentInput,
+    StoredOrder,
+    WalletPaid,
+    find_order_by_key,
+    write_order,
+)
 from app.runtime.clock import Clock, commit_stamp_ms
 from app.runtime.earnings import DrinkEarnings
 from app.runtime.grace import PriceChanged, QuotedLine, judge, step_cents_from
@@ -89,6 +103,13 @@ class IdempotencyKeyReused(AppError):
     code = "idempotency_key_reused"
 
 
+class WalletRequired(AppError):
+    """ "Wallet verplicht" is on and the order names no wallet (B-06 SD1, AC14)."""
+
+    status_code = 409
+    code = "wallet_required"
+
+
 class ReceiptLine(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -98,8 +119,23 @@ class ReceiptLine(BaseModel):
     line_total_cents: int
 
 
+class PaidWallet(BaseModel):
+    """The wallet that paid, as the bar shows it (B-06 SD7, SD16): stored with the
+    receipt, so a replay shows the balance as it was, whatever has happened since."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str
+    balance_after_cents: int
+
+
 class Receipt(BaseModel):
-    """SD19's receipt, plus `quote_version` (PD6), exactly as returned and replayed."""
+    """SD19's receipt, plus `quote_version` (PD6), exactly as returned and replayed.
+
+    `wallet` is set on every receipt B-06 writes, `null` for an unpaid order. A
+    receipt stored before B-06 has none, and `body()` leaves what was never set
+    out, so it replays byte for byte as it was first sent (B-06 PD6).
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -109,9 +145,18 @@ class Receipt(BaseModel):
     quote_version: int
     lines: Annotated[list[ReceiptLine], Field(min_length=1)]
     total_cents: int
+    wallet: PaidWallet | None = None
 
     def body(self) -> bytes:
-        return self.model_dump_json().encode("utf-8")
+        return self.model_dump_json(exclude_unset=True).encode("utf-8")
+
+
+@dataclass(frozen=True)
+class ScannedWallet:
+    """Exactly one of a QR token or a short code, as the bar read it (B-06 SD13)."""
+
+    qr_token: str | None = None
+    short_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -119,6 +164,7 @@ class OrderRequest:
     idempotency_key: str
     quote_version: int
     lines: tuple[QuotedLine, ...]
+    wallet: ScannedWallet | None = None
 
 
 @dataclass(frozen=True)
@@ -151,7 +197,12 @@ def _replay(stored: StoredOrder, request: OrderRequest) -> PlacedOrder:
 
 
 async def place_order(
-    holder: MarketHolder, request: OrderRequest, *, actor_key_id: int | None, clock: Clock
+    holder: MarketHolder,
+    request: OrderRequest,
+    *,
+    actor_key_id: int | None,
+    clock: Clock,
+    actor_label: str | None = None,
 ) -> PlacedOrder:
     """Judge, charge and record one order, or raise; see the module docstring.
 
@@ -204,6 +255,8 @@ async def place_order(
                     ],
                 },
             )
+        if view.wallet_required and request.wallet is None:
+            raise WalletRequired("this borrel is paid from a wallet; scan one first")
 
         now_ms = commit_stamp_ms(clock, view)
         qty = {line.drink_id: line.qty for line in judged.lines}
@@ -219,7 +272,7 @@ async def place_order(
             for line in judged.lines
         ]
 
-        def receipt_for(order_id: int) -> Receipt:
+        def receipt_for(order_id: int, paid: WalletPaid | None) -> Receipt:
             return Receipt(
                 order_id=order_id,
                 version=candidate.version,
@@ -227,7 +280,23 @@ async def place_order(
                 quote_version=request.quote_version,
                 lines=receipt_lines,
                 total_cents=sum(line.line_total_cents for line in receipt_lines),
+                wallet=(
+                    None
+                    if paid is None
+                    else PaidWallet(name=paid.name, balance_after_cents=paid.balance_after_cents)
+                ),
             )
+
+        payment = (
+            None
+            if request.wallet is None
+            else PaymentInput(
+                qr_token=request.wallet.qr_token,
+                short_code=request.wallet.short_code,
+                credit_limit_cents=view.credit_limit_cents,
+                actor_label=actor_label,
+            )
+        )
 
         try:
             written = await write_order(
@@ -249,7 +318,8 @@ async def place_order(
                 ],
                 wall_ts_ms=now_ms,
                 actor_key_id=actor_key_id,
-                response=lambda order_id: receipt_for(order_id).model_dump(mode="json"),
+                response=lambda order_id, paid: receipt_for(order_id, paid).model_dump(mode="json"),
+                payment=payment,
             )
         except IntegrityError as error:
             if _UNIQUE_KEY not in str(error.orig):
@@ -260,7 +330,7 @@ async def place_order(
                 raise
             return Outcome(result=_replay(winner, request), view=view)
 
-        receipt = receipt_for(written.order_id)
+        receipt = receipt_for(written.order_id, written.paid)
         entry = TickEntry(
             version=candidate.version,
             wall_ts_ms=now_ms,

@@ -117,6 +117,8 @@ class EntryRow:
     actor_label: str | None
     idempotency_key: str | None
     created_at: datetime
+    order_id: int | None
+    refunds_entry_id: int | None
 
 
 @dataclass(frozen=True)
@@ -146,6 +148,8 @@ _ENTRY = (
     WalletEntry.actor_label,
     WalletEntry.idempotency_key,
     WalletEntry.created_at,
+    WalletEntry.order_id,
+    WalletEntry.refunds_entry_id,
 )
 
 
@@ -166,6 +170,8 @@ def _entry(row: Any) -> EntryRow:  # a `Row` of `_ENTRY`
         row.actor_label,
         row.idempotency_key,
         row.created_at,
+        row.order_id,
+        row.refunds_entry_id,
     )
 
 
@@ -314,6 +320,30 @@ async def lock_wallet(conn: AsyncConnection, wallet_id: int) -> WalletRow | None
     return None if row.deleted_at is not None else _wallet(row)
 
 
+async def _lock_live(conn: AsyncConnection, where: ColumnElement[bool]) -> WalletRow | None:
+    row = (
+        await conn.execute(
+            select(*_WALLET).where(Wallet.deleted_at.is_(None), where).with_for_update()
+        )
+    ).one_or_none()
+    return None if row is None else _wallet(row)
+
+
+async def lock_wallet_by_qr_token(conn: AsyncConnection, qr_token: str) -> WalletRow | None:
+    """Lock the live wallet holding `qr_token` `FOR UPDATE`, or `None` (B-06 PD5).
+
+    The credential is the `WHERE`, so under READ COMMITTED a "Nieuwe code" or a
+    delete that commits while this waits leaves no row: the order is 404, never
+    charged to a wallet that was re-coded since the scan (AC12).
+    """
+    return await _lock_live(conn, Wallet.qr_token == qr_token)
+
+
+async def lock_wallet_by_short_code(conn: AsyncConnection, short_code: str) -> WalletRow | None:
+    """As `lock_wallet_by_qr_token`, for `short_code` in its stored form."""
+    return await _lock_live(conn, Wallet.short_code == short_code)
+
+
 async def lock_wallets(
     conn: AsyncConnection, first: int, second: int
 ) -> tuple[WalletRow | None, WalletRow | None]:
@@ -352,6 +382,8 @@ async def insert_entry(
     actor_key_id: int | None = None,
     actor_label: str | None = None,
     idempotency_key: str | None = None,
+    order_id: int | None = None,
+    refunds_entry_id: int | None = None,
 ) -> EntryRow:
     row = (
         await conn.execute(
@@ -366,6 +398,8 @@ async def insert_entry(
                 actor_key_id=actor_key_id,
                 actor_label=actor_label,
                 idempotency_key=idempotency_key,
+                order_id=order_id,
+                refunds_entry_id=refunds_entry_id,
                 created_at=at(now_ms),
             )
             .returning(*_ENTRY)
