@@ -26,7 +26,7 @@ parity with v1 plus durability, authorization, and cross-event analytics.
 | 10 | WAF / CDN? | **No** | Not a public product; a borrel is a closed audience | — | MB |
 | 11 | Backend language? | **Python / FastAPI retained** | The numpy pricing engine is the product; porting it is the highest-risk work available and buys nothing. FastAPI is an approved swap in the reference stack | — | MB |
 | 12 | Repo? | **Fresh repository** | Current history carries ~600 MB of image tarballs (342 MB pack) and real access keys | — | MB |
-| 13 | Scale? | **Single association, many borrels** | No tenant dimension; schema structured so one additive migration could add it | — | MB |
+| 13 | Scale? | **Single association, many borrels** | No tenant dimension; schema structured so one additive migration could add it. *Amended by B-05: one association per deployment (Addendum).* | — | MB |
 
 ## 3. Environments
 
@@ -56,6 +56,7 @@ the laptop (Phase 8 SD1, SD2). `production` still refuses an insecure cookie.
 
 Render EU (Frankfurt). Dutch student association; no residency requirement beyond keeping
 personal data in the EU. Note the app stores no personal data — orders are anonymous.
+*Amended by B-05: one name per player wallet (Addendum).*
 
 ## 5. Naming and tags
 
@@ -70,8 +71,8 @@ days, so the $7 paid tier is the realistic steady state). Local $0.
 
 | Deferred | Trigger that would change it |
 |---|---|
-| Multi-tenant / other associations | A second association asks to use it |
-| Entra or hosted identity | Accounts need to persist across events, or an audit trail per person is required |
+| Multi-tenant / other associations | A second association asks to use it. *Amended by B-05: it gets its own deployment; a tenant inside one stays deferred (Addendum).* |
+| Entra or hosted identity | Accounts need to persist across events, or an audit trail per person is required. *Amended by B-05: a wallet persists, but is no account (Addendum).* |
 | Object storage for uploads | Uploads exceed a few tens of MB, or the offline requirement is dropped |
 | Horizontal scale | Measured contention, which fifty phones in one room will not produce |
 | Admin action audit log | Considered and not selected; `run_config_revision` gives most of the value |
@@ -86,3 +87,29 @@ days, so the $7 paid tier is the realistic steady state). Local $0.
 | Postgres image absent from the local store at an offline venue | `docker compose up` fails at the event | Bundle both images in the `docker save` workflow; rehearse the offline boot | MB |
 | Venue laptop clock skew | Tick scheduling misbehaves | Schedule on monotonic time, stamp with wall time, clamp catch-up ([ADR 0003](0003-single-writer-owns-time.md)) | MB |
 | v1 access keys remain in git history | Old keys usable until rotated | Rotate keys; fresh repo leaves the history behind | MB |
+
+## Addendum (B-05, 2026-10-25)
+
+Date: 2026-10-25
+
+Player wallets (B-05 SD2, SD5, SD26) change three things this record states. The owner
+approved the amendment at the B-05 interview (Q3, Q9c). The original text above stands as it
+was decided; the marks beside it point here.
+
+- **Decision 13, scale: one association per deployment.** Each association that uses the app
+  gets its own deployment and its own Postgres, set up by the owner, so a wallet of one
+  association cannot exist in another's database. A tenant dimension inside one deployment is
+  still deferred: there is no tenant table and no tenant column. The §7 row "Multi-tenant /
+  other associations" is answered the same way: a second association gets a second deployment.
+- **§4, personal data: one name per player wallet.** The app now stores one free-text name per
+  wallet, chosen by the player (1–40 characters), and nothing else that identifies a person.
+  Orders stay anonymous. A name goes with its wallet: deleted by the player or by admin, or by
+  the automatic clean-up — a wallet never topped up within the unfunded period (default 30
+  days), or with no ledger entry for the inactivity period (default 12 months). A deleted
+  wallet's row keeps only its ledger; its name, codes and cookie hash are blanked
+  (`wallet_deleted_check`). Wallets are not in the xlsx export, so final exports, which are
+  never pruned, hold no names.
+- **§7, "Entra or hosted identity": the first trigger is answered without it.** A wallet
+  persists across borrels, but it is a cookie on the phone and a name, not an account with a
+  login: no email, no password, no recovery. A lost phone means signing up again and the kassa
+  moving the balance. The second trigger, an audit trail per person, still stands.

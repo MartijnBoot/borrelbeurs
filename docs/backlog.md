@@ -184,7 +184,8 @@ worth much.
 
 ### B-05 — Player wallets with a QR code
 
-- **Status:** specced → `docs/specs/phase-b-05-player-wallets.md`
+- **Status:** built → `docs/plans/phase-b-05-player-wallets.md` (spec:
+  `docs/specs/phase-b-05-player-wallets.md`)
 - **Added:** 2026-10-18
 - **Size:** L (a phase of its own) — a guess: a new kind of user, new tables, a camera
   library, two new pages
