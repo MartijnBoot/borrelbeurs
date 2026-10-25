@@ -48,6 +48,9 @@ PUBLIC_ROUTES: Final = frozenset(
         ("GET", "/theme.css"),
         # Phase 6 SD29: the board and the login page paint with uploaded images.
         ("GET", "/assets/{asset_id:int}"),
+        # B-05 SD6: a player signs up without any session, behind the sign-up code.
+        ("POST", "/api/wallet"),
+        ("POST", "/api/wallet/name-check"),
     }
 )
 
@@ -128,7 +131,10 @@ def test_the_walk_reaches_the_routes_that_matter(built_frontend: None) -> None:
 def test_the_allowlist_is_exactly_sd1_sd3_and_phase_4_sd8() -> None:
     """`/theme.css` was authorised by the human in Phase 4 SD8: the login page must
     paint themed too, and the tokens are not secret. `/assets/{asset_id:int}` was, in
-    the approved Phase 6 spec (SD29), for the same reason: uploaded theme images."""
+    the approved Phase 6 spec (SD29), for the same reason: uploaded theme images.
+    Wallet sign-up and the name check were, by the owner at the B-05 spec interview
+    (SD6, Q9): a player has no session, and both sit behind the sign-up code and a
+    per-IP limiter."""
     assert {path for _, path in PUBLIC_ROUTES} == {
         "/api/auth/login",
         "/healthz",
@@ -139,6 +145,8 @@ def test_the_allowlist_is_exactly_sd1_sd3_and_phase_4_sd8() -> None:
         "/redoc",
         "/theme.css",
         "/assets/{asset_id:int}",
+        "/api/wallet",
+        "/api/wallet/name-check",
     }
 
 

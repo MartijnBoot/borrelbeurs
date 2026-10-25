@@ -61,6 +61,7 @@ from app.api.security import ROLE_ROUTES, LoginLimiter, OriginGuard
 from app.api.standby import StandbyGate
 from app.api.state import router as state_router
 from app.api.theme import theme_css_router, theme_router
+from app.api.wallet import router as wallet_router
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError, handle_app_error, handle_validation_error
 from app.core.logging import configure_logging
@@ -90,15 +91,19 @@ api_router.include_router(keys_router)
 api_router.include_router(analytics_router)
 api_router.include_router(exports_router)
 api_router.include_router(profiles_router)
+api_router.include_router(wallet_router)
 
 # `pnpm --dir web build` output (T6). Not built by every checkout -- a Python
 # test run has no reason to have run pnpm first -- so its absence only means
 # there is no frontend to serve, never a boot failure.
 WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
 
-# The client-side routes (Phase 4 PD8): the login page and every route the role
-# table grants, taken from the server's own table rather than copied.
-SPA_ROUTES: Final = frozenset({"/login"} | {r for routes in ROLE_ROUTES.values() for r in routes})
+# The client-side routes (Phase 4 PD8): the login page, the player's page (B-05
+# SD20) and every route the role table grants, taken from the server's own table
+# rather than copied.
+SPA_ROUTES: Final = frozenset(
+    {"/login", "/speler"} | {r for routes in ROLE_ROUTES.values() for r in routes}
+)
 
 # SD3, Phase 8 AC25: an allowlist, so a new environment -- `venue`, the borrel's
 # LAN -- hides the docs until someone decides otherwise.
@@ -165,6 +170,9 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     application.state.settings = settings
     application.state.login_limiter = LoginLimiter(
         settings.login_rate_per_minute, application.state.clock
+    )
+    application.state.signup_limiter = LoginLimiter(
+        settings.signup_rate_per_minute, application.state.clock
     )
     if settings.app_env in DOCS_ENVS:
         _mount_docs(application)
