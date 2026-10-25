@@ -92,7 +92,7 @@ beforeEach(() => {
       posts.push(body)
       return new Promise<OrderOutcome>(() => {})
     },
-    uuid: () => crypto.randomUUID(),
+    newKey: () => crypto.randomUUID(),
   })
   const hello = {
     boot_id: 'B',
@@ -201,7 +201,7 @@ describe('OrderPad', () => {
           kind: 'price_changed',
           body: { version: 6, prices: [{ drink_id: 1, price_cents: 260 }] },
         }),
-      uuid: () => crypto.randomUUID(),
+      newKey: () => crypto.randomUUID(),
     })
     cleanup()
     render(<Harness />)

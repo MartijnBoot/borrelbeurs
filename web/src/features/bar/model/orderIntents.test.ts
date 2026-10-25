@@ -65,7 +65,7 @@ beforeEach(() => {
       new Promise<OrderOutcome>((resolve, reject) => {
         calls.push({ key, body, text: JSON.stringify(body), resolve, reject })
       }),
-    uuid: () => `key-${String(++keys).padStart(4, '0')}`,
+    newKey: () => `key-${String(++keys).padStart(4, '0')}`,
     now: () => 0,
     setTimeout: (fn, ms) => setTimeout(fn, ms),
     clearTimeout: (id) => clearTimeout(id),

@@ -87,7 +87,7 @@ beforeEach(() => {
     clearTimeout: (id) => clearTimeout(id),
     post: ({ key, body }) =>
       new Promise<OrderOutcome>((resolve, reject) => calls.push({ key, body, resolve, reject })),
-    uuid: () => crypto.randomUUID(),
+    newKey: () => crypto.randomUUID(),
   })
   const hello = {
     boot_id: 'B',

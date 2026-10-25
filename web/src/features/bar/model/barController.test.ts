@@ -81,7 +81,7 @@ beforeEach(() => {
     clearTimeout: (id) => clearTimeout(id),
     post: ({ key, body }) =>
       new Promise<OrderOutcome>((resolve) => posts.push({ key, body, resolve })),
-    uuid: () => `key-${String(posts.length).padStart(4, '0')}-${Math.random()}`,
+    newKey: () => `key-${String(posts.length).padStart(4, '0')}-${Math.random()}`,
   })
   dispatch(
     envelope('hello', seq, null, {

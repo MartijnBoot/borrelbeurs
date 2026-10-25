@@ -1,6 +1,6 @@
 /**
  * The React binding for the bar controller (Phase 5 PD8): one controller per
- * page mount, with the real monotonic clock, timers, transport and uuids.
+ * page mount, with the real monotonic clock, timers, transport and keys.
  *
  * Created and disposed in one effect, as `app/providers.tsx` does the
  * exchange client, so StrictMode's mount-unmount-mount leaves exactly one
@@ -10,6 +10,7 @@
  * runs, the view is empty and every action is a no-op.
  */
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import { newIdempotencyKey } from '../../lib/idempotencyKey'
 import { exchangeStore, type DrinkId } from '../exchange'
 import { postOrder } from './api/orders'
 import { createBarController, type BarController, type BarView } from './model/barController'
@@ -73,7 +74,7 @@ export function useBarController(): { view: BarView; actions: BarActions } {
       setTimeout: (fn, ms) => window.setTimeout(fn, ms),
       clearTimeout: (id) => window.clearTimeout(id),
       post: postOrder,
-      uuid: () => crypto.randomUUID(),
+      newKey: newIdempotencyKey,
     })
     slot.set(controller)
     return () => {

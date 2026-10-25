@@ -36,7 +36,8 @@ export interface BarControllerDeps<Id = unknown> {
   setTimeout(fn: () => void, ms: number): Id
   clearTimeout(id: Id): void
   post(request: { key: string; body: OrderBody }): Promise<OrderOutcome>
-  uuid(): string
+  /** A fresh `Idempotency-Key` (D-49: never Web Crypto's UUID, see `lib/idempotencyKey.ts`). */
+  newKey(): string
 }
 
 export interface BarController {
@@ -70,7 +71,7 @@ export function createBarController<Id>(deps: BarControllerDeps<Id>): BarControl
   })
   const intents = createOrderIntents({
     post: deps.post,
-    uuid: deps.uuid,
+    newKey: deps.newKey,
     now: deps.now,
     setTimeout: deps.setTimeout,
     clearTimeout: deps.clearTimeout,

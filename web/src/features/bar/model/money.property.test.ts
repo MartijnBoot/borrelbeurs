@@ -283,7 +283,7 @@ function runCase(seed: number): void {
     setTimeout: clock.setTimeout,
     clearTimeout: clock.clearTimeout,
     post,
-    uuid: () => `case-${seed}-key-${++keyN}`,
+    newKey: () => `case-${seed}-key-${++keyN}`,
   })
 
   function respond(request: Request) {

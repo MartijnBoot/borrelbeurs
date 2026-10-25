@@ -65,7 +65,8 @@ export interface Conflict {
 
 export interface OrderIntentsDeps<Id = unknown> {
   post(request: { key: string; body: OrderBody }): Promise<OrderOutcome>
-  uuid(): string
+  /** A fresh `Idempotency-Key` (D-49: never Web Crypto's UUID, see `lib/idempotencyKey.ts`). */
+  newKey(): string
   /** The monotonic clock, to stamp a 409's record as it arrives. */
   now(): number
   setTimeout(fn: () => void, ms: number): Id
@@ -226,7 +227,7 @@ export function createOrderIntents<Id>(deps: OrderIntentsDeps<Id>): OrderIntents
           id,
           tap: nextTap++,
           drinkId,
-          key: deps.uuid(),
+          key: deps.newKey(),
           body,
           state: 'sending',
           unitPriceCents: null,
@@ -259,7 +260,7 @@ export function createOrderIntents<Id>(deps: OrderIntentsDeps<Id>): OrderIntents
       if (intent === undefined || record == null) return
       const body = bodyFor(record, intent.entry.drinkId)
       if (body === null) return
-      set(intent, { key: deps.uuid(), body, conflict: null })
+      set(intent, { key: deps.newKey(), body, conflict: null })
       intent.retries = 0
       send(intent, true)
       publish()
