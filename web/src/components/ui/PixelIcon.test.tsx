@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// The pixel icons (B-02 SD1, SD3, SD10; PD1, PD2; B-04 SD11): 22 grids of `#` and `.`, each drawn
+// The pixel icons (B-02 SD1, SD3, SD10; PD1, PD2; B-04 SD11; B-05 SD25): 23 grids of `#` and `.`, each drawn
 // as one inline SVG path that covers exactly the grid's `#` cells.
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -26,6 +26,7 @@ const LARGE = [
   'warning',
   'arrowUp',
   'floppy',
+  'wallet',
 ]
 const SMALL = ['stop', 'rise', 'fall', 'chevronDown']
 const ALL: Record<string, readonly string[]> = grids
@@ -54,7 +55,7 @@ function onCells(grid: readonly string[]): Set<string> {
 }
 
 describe('the grids (AC1)', () => {
-  it('are exactly the 22 of SD10 and B-04 SD11: 17 of 16×16, 4 of 8×8 and the 16×16 favicon', () => {
+  it('are exactly the 23 of SD10, B-04 SD11 and B-05 SD25: 18 of 16×16, 4 of 8×8 and the 16×16 favicon', () => {
     expect(Object.keys(grids).sort()).toEqual([...LARGE, ...SMALL, 'favicon'].sort())
     for (const name of [...LARGE, 'favicon']) expect(ALL[name], name).toHaveLength(16)
     for (const name of SMALL) expect(ALL[name], name).toHaveLength(8)
