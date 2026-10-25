@@ -691,6 +691,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/kassa/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Lookup */
+        post: operations["lookup_api_kassa_lookup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kassa/wallets/{wallet_id}/topups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Topups */
+        get: operations["list_topups_api_kassa_wallets__wallet_id__topups_get"];
+        put?: never;
+        /** Top Up */
+        post: operations["top_up_api_kassa_wallets__wallet_id__topups_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/theme.css": {
         parameters: {
             query?: never;
@@ -813,6 +848,20 @@ export interface components {
             l: number;
             /** C */
             c: number;
+        };
+        /** BookedEntry */
+        BookedEntry: {
+            /** Entry Id */
+            entry_id: number;
+            /** Wallet Id */
+            wallet_id: number;
+            /** Amount Cents */
+            amount_cents: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** CompareRowData */
         CompareRowData: {
@@ -1092,6 +1141,23 @@ export interface components {
             /** Version */
             version: number;
         };
+        /** KassaWalletData */
+        KassaWalletData: {
+            /** Wallet Id */
+            wallet_id: number;
+            /** Name */
+            name: string;
+            /** Balance Cents */
+            balance_cents: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Topup At */
+            last_topup_at: string | null;
+            recent_topup: components["schemas"]["RecentTopup"] | null;
+        };
         /** KeyInfo */
         KeyInfo: {
             /** Key Id */
@@ -1122,6 +1188,16 @@ export interface components {
         LoginRequest: {
             /** Key */
             key: string;
+        };
+        /**
+         * LookupRequest
+         * @description Exactly one of a scanned QR token or a typed short code (AC14).
+         */
+        LookupRequest: {
+            /** Qr Token */
+            qr_token?: string | null;
+            /** Short Code */
+            short_code?: string | null;
         };
         /** MarketEventInfo */
         MarketEventInfo: {
@@ -1356,6 +1432,16 @@ export interface components {
             /** Line Total Cents */
             line_total_cents: number;
         };
+        /** RecentTopup */
+        RecentTopup: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Amount Cents */
+            amount_cents: number;
+        };
         /** RevisionData */
         RevisionData: {
             /** Revision */
@@ -1494,6 +1580,27 @@ export interface components {
             } | null;
             /** Font */
             font?: ("inter" | "garamond") | null;
+        };
+        /** TopupData */
+        TopupData: {
+            /** Entry Id */
+            entry_id: number;
+            /** Amount Cents */
+            amount_cents: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Actor Label */
+            actor_label: string | null;
+            /** Reversed */
+            reversed: boolean;
+        };
+        /** TopupRequest */
+        TopupRequest: {
+            /** Amount Cents */
+            amount_cents: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -2923,6 +3030,116 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    lookup_api_kassa_lookup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LookupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KassaWalletData"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_topups_api_kassa_wallets__wallet_id__topups_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wallet_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopupData"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    top_up_api_kassa_wallets__wallet_id__topups_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                wallet_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TopupRequest"];
+            };
+        };
+        responses: {
+            /** @description A replay of the stored top-up */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookedEntry"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookedEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

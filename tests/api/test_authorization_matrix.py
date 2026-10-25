@@ -25,6 +25,8 @@ ALL: Final = frozenset({"display", "bar", "admin", "kassa"})
 MARKET: Final = frozenset({"display", "bar", "admin"})
 WRITERS: Final = frozenset({"bar", "admin"})
 ADMIN: Final = frozenset({"admin"})
+# B-05 SD7.
+KASSA: Final = frozenset({"kassa", "admin"})
 
 # SD1, verbatim. (method, path) -> roles allowed.
 SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
@@ -80,6 +82,10 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     ("POST", "/api/profiles"): ADMIN,
     ("DELETE", "/api/profiles/{profile_id}"): ADMIN,
     ("POST", "/api/runs/{run_id}/profile"): ADMIN,
+    # B-05 SD7, SD10, SD22.
+    ("POST", "/api/kassa/lookup"): KASSA,
+    ("GET", "/api/kassa/wallets/{wallet_id}/topups"): KASSA,
+    ("POST", "/api/kassa/wallets/{wallet_id}/topups"): KASSA,
 }
 
 # B-05 SD8: the player's own routes. A player is not a role: these carry
@@ -143,6 +149,8 @@ def _status(client: TestClient, method: str, path: str) -> int:
         .replace("{key_id}", "999999")
         .replace("{export_id}", "999999")
         .replace("{profile_id}", "999999")
+        .replace("{wallet_id}", "999999")
+        .replace("{entry_id}", "999999")
         .replace("{slot}", "bg")
     )
     if method == "WS":

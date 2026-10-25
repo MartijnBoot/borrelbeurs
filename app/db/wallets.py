@@ -466,3 +466,31 @@ async def put_settings(conn: AsyncConnection, settings: WalletSettingsRow) -> Wa
         statement.on_conflict_do_update(index_elements=[WalletSettings.id], set_=values)
     )
     return settings
+
+
+# --- the kassa's reads ------------------------------------------------------------
+
+
+async def last_topup(conn: AsyncConnection, wallet_id: int) -> EntryRow | None:
+    """The wallet's newest top-up, reversed or not (SD10's 2-minute check, SD11)."""
+    row = (
+        await conn.execute(
+            select(*_ENTRY)
+            .where(WalletEntry.wallet_id == wallet_id, WalletEntry.kind == "topup")
+            .order_by(WalletEntry.created_at.desc(), WalletEntry.entry_id.desc())
+            .limit(1)
+        )
+    ).one_or_none()
+    return None if row is None else _entry(row)
+
+
+async def topups(conn: AsyncConnection, wallet_id: int) -> list[tuple[EntryRow, bool]]:
+    """The wallet's top-ups, newest first, each with whether it was reversed (SD12, SD22)."""
+    reversal = WalletEntry.__table__.alias("reversal")
+    rows = await conn.execute(
+        select(*_ENTRY, reversal.c.entry_id.is_not(None).label("reversed"))
+        .outerjoin(reversal, reversal.c.reverses_entry_id == WalletEntry.entry_id)
+        .where(WalletEntry.wallet_id == wallet_id, WalletEntry.kind == "topup")
+        .order_by(WalletEntry.created_at.desc(), WalletEntry.entry_id.desc())
+    )
+    return [(_entry(row), bool(row.reversed)) for row in rows]

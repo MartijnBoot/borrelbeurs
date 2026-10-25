@@ -52,6 +52,8 @@ DRAINING_WRITES: Final[list[tuple[str, str, dict[str, Any] | None]]] = [
     ("DELETE", "/api/profiles/999999", None),
     ("POST", "/api/runs", {"name": "Nieuw", "profile_id": 999999}),
     ("POST", "/api/runs/999999/profile", {"profile_id": 999999}),
+    # B-05 AC44.
+    ("POST", "/api/kassa/wallets/999999/topups", {"amount_cents": 1000}),
 ]
 
 READS: Final = ("/api/state", "/api/news", "/api/auth/me", "/theme.css")

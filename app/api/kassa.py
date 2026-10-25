@@ -1,0 +1,163 @@
+"""The kassa's routes (B-05 SD7, SD10-SD14, SD22; plan PD9, PD17).
+
+Every route is `require_role("kassa", "admin")` (SD7); a write is refused while
+draining after that (Phase 6 PD19). A money write carries an `Idempotency-Key`
+as an order does (`app/api/orders.py`): the same key and body again is a 200
+replay of the stored entry, another body under it is 422 `idempotency_key_reused`.
+An unknown or deleted wallet is 404 `wallet_not_found`.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Annotated, Final, Self
+
+from fastapi import APIRouter, Depends, Header, Request, Response
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
+
+from app.api.deps import Principal, clock_of, db_engine, refuse_while_draining, require_role
+from app.api.orders import IDEMPOTENCY_KEY_PATTERN
+from app.runtime import wallets as actions
+
+router = APIRouter(prefix="/kassa", tags=["kassa"])
+
+Kassa = Annotated[Principal, Depends(require_role("kassa", "admin"))]
+Draining = Annotated[None, Depends(refuse_while_draining)]
+IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", pattern=IDEMPOTENCY_KEY_PATTERN)]
+
+# SD10: €10 to €100 in €5 steps.
+TOPUP_AMOUNTS: Final = frozenset(range(1_000, 10_001, 500))
+
+
+class LookupRequest(BaseModel):
+    """Exactly one of a scanned QR token or a typed short code (AC14)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    qr_token: Annotated[str, Field(min_length=1, max_length=200)] | None = None
+    short_code: Annotated[str, Field(min_length=1, max_length=40)] | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one(self) -> Self:
+        if (self.qr_token is None) == (self.short_code is None):
+            raise ValueError("give exactly one of qr_token and short_code")
+        return self
+
+
+class RecentTopup(BaseModel):
+    at: datetime
+    amount_cents: int
+
+
+class KassaWalletData(BaseModel):
+    wallet_id: int
+    name: str
+    balance_cents: int
+    created_at: datetime
+    last_topup_at: datetime | None
+    recent_topup: RecentTopup | None
+
+
+class TopupData(BaseModel):
+    entry_id: int
+    amount_cents: int
+    created_at: datetime
+    actor_label: str | None
+    reversed: bool
+
+
+class TopupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    amount_cents: StrictInt
+
+    @field_validator("amount_cents")
+    @classmethod
+    def _a_step(cls, value: int) -> int:
+        if value not in TOPUP_AMOUNTS:
+            raise ValueError("a top-up is 1000 to 10000 cents in steps of 500")
+        return value
+
+
+class BookedEntry(BaseModel):
+    entry_id: int
+    wallet_id: int
+    amount_cents: int
+    created_at: datetime
+
+
+def _actor(principal: Principal) -> actions.Actor:
+    return actions.Actor(key_id=principal.key_id, label=principal.label)
+
+
+def _booked(booked: actions.Booked, response: Response) -> BookedEntry:
+    if booked.replay:
+        response.status_code = 200
+    entry = booked.entry
+    return BookedEntry(
+        entry_id=entry.entry_id,
+        wallet_id=entry.wallet_id,
+        amount_cents=entry.amount_cents,
+        created_at=entry.created_at,
+    )
+
+
+@router.post("/lookup")
+async def lookup(body: LookupRequest, request: Request, _: Kassa) -> KassaWalletData:
+    found = await actions.lookup(
+        db_engine(request),
+        qr_token=body.qr_token,
+        short_code=body.short_code,
+        now_ms=clock_of(request).wall_ms(),
+    )
+    wallet = found.player.wallet
+    recent = found.recent_topup
+    return KassaWalletData(
+        wallet_id=wallet.wallet_id,
+        name=wallet.name,
+        balance_cents=found.player.balance_cents,
+        created_at=wallet.created_at,
+        last_topup_at=found.last_topup_at,
+        recent_topup=None
+        if recent is None
+        else RecentTopup(at=recent.created_at, amount_cents=recent.amount_cents),
+    )
+
+
+@router.get("/wallets/{wallet_id}/topups")
+async def list_topups(wallet_id: int, request: Request, _: Kassa) -> list[TopupData]:
+    return [
+        TopupData(
+            entry_id=entry.entry_id,
+            amount_cents=entry.amount_cents,
+            created_at=entry.created_at,
+            actor_label=entry.actor_label,
+            reversed=reversed_,
+        )
+        for entry, reversed_ in await actions.topups(db_engine(request), wallet_id)
+    ]
+
+
+@router.post(
+    "/wallets/{wallet_id}/topups",
+    status_code=201,
+    responses={200: {"model": BookedEntry, "description": "A replay of the stored top-up"}},
+)
+async def top_up(
+    wallet_id: int,
+    body: TopupRequest,
+    request: Request,
+    response: Response,
+    idempotency_key: IdempotencyKey,
+    principal: Kassa,
+    _: Draining,
+) -> BookedEntry:
+    booked = await actions.top_up(
+        db_engine(request),
+        wallet_id=wallet_id,
+        amount_cents=body.amount_cents,
+        idempotency_key=idempotency_key,
+        actor=_actor(principal),
+        now_ms=clock_of(request).wall_ms(),
+    )
+    return _booked(booked, response)
