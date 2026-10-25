@@ -1,0 +1,55 @@
+/* After `features/settings/settings.module.css`, which a feature may not import. */
+.subsection {
+  padding: 12px 0;
+  border-top: 1px solid var(--grid);
+}
+
+.subsection:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.subsection h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.subsection p {
+  margin: 8px 0 0;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.link {
+  font-family: ui-monospace, monospace;
+  word-break: break-all;
+}
+
+.list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wallet {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.error {
+  color: var(--danger);
+}
