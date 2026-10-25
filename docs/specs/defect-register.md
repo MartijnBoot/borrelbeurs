@@ -105,7 +105,7 @@ a real phone; the inference is from the browser rule, not an observed failure.
 
 | ID | Defect | Where | Consequence | Phase |
 |---|---|---|---|---|
-| D-49 | The bar page makes its `Idempotency-Key` with `crypto.randomUUID()`, which browsers only provide in a secure context (HTTPS or loopback) | `web/src/features/bar/useBarController.ts:76`, called per intent at `model/orderIntents.ts:229,262` | At the venue (`http://192.168.8.10/`, Phase 8 SD1) **every order tap likely throws `TypeError`**. The e2e and image tests use `http://127.0.0.1`, which counts as secure, so none can catch it | open — unscheduled ([B-05 SD24](phase-b-05-player-wallets.md)) |
+| D-49 | The bar page makes its `Idempotency-Key` with `crypto.randomUUID()`, which browsers only provide in a secure context (HTTPS or loopback) | `web/src/features/bar/useBarController.ts:76`, called per intent at `model/orderIntents.ts:229,262` | At the venue (`http://192.168.8.10/`, Phase 8 SD1) **every order tap likely throws `TypeError`**. The e2e and image tests use `http://127.0.0.1`, which counts as secure, so none can catch it | open — scheduled for B-06 ([B-05 SD24](phase-b-05-player-wallets.md); fixed by [B-06 SD12, AC31](phase-b-06-wallet-payments.md)) |
 
 ### Phase 6 evidence
 
