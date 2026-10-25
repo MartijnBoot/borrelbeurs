@@ -1,14 +1,8 @@
 """A run's config: the SD8 PATCH model, the config document, and draft writes.
 
-**Validation (Phase 6 SD8).** `ConfigPatch` and `ParamsPatch` have every field
-optional and forbid any other key, so a non-editable param (the legacy
-`bm_sigma`, `tick_interval_ms`, `quote_grace_versions`) is 422 naming it. An
-explicit `null` is 422 naming the field: no field is nullable and nothing is
-defaulted (AC3). Numbers are strict and finite -- a string or a bool is not a
-number here, so nothing is coerced (D-03). SD8's "a-b" ranges include both ends
-(the user, 2026-10-08), as v1's `settings.html` `min`/`max` did.
-`candle_interval_s` is 5-3600 in steps of 5 (SD10). The six noise params are
-editable since B-03, in its SD3's ranges.
+**Validation (Phase 6 SD8)** is `ConfigPatch` and `ParamsPatch`, defined in
+`app/runtime/config_patch.py` (a leaf, so `app/db` can use the same rules for a
+profile, B-04) and re-exported here.
 
 **The document (PD6).** `config_document` is the `GET` body: the newest
 revision, the run, SD8's params, and every drink in slot order, removed ones
@@ -28,6 +22,10 @@ and writes a `price_tick` of source `config`; it emits `ConfigChanged`. An
 empty body returns the current revision and writes nothing (AC2). An ended run
 is 409 `run_ended`.
 
+**Loading a profile (B-04 SD3, PD7)** is a draft write of the profile's 22, in
+the same one transaction as the profile read, and only onto a draft: a live or
+ended run is 409 `run_not_draft`.
+
 **Anchor s0 (SD5, SD26)** is v1's "📌 Zet huidige prijs als evenwicht", live
 only: one `mutate("config")` running `anchor_s0_to_current_y` on the masked
 spec -- the mean over active drinks, a removed drink's `s0` kept (AC16) -- and
@@ -39,24 +37,15 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Mapping
-from typing import Annotated, Any
+from typing import Any
 
-from pydantic import (
-    AfterValidator,
-    BaseModel,
-    ConfigDict,
-    Field,
-    StrictBool,
-    StrictInt,
-    StringConstraints,
-    field_validator,
-)
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from app.core.errors import AppError
 from app.db.codec import tick_prices
 from app.db.engine_state import compare_and_set, insert_tick
 from app.db.mapping import DrinkRow
+from app.db.profiles import get_profile
 from app.db.runs import (
     RunEnded,
     RunNotDraft,
@@ -71,90 +60,14 @@ from app.db.runs import (
     update_run,
 )
 from app.runtime.clock import Clock, commit_stamp_ms
+from app.runtime.config_patch import ConfigPatch as ConfigPatch
+from app.runtime.config_patch import InvalidConfig as InvalidConfig
+from app.runtime.config_patch import ParamsPatch as ParamsPatch
+from app.runtime.config_patch import _whole_cents as _whole_cents
+from app.runtime.config_patch import profile_patch
 from app.runtime.history import TickEntry
 from app.runtime.holder import ConfigChanged, MarketHolder, MarketView, Outcome
 from exchange import EngineState, MarketSpec, Params, anchor_s0_to_current_y, hold_quoted_prices
-
-
-class InvalidConfig(AppError):
-    """A write that only the database can judge invalid; `faults` names the field."""
-
-    status_code = 422
-    code = "invalid_request"
-
-
-def _whole_cents(step: float) -> float:
-    # 0.1 * 100 == 10.000000000000002: compare to the nearest whole number of cents.
-    cents = step * 100
-    if abs(cents - round(cents)) > 1e-9 * max(1.0, cents):
-        raise ValueError("must be a multiple of 0.01")
-    return step
-
-
-def _not_null(value: Any) -> Any:
-    if value is None:
-        raise ValueError("may not be null")
-    return value
-
-
-StepQuant = Annotated[
-    float, Field(strict=True, allow_inf_nan=False, gt=0, le=5), AfterValidator(_whole_cents)
-]
-NonNegative = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=0)]
-Positive = Annotated[float, Field(strict=True, allow_inf_nan=False, gt=0)]
-Fraction = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=0, le=1)]
-HistoryMinutes = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=1, le=240)]
-RefreshMinutes = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=0.1, le=10)]
-IdleMinutes = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=0.1)]
-NoiseMinutes = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=0.05, le=10)]
-NoiseClip = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=1, le=20)]
-DrinkIds = list[StrictInt]
-RunName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
-CandleSeconds = Annotated[int, Field(strict=True, ge=5, le=3600, multiple_of=5)]
-
-
-class ParamsPatch(BaseModel):
-    """SD8's editable params. An absent field is unchanged; `None` only means absent."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    step_quant: StepQuant | None = None
-    eta: NonNegative | None = None
-    K: Positive | None = None
-    lambda_orders: NonNegative | None = None
-    alpha_price: NonNegative | None = None
-    phi_persist: NonNegative | None = None
-    decay_rho: Fraction | None = None
-    history_window_minutes: HistoryMinutes | None = None
-    refresh_minutes: RefreshMinutes | None = None
-    idle_decay_minutes: IdleMinutes | None = None
-    idle_rise_minutes: IdleMinutes | None = None
-    idle_strength: NonNegative | None = None
-    idle_rise_strength: NonNegative | None = None
-    idle_targets: DrinkIds | None = None
-    idle_rise_targets: DrinkIds | None = None
-    demand_enabled: StrictBool | None = None
-    auto_calibrate_s0: StrictBool | None = None
-    bm_enabled: StrictBool | None = None
-    bm_sigma_y: NonNegative | None = None
-    bm_dt_minutes: NoiseMinutes | None = None
-    flow_vol_amp: NonNegative | None = None
-    flow_beta: Fraction | None = None
-    y_clip: NoiseClip | None = None
-
-    _no_null = field_validator("*", mode="before")(_not_null)
-
-
-class ConfigPatch(BaseModel):
-    """`PATCH /api/runs/{run_id}/config` (SD5)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    name: RunName | None = None
-    candle_interval_s: CandleSeconds | None = None
-    params: ParamsPatch | None = None
-
-    _no_null = field_validator("*", mode="before")(_not_null)
 
 
 class ParamsData(BaseModel):
@@ -437,6 +350,27 @@ async def write_draft_config(
         if run.status != "draft":
             raise RunNotDraft(f"run {run_id} is {run.status}, and not live in this process")
         merged = await _merged(conn, run, patch)
+        if merged is None:
+            return await latest_revision(conn, run_id)
+        return await _record(conn, merged, author=author)
+
+
+async def load_profile_onto_draft(
+    engine: AsyncEngine, run_id: int, profile_id: int, *, author: str
+) -> int:
+    """Replace a draft's 22 with a profile's (B-04 SD3, SD9; PD7); the new revision.
+
+    One transaction, the status checked first: a live or ended run is 409
+    `run_not_draft` whatever the profile holds. Then 404 `profile_not_found`, or
+    422 naming a stored value outside today's rules. A profile equal to the
+    draft appends nothing and returns the current revision.
+    """
+    async with engine.begin() as conn:
+        run = await get_run(conn, run_id, lock=True)
+        if run.status != "draft":
+            raise RunNotDraft(f"run {run_id} is {run.status}; a profile loads only onto a draft")
+        profile = await get_profile(conn, profile_id)
+        merged = await _merged(conn, run, profile_patch(profile.settings, source="profile"))
         if merged is None:
             return await latest_revision(conn, run_id)
         return await _record(conn, merged, author=author)

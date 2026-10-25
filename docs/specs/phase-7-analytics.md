@@ -106,6 +106,9 @@ The earnings series has one point per sale and is rebroadcast in full (D-31,
     bounds, `p0`, `a/d/s0/c` and bar price, and its `params` (instead of the latest run's).
     No orders, ticks, news or events are copied. The "Nieuwe borrel" form gets a select "kopieer
     drankjes uit".
+
+    > **Amended by B-04** ([phase-b-04-setting-profiles.md](phase-b-04-setting-profiles.md)).
+    > With a setting profile picked as well, the profile wins for its 22 fields.
   - This supersedes Phase 6 SD2's "No drinks" for the copy case only. `live_run_exists` and
     `draft_exists` still apply.
 - **SD5 — The bar price is snapshotted per sale (D-20).**

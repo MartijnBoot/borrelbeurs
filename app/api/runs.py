@@ -6,7 +6,9 @@ defaults, and revision 1 authored by the session's key label. It refuses with
 409 `live_run_exists`, or 409 `draft_exists` carrying the draft's `run_id`, so
 the UI can open that draft. With `copy_from_run_id` the draft starts from that
 run's params and active drinks instead (Phase 7 SD4); an unknown one is 404
-`run_not_found`.
+`run_not_found`. With `profile_id` the profile's 22 settings win for those fields
+(B-04 SD4): 404 `profile_not_found`, or 422 naming a stored value outside
+today's rules, each creating nothing.
 
 `GET /api/runs/current` is what `/settings` and home edit: the live run, else
 the draft, else 404 `no_current_run` (PD2).
@@ -52,6 +54,7 @@ class CreateRunRequest(BaseModel):
 
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
     copy_from_run_id: int | None = None
+    profile_id: int | None = None
 
 
 class ConfirmNameRequest(BaseModel):
@@ -80,6 +83,7 @@ async def post_run(
         name=body.name,
         author=principal.label,
         copy_from_run_id=body.copy_from_run_id,
+        profile_id=body.profile_id,
     )
     return RunSummaryData(run_id=run_id, name=body.name, status="draft")
 

@@ -1,6 +1,13 @@
 import { TickMarkType, type UTCTimestamp } from 'lightweight-charts'
 import { describe, expect, it } from 'vitest'
-import { chartTickMark, chartTime, formatClock, formatHourMinute, formatWhen } from './time'
+import {
+  chartTickMark,
+  chartTime,
+  formatClock,
+  formatDayMonthTime,
+  formatHourMinute,
+  formatWhen,
+} from './time'
 
 // 19:30:05 UTC: 21:30:05 in Amsterdam in summer (CEST, +2), 20:30:05 in winter (CET, +1).
 const SUMMER_MS = Date.UTC(2026, 9, 18, 19, 30, 5)
@@ -25,6 +32,15 @@ describe('times are Amsterdam time, whatever zone the machine is in', () => {
 
   it('formatWhen rolls the date over at Amsterdam midnight, not UTC midnight', () => {
     expect(formatWhen(Date.UTC(2026, 9, 18, 22, 30))).toBe('19-10-2026, 00:30')
+  })
+
+  // B-04 SD12: a profile's saved-at, "d mmm HH:mm", the month without a trailing dot.
+  it.each([
+    [Date.UTC(2026, 9, 24, 12, 5), '24 okt 14:05'],
+    [Date.UTC(2026, 2, 3, 13, 5), '3 mrt 14:05'],
+    [Date.UTC(2026, 11, 31, 23, 30), '1 jan 00:30'],
+  ])('formatDayMonthTime(%i) is %s', (ms, text) => {
+    expect(formatDayMonthTime(ms)).toBe(text)
   })
 })
 

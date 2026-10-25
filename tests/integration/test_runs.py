@@ -3,11 +3,14 @@
 AC15 (duplicate names), AC12 (set half), SD6 (draft creation), SD14, PD6.
 Each scenario opens its own transaction, as a real caller would: the
 repositories take a connection and never begin or commit one.
+
+B-04 T5: a create with a profile (AC7-AC10, AC15; SD4).
 """
 
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
 
@@ -17,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from app.core.config import Settings
 from app.db.mapping import DrinkRow
+from app.db.profiles import ProfileNotFound, save_profile
 from app.db.runs import (
     DEFAULT_PARAMS,
     DraftExists,
@@ -34,6 +38,7 @@ from app.db.runs import (
     set_bar_price,
 )
 from app.db.session import create_engine
+from app.runtime.config_patch import PROFILE_FIELDS, InvalidConfig, profile_settings
 from exchange import Params
 
 T = TypeVar("T")
@@ -310,6 +315,8 @@ def test_create_run_takes_params_defaults_and_writes_revision_one(
     assert (revision, author) == (1, "admin key")
     assert (config["name"], config["drinks"]) == ("Vrijmibo", [])
     assert Params.from_dict(config["params"]) == DEFAULT_PARAMS
+    # B-04 PD9: revision 1 records Kaarsbreedte on every create.
+    assert config["candle_interval_s"] == 60
 
 
 def test_create_run_copies_the_most_recently_created_runs_params(
@@ -506,3 +513,195 @@ def test_create_run_from_an_unknown_source_is_run_not_found_creating_nothing(
             return int((await conn.execute(text("SELECT count(*) FROM run"))).scalar_one())
 
     assert _with_engine(settings, database_url, body) == 0
+
+
+# --- B-04 T5: a create with a profile (AC7-AC10, AC15; SD4, SD9; PD8, PD9) --------
+
+WILD = dataclasses.replace(
+    DEFAULT_PARAMS, eta=0.9, bm_sigma_y=0.5, y_clip=4.0, demand_enabled=True, idle_strength=3.0
+)
+WILD_SETTINGS = profile_settings(WILD, 30_000)
+# A source run's params outside the 22, set apart from every default.
+SOURCE = dataclasses.replace(
+    Params(step_quant=0.3), bm_sigma=0.42, idle_targets=("Bier",), idle_rise_targets=("Fris",)
+)
+
+
+def _rest(params: Params) -> dict[str, Any]:
+    """Every param a profile does not hold (SD4: these come from where they come today)."""
+    return {
+        field.name: getattr(params, field.name)
+        for field in dataclasses.fields(params)
+        if field.name not in PROFILE_FIELDS
+    }
+
+
+async def _profile(engine: AsyncEngine, values: dict[str, Any] = WILD_SETTINGS) -> int:
+    async with engine.begin() as conn:
+        row, _ = await save_profile(
+            conn,
+            name="Wilde beurs",
+            settings=values,
+            source_run_name="Proef",
+            saved_by="a",
+            overwrite=False,
+        )
+    return row.profile_id
+
+
+async def _ended_source(engine: AsyncEngine, params: Params = SOURCE) -> int:
+    async with engine.begin() as conn:
+        source = await create_draft_run(conn, name="Vorige", params=params, run_seed=1)
+        await _bier(conn, source, "Bier", slot=0)
+        await _bier(conn, source, "Fris", slot=1)
+    await _end(engine, source)
+    return source
+
+
+async def _created(
+    engine: AsyncEngine, run_id: int
+) -> tuple[Params, int, dict[str, Any], list[str]]:
+    """The new run's params, Kaarsbreedte (ms), revision 1, and drink names."""
+    async with engine.connect() as conn:
+        run = (
+            await conn.execute(
+                text("SELECT params, candle_interval_ms FROM run WHERE run_id = :r"), {"r": run_id}
+            )
+        ).one()
+        config: dict[str, Any]
+        (config,) = (
+            await conn.execute(
+                text("SELECT config FROM run_config_revision WHERE run_id = :r"), {"r": run_id}
+            )
+        ).scalars()
+        names: list[str] = list(
+            (
+                await conn.execute(
+                    text("SELECT name FROM drink WHERE run_id = :r ORDER BY slot"), {"r": run_id}
+                )
+            ).scalars()
+        )
+        return Params.from_dict(run.params), int(run.candle_interval_ms), config, names
+
+
+def test_a_create_with_a_profile_takes_its_22_and_the_latest_runs_rest(
+    settings: Settings, database_url: str
+) -> None:
+    """AC7: Kaarsbreedte included; no drinks; revision 1 carries the profile's values."""
+
+    async def body(engine: AsyncEngine) -> tuple[Params, int, dict[str, Any], list[str]]:
+        await _ended_source(engine)
+        profile_id = await _profile(engine)
+        return await _created(
+            engine, await create_run(engine, name="Nieuw", author="a", profile_id=profile_id)
+        )
+
+    params, candle, config, names = _with_engine(settings, database_url, body)
+
+    assert profile_settings(params, candle) == WILD_SETTINGS
+    assert candle == 30_000
+    assert _rest(params) == _rest(SOURCE)
+    assert names == []
+    assert config["candle_interval_s"] == 30
+    assert profile_settings(Params.from_dict(config["params"]), 30_000) == WILD_SETTINGS
+
+
+def test_a_create_with_a_profile_on_an_empty_database_takes_the_defaults_rest(
+    settings: Settings, database_url: str
+) -> None:
+    """AC7: else `DEFAULT_PARAMS` outside the 22."""
+
+    async def body(engine: AsyncEngine) -> tuple[Params, int, dict[str, Any], list[str]]:
+        profile_id = await _profile(engine)
+        return await _created(
+            engine, await create_run(engine, name="Nieuw", author="a", profile_id=profile_id)
+        )
+
+    params, candle, _, _ = _with_engine(settings, database_url, body)
+
+    assert profile_settings(params, candle) == WILD_SETTINGS
+    assert _rest(params) == _rest(DEFAULT_PARAMS)
+
+
+def test_a_create_with_a_profile_and_a_copy_takes_the_copied_runs_drinks_and_rest(
+    settings: Settings, database_url: str
+) -> None:
+    """AC8: the 22 from the profile; drinks, idle lists and `bm_sigma` from the copied run."""
+
+    async def body(engine: AsyncEngine) -> tuple[Params, int, dict[str, Any], list[str]]:
+        source = await _ended_source(engine)
+        async with engine.begin() as conn:
+            # The latest run, which a copy must not take from.
+            await create_draft_run(
+                conn, name="Nieuwer", params=Params(step_quant=0.9, bm_sigma=0.01), run_seed=1
+            )
+            await conn.execute(text("UPDATE run SET status = 'ended' WHERE name = 'Nieuwer'"))
+        profile_id = await _profile(engine)
+        run_id = await create_run(
+            engine, name="Nieuw", author="a", copy_from_run_id=source, profile_id=profile_id
+        )
+        return await _created(engine, run_id)
+
+    params, candle, config, names = _with_engine(settings, database_url, body)
+
+    assert profile_settings(params, candle) == WILD_SETTINGS
+    assert _rest(params) == _rest(SOURCE)
+    assert names == ["Bier", "Fris"]
+    assert [d["name"] for d in config["drinks"]] == ["Bier", "Fris"]
+
+
+def test_a_create_with_a_copy_and_no_profile_is_unchanged(
+    settings: Settings, database_url: str
+) -> None:
+    """AC9: the source's params exactly, Kaarsbreedte at its 60 s default."""
+
+    async def body(engine: AsyncEngine) -> tuple[Params, int, dict[str, Any], list[str]]:
+        async with engine.begin() as conn:
+            source = await create_draft_run(conn, name="Vorige", params=SOURCE, run_seed=1)
+            await conn.execute(
+                text("UPDATE run SET candle_interval_ms = 30000 WHERE run_id = :r"), {"r": source}
+            )
+        await _end(engine, source)
+        return await _created(
+            engine, await create_run(engine, name="Nieuw", author="a", copy_from_run_id=source)
+        )
+
+    params, candle, config, _ = _with_engine(settings, database_url, body)
+
+    assert params == SOURCE
+    assert candle == 60_000
+    assert config["candle_interval_s"] == 60
+
+
+@pytest.mark.parametrize("fault", ["unknown", "out_of_range"])
+def test_a_refused_profile_creates_no_run(
+    settings: Settings, database_url: str, fault: str
+) -> None:
+    """AC10: 404 or 422, and nothing written."""
+
+    async def body(engine: AsyncEngine) -> int:
+        profile_id = await _profile(engine, WILD_SETTINGS | {"y_clip": 25})
+        with pytest.raises(ProfileNotFound if fault == "unknown" else InvalidConfig):
+            await create_run(
+                engine,
+                name="Nieuw",
+                author="a",
+                profile_id=999_999 if fault == "unknown" else profile_id,
+            )
+        async with engine.connect() as conn:
+            return int((await conn.execute(text("SELECT count(*) FROM run"))).scalar_one())
+
+    assert _with_engine(settings, database_url, body) == 0
+
+
+def test_draft_exists_comes_before_the_profile_is_read(
+    settings: Settings, database_url: str
+) -> None:
+    """PD8: today's refusals keep their precedence over an unknown profile."""
+
+    async def body(engine: AsyncEngine) -> None:
+        await create_run(engine, name="Concept", author="a")
+        with pytest.raises(DraftExists):
+            await create_run(engine, name="Nieuw", author="a", profile_id=999_999)
+
+    _with_engine(settings, database_url, body)

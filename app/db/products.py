@@ -20,6 +20,15 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from app.db.models import Drink, Product
 
 
+def name_key(name: str) -> str:
+    """The comparison form of a drink name (PD6), computed here, not by Postgres' `lower()`.
+
+    It lives in this leaf, not `app/db/runs.py`, because `app/db/profiles.py` keys
+    a profile name the same way (B-04 SD5) and `runs.py` imports `profiles.py`.
+    """
+    return name.strip().casefold()
+
+
 async def resolve_product(conn: AsyncConnection, run_id: int, name_key: str, name: str) -> int:
     """The product a drink named `name` (key `name_key`) added to `run_id` belongs to."""
     taken = exists().where(

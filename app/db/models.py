@@ -408,6 +408,28 @@ class Theme(Base):
     )
 
 
+class SettingsProfile(Base):
+    """A named set of the 22 settings a profile holds (B-04 SD1), as JSONB under their
+    `PATCH config` wire names. `name_key` is `name.strip().casefold()`, computed in
+    Python as `Drink.name_key` is. No link to a run (SD7): the source name is copied."""
+
+    __tablename__ = "settings_profile"
+    __table_args__ = (
+        CheckConstraint(
+            "char_length(btrim(name)) BETWEEN 1 AND 100", name="settings_profile_name_check"
+        ),
+        Index("settings_profile_name_key", "name_key", unique=True),
+    )
+
+    profile_id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    name: Mapped[str] = mapped_column(Text)
+    name_key: Mapped[str] = mapped_column(Text)
+    settings: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    source_run_name: Mapped[str] = mapped_column(Text)
+    saved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    saved_by: Mapped[str] = mapped_column(Text)
+
+
 class SchemaCompat(Base):
     """The oldest code revision that still runs against this schema (Phase 8 SD3).
     A single row, `id = 1`, seeded `'0011'` by its migration; boot reads it with

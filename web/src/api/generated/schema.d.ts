@@ -404,6 +404,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{run_id}/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Profile Load */
+        post: operations["post_profile_load_api_runs__run_id__profile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{run_id}/drinks": {
         parameters: {
             query?: never;
@@ -589,6 +606,41 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Profiles */
+        get: operations["get_profiles_api_profiles_get"];
+        put?: never;
+        /** Post Profile */
+        post: operations["post_profile_api_profiles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/profiles/{profile_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete One Profile */
+        delete: operations["delete_one_profile_api_profiles__profile_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -795,6 +847,8 @@ export interface components {
             name: string;
             /** Copy From Run Id */
             copy_from_run_id?: number | null;
+            /** Profile Id */
+            profile_id?: number | null;
         };
         /** CreatedDrink */
         CreatedDrink: {
@@ -1014,6 +1068,11 @@ export interface components {
             /** Revoked */
             revoked: boolean;
         };
+        /** LoadProfileRequest */
+        LoadProfileRequest: {
+            /** Profile Id */
+            profile_id: number;
+        };
         /** LoginRequest */
         LoginRequest: {
             /** Key */
@@ -1202,6 +1261,20 @@ export interface components {
             /** Price Cents */
             price_cents: number | null;
         };
+        /** ProfileData */
+        ProfileData: {
+            /** Profile Id */
+            profile_id: number;
+            /** Name */
+            name: string;
+            /**
+             * Saved At
+             * Format: date-time
+             */
+            saved_at: string;
+            /** Source Run Name */
+            source_run_name: string;
+        };
         /**
          * Receipt
          * @description SD19's receipt, plus `quote_version` (PD6), exactly as returned and replayed.
@@ -1272,6 +1345,18 @@ export interface components {
              * @enum {string}
              */
             status: "draft" | "live" | "ended";
+        };
+        /** SaveProfileRequest */
+        SaveProfileRequest: {
+            /** Name */
+            name: string;
+            /** Run Id */
+            run_id: number;
+            /**
+             * Overwrite
+             * @default false
+             */
+            overwrite: boolean;
         };
         /** ShutdownAccepted */
         ShutdownAccepted: {
@@ -2116,6 +2201,41 @@ export interface operations {
             };
         };
     };
+    post_profile_load_api_runs__run_id__profile_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoadProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevisionData"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_drink_api_runs__run_id__drinks_post: {
         parameters: {
             query?: never;
@@ -2530,6 +2650,88 @@ export interface operations {
                 content: {
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_profiles_api_profiles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileData"][];
+                };
+            };
+        };
+    };
+    post_profile_api_profiles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileData"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_one_profile_api_profiles__profile_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                profile_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -15,11 +15,10 @@ Top is next. Every item that is not `specced` or `dropped` appears here exactly 
 
 | # | ID | Feature | Size | Status |
 |---|---|---|---|---|
-| 1 | B-04 | Named setting profiles per type of game | M | idea |
-| 2 | B-05 | Player wallets with a QR code | L | idea |
-| 3 | B-06 | Pay at the bar by scanning a player's wallet | M | idea |
-| 4 | B-07 | Price bounds on the Prijsstap grid | S | idea |
-| 5 | B-08 | Short keys you can read aloud | S | idea |
+| 1 | B-05 | Player wallets with a QR code | L | idea |
+| 2 | B-06 | Pay at the bar by scanning a player's wallet | M | idea |
+| 3 | B-07 | Price bounds on the Prijsstap grid | S | idea |
+| 4 | B-08 | Short keys you can read aloud | S | idea |
 
 ## Items
 
@@ -154,7 +153,8 @@ out-of-scope entry (`docs/specs/phase-6-admin.md`) — a spec decision, not an A
 
 ### B-04 — Named setting profiles per type of game
 
-- **Status:** idea
+- **Status:** built → `docs/plans/phase-b-04-setting-profiles.md` (spec:
+  `docs/specs/phase-b-04-setting-profiles.md`)
 - **Added:** 2026-10-18
 - **Size:** M (a few tasks) — a guess
 

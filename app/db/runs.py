@@ -45,7 +45,9 @@ from app.db.models import (
     RunConfigRevision,
 )
 from app.db.models import EngineState as EngineStateRow
-from app.db.products import resolve_product
+from app.db.products import name_key, resolve_product
+from app.db.profiles import get_profile
+from app.runtime.config_patch import profile_patch
 from exchange import EngineState, Params, anchor_s0_to_current_y, initial_state
 
 _NAME_INDEX = "drink_name_live"
@@ -183,19 +185,24 @@ class RunRow:
     tick_interval_ms: int
 
 
-def name_key(name: str) -> str:
-    """The comparison form of a drink name (PD6), computed here, not by Postgres' `lower()`."""
-    return name.strip().casefold()
-
-
 async def create_draft_run(
-    conn: AsyncConnection, *, name: str, params: Params, run_seed: int
+    conn: AsyncConnection,
+    *,
+    name: str,
+    params: Params,
+    run_seed: int,
+    candle_interval_ms: int | None = None,
 ) -> int:
-    result = await conn.execute(
-        insert(Run)
-        .values(status="draft", name=name, params=params_to_json(params), run_seed=run_seed)
-        .returning(Run.run_id)
-    )
+    """A draft row; `candle_interval_ms` `None` keeps the column's 60 s default."""
+    values: dict[str, Any] = {
+        "status": "draft",
+        "name": name,
+        "params": params_to_json(params),
+        "run_seed": run_seed,
+    }
+    if candle_interval_ms is not None:
+        values["candle_interval_ms"] = candle_interval_ms
+    result = await conn.execute(insert(Run).values(**values).returning(Run.run_id))
     return int(result.scalar_one())
 
 
@@ -436,7 +443,12 @@ async def latest_params(conn: AsyncConnection) -> Params | None:
 
 
 async def create_run(
-    engine: AsyncEngine, *, name: str, author: str, copy_from_run_id: int | None = None
+    engine: AsyncEngine,
+    *,
+    name: str,
+    author: str,
+    copy_from_run_id: int | None = None,
+    profile_id: int | None = None,
 ) -> int:
     """A new draft and its revision 1, or `LiveRunExists` / `DraftExists` (Phase 6 SD2, PD6).
 
@@ -444,6 +456,11 @@ async def create_run(
     instead of the latest run's, and each of its active drinks in slot order --
     every column, the same product -- under a new `drink_id` in slots 0..n-1.
     An unknown source is `RunNotFound`, with nothing written.
+
+    With `profile_id` (B-04 SD4) the profile's 22 settings, Kaarsbreedte included,
+    then replace those params: `ProfileNotFound`, or `InvalidConfig` naming a
+    stored value outside today's rules, with nothing written. Revision 1 records
+    the run's Kaarsbreedte as `candle_interval_s`, with or without one (PD9).
     """
     name = name.strip()
     async with engine.begin() as conn:
@@ -469,8 +486,19 @@ async def create_run(
                     select(Drink.drink_id, Drink.product_id).where(Drink.run_id == copy_from_run_id)
                 )
             }
+        candle_interval_ms: int | None = None
+        if profile_id is not None:
+            patch = profile_patch((await get_profile(conn, profile_id)).settings, source="profile")
+            if patch.params is not None:
+                params = dataclasses.replace(params, **patch.params.model_dump(exclude_unset=True))
+            if patch.candle_interval_s is not None:
+                candle_interval_ms = patch.candle_interval_s * 1000
         run_id = await create_draft_run(
-            conn, name=name, params=params, run_seed=secrets.randbits(63)
+            conn,
+            name=name,
+            params=params,
+            run_seed=secrets.randbits(63),
+            candle_interval_ms=candle_interval_ms,
         )
         for slot, drink in enumerate(drinks):
             await add_drink(
@@ -494,6 +522,7 @@ async def create_run(
             config={
                 "name": name,
                 "params": params_to_json(params),
+                "candle_interval_s": (await get_run(conn, run_id)).candle_interval_ms // 1000,
                 "drinks": [dataclasses.asdict(d) for d in await all_drinks(conn, run_id)],
             },
             author=author,
