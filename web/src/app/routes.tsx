@@ -9,7 +9,7 @@
  * (T35); Phase 7 builds `/analytics` (T19). An unknown path is "Geen
  * toegang" inside the shell.
  *
- * B-05 PD13: `/speler` stands beside `/login`, outside the shell and needing no
+ * B-05 builds `/kassa` (T17). PD13: `/speler` stands beside `/login`, outside the shell and needing no
  * session. `/` without a crew session is the landing choice; with one, the
  * shell and `HomePage` as before.
  */
@@ -19,6 +19,7 @@ import { AnalyticsPage } from '../features/analytics'
 import { LoginPage, RequireRole, SessionProvider, useGoToLogin, useSession } from '../features/auth'
 import { BarPage } from '../features/bar'
 import { HomePage } from '../features/home'
+import { KassaPage } from '../features/kassa'
 import { KoersPage } from '../features/koers'
 import { ManipulationPage } from '../features/manipulation'
 import { PlayerPage } from '../features/player'
@@ -35,6 +36,7 @@ const PAGES: readonly (readonly [string, ReactNode])[] = [
   ['/manipulation', <ManipulationRoute />],
   ['/settings', <SettingsPage />],
   ['/analytics', <AnalyticsPage />],
+  ['/kassa', <KassaPage />],
 ]
 
 /** PD13: the Idle section is admin-only (SD20); the session's role decides it. */
