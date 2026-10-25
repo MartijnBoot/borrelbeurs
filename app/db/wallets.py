@@ -1,0 +1,468 @@
+"""The wallet repository (B-05 SD3, SD9, SD13-SD15, SD23; plan PD4-PD11, PD17-PD19).
+
+Every function takes an `AsyncConnection` and never begins or commits: the caller
+(`app/runtime/wallets.py`) owns the one transaction each action is. Every wallet
+read and write goes through here.
+
+- **Live wallets only.** A getter returns a wallet that is not deleted, or `None`.
+  A deleted row is blank (`wallet_deleted_check`), so nothing finds it by name or
+  code anyway.
+- **The balance is `SUM(amount_cents)`** of a wallet's entries; no column holds it.
+- **Locks.** A money action calls `lock_wallet` (`SELECT … FOR UPDATE`) before it
+  reads the balance it guards, so two actions on one wallet serialise. A move
+  locks both wallets in `wallet_id` order (`lock_wallets`), as
+  `app/db/keys.py:lock_unrevoked_admins` orders its locks.
+- **Codes collide rarely, and are retried.** A new QR token or short code that hits
+  its unique index is drawn again in a savepoint, up to five times (PD5).
+- **Times come from the app clock** (`now_ms`), as `run.ended_at` does (PD8).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any, Final, Literal
+
+from sqlalchemy import Row, func, select, update
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncConnection
+
+from app.core.errors import AppError
+from app.db.models import Wallet, WalletEntry, WalletSettings
+from app.db.products import name_key
+from app.db.runs import current_run
+from app.runtime import wallet_codes
+
+EntryKind = Literal["topup", "reversal", "move_out", "move_in", "closing"]
+
+CODE_ATTEMPTS: Final = 5
+DEFAULT_UNFUNDED_DAYS: Final = 30
+DEFAULT_INACTIVE_MONTHS: Final = 12
+
+_NAME_INDEX: Final = "wallet_name_key"
+_CODE_INDEXES: Final = ("wallet_qr_token", "wallet_short_code")
+
+
+class WalletNotFound(AppError):
+    """No live wallet has this id, token or code (SD14)."""
+
+    status_code = 404
+    code = "wallet_not_found"
+
+
+class NoWallet(AppError):
+    """The request carries no cookie of a live wallet (SD19)."""
+
+    status_code = 401
+    code = "no_wallet"
+
+
+class NameTaken(AppError):
+    """A live wallet has this name, trimmed and case-folded; carries `suggestions` (SD3)."""
+
+    status_code = 409
+    code = "name_taken"
+
+
+class AlreadyReversed(AppError):
+    status_code = 409
+    code = "already_reversed"
+
+
+class InsufficientBalance(AppError):
+    status_code = 409
+    code = "insufficient_balance"
+
+
+class WalletDeleted(AppError):
+    """The wallet an entry belongs to is deleted, so it can no longer change (SD12)."""
+
+    status_code = 409
+    code = "wallet_deleted"
+
+
+class NothingToMove(AppError):
+    status_code = 409
+    code = "nothing_to_move"
+
+
+class IdempotencyKeyReused(AppError):
+    """The key was used for a different request (PD9), as an order's is."""
+
+    status_code = 422
+    code = "idempotency_key_reused"
+
+
+@dataclass(frozen=True)
+class WalletRow:
+    wallet_id: int
+    name: str
+    qr_token: str
+    short_code: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class EntryRow:
+    entry_id: int
+    wallet_id: int
+    kind: EntryKind
+    amount_cents: int
+    run_id: int | None
+    reverses_entry_id: int | None
+    counterpart_entry_id: int | None
+    actor_key_id: int | None
+    actor_label: str | None
+    idempotency_key: str | None
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class WalletSettingsRow:
+    """No row is the defaults: sign-up closed, 30 days, 12 months (SD6, SD15)."""
+
+    signup_code: str | None = None
+    unfunded_days: int = DEFAULT_UNFUNDED_DAYS
+    inactive_months: int = DEFAULT_INACTIVE_MONTHS
+
+
+def at(ms: int) -> datetime:
+    """An app-clock instant as the `timestamptz` the wallet tables store (PD8)."""
+    return datetime.fromtimestamp(ms / 1000, UTC)
+
+
+_WALLET = (Wallet.wallet_id, Wallet.name, Wallet.qr_token, Wallet.short_code, Wallet.created_at)
+_ENTRY = (
+    WalletEntry.entry_id,
+    WalletEntry.wallet_id,
+    WalletEntry.kind,
+    WalletEntry.amount_cents,
+    WalletEntry.run_id,
+    WalletEntry.reverses_entry_id,
+    WalletEntry.counterpart_entry_id,
+    WalletEntry.actor_key_id,
+    WalletEntry.actor_label,
+    WalletEntry.idempotency_key,
+    WalletEntry.created_at,
+)
+
+
+def _wallet(row: Any) -> WalletRow:  # a `Row` of `_WALLET`, with or without `deleted_at`
+    return WalletRow(int(row.wallet_id), row.name, row.qr_token, row.short_code, row.created_at)
+
+
+def _entry(row: Any) -> EntryRow:  # a `Row` of `_ENTRY`
+    return EntryRow(
+        int(row.entry_id),
+        int(row.wallet_id),
+        row.kind,
+        int(row.amount_cents),
+        row.run_id,
+        row.reverses_entry_id,
+        row.counterpart_entry_id,
+        row.actor_key_id,
+        row.actor_label,
+        row.idempotency_key,
+        row.created_at,
+    )
+
+
+# --- creating and finding -------------------------------------------------------
+
+
+async def taken_name_keys(conn: AsyncConnection, prefix_key: str) -> set[str]:
+    """The keys of live wallets whose key starts with `prefix_key` (PD7's one query)."""
+    escaped = prefix_key.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    result = await conn.execute(
+        select(Wallet.name_key).where(Wallet.name_key.like(f"{escaped}%", escape="\\"))
+    )
+    return {str(key) for key in result.scalars()}
+
+
+async def name_suggestions(conn: AsyncConnection, name: str) -> list[str]:
+    """Up to three free names built from `name` as typed (SD3)."""
+    base = name.strip()
+    # Every candidate up to "<base> 9999" starts with this, however its base is cut.
+    prefix = base[: wallet_codes.NAME_MAX - len(" 9999")].rstrip()
+    return wallet_codes.suggestions(base, await taken_name_keys(conn, name_key(prefix)))
+
+
+async def _with_fresh_codes(
+    conn: AsyncConnection, statement_for: Callable[[str, str], Any], *, name: str | None = None
+) -> Row[Any]:
+    """Run the statement `statement_for(qr_token, short_code)` makes, drawing new codes on a
+    collision (PD5). A taken name is `NameTaken` with its suggestions."""
+    for attempt in range(CODE_ATTEMPTS):
+        statement = statement_for(wallet_codes.new_qr_token(), wallet_codes.new_short_code())
+        try:
+            # A savepoint, so a violation leaves the caller's transaction usable.
+            async with conn.begin_nested():
+                return (await conn.execute(statement)).one()
+        except IntegrityError as error:
+            reason = str(error.orig)
+            if name is not None and _NAME_INDEX in reason:
+                raise NameTaken(
+                    "a wallet with this name exists (names compare trimmed, ignoring case)",
+                    extra={"suggestions": list(await name_suggestions(conn, name))},
+                ) from error
+            if not any(index in reason for index in _CODE_INDEXES) or attempt == CODE_ATTEMPTS - 1:
+                raise
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
+async def create_wallet(
+    conn: AsyncConnection, *, name: str, cookie_hash: str, now_ms: int
+) -> WalletRow:
+    """A new wallet named `name` (trimmed), or `NameTaken` with nothing written (SD3)."""
+    name = name.strip()
+
+    def statement(token: str, code: str) -> Any:
+        return (
+            insert(Wallet)
+            .values(
+                name=name,
+                name_key=name_key(name),
+                qr_token=token,
+                short_code=code,
+                cookie_hash=cookie_hash,
+                created_at=at(now_ms),
+            )
+            .returning(*_WALLET)
+        )
+
+    return _wallet(await _with_fresh_codes(conn, statement, name=name))
+
+
+async def replace_codes(conn: AsyncConnection, wallet_id: int) -> WalletRow:
+    """New QR token and short code for a live wallet; the old ones stop working (SD14).
+
+    An unknown or deleted wallet is `WalletNotFound`, nothing written.
+    """
+    if await lock_wallet(conn, wallet_id) is None:
+        raise WalletNotFound(f"no wallet {wallet_id}")
+
+    def statement(token: str, code: str) -> Any:
+        return (
+            update(Wallet)
+            .where(Wallet.wallet_id == wallet_id)
+            .values(qr_token=token, short_code=code)
+            .returning(*_WALLET)
+        )
+
+    return _wallet(await _with_fresh_codes(conn, statement))
+
+
+async def _one_live(conn: AsyncConnection, *where: Any) -> WalletRow | None:
+    row = (
+        await conn.execute(select(*_WALLET).where(Wallet.deleted_at.is_(None), *where))
+    ).one_or_none()
+    return None if row is None else _wallet(row)
+
+
+async def get(conn: AsyncConnection, wallet_id: int) -> WalletRow:
+    wallet = await _one_live(conn, Wallet.wallet_id == wallet_id)
+    if wallet is None:
+        raise WalletNotFound(f"no wallet {wallet_id}")
+    return wallet
+
+
+async def get_by_cookie_hash(conn: AsyncConnection, cookie_hash: str) -> WalletRow | None:
+    return await _one_live(conn, Wallet.cookie_hash == cookie_hash)
+
+
+async def get_by_qr_token(conn: AsyncConnection, qr_token: str) -> WalletRow | None:
+    return await _one_live(conn, Wallet.qr_token == qr_token)
+
+
+async def get_by_short_code(conn: AsyncConnection, short_code: str) -> WalletRow | None:
+    """`short_code` in its stored form (`wallet_codes.normalise_short_code`)."""
+    return await _one_live(conn, Wallet.short_code == short_code)
+
+
+async def rename(conn: AsyncConnection, wallet_id: int, name: str) -> None:
+    """Give a live wallet `name`; only a move does this, after freeing it (SD11)."""
+    await conn.execute(
+        update(Wallet)
+        .where(Wallet.wallet_id == wallet_id)
+        .values(name=name, name_key=name_key(name))
+    )
+
+
+# --- money ----------------------------------------------------------------------
+
+
+async def lock_wallet(conn: AsyncConnection, wallet_id: int) -> WalletRow | None:
+    """Lock the wallet's row `FOR UPDATE`: the live wallet, or `None` once deleted.
+
+    No row at all is `WalletNotFound`.
+    """
+    row = (
+        await conn.execute(
+            select(*_WALLET, Wallet.deleted_at)
+            .where(Wallet.wallet_id == wallet_id)
+            .with_for_update()
+        )
+    ).one_or_none()
+    if row is None:
+        raise WalletNotFound(f"no wallet {wallet_id}")
+    return None if row.deleted_at is not None else _wallet(row)
+
+
+async def lock_wallets(
+    conn: AsyncConnection, first: int, second: int
+) -> tuple[WalletRow | None, WalletRow | None]:
+    """`lock_wallet` on both, the lower `wallet_id` first, so two moves cannot deadlock."""
+    locked = {
+        wallet_id: await lock_wallet(conn, wallet_id) for wallet_id in sorted({first, second})
+    }
+    return locked[first], locked[second]
+
+
+async def balance(conn: AsyncConnection, wallet_id: int) -> int:
+    result = await conn.execute(
+        select(func.coalesce(func.sum(WalletEntry.amount_cents), 0)).where(
+            WalletEntry.wallet_id == wallet_id
+        )
+    )
+    return int(result.scalar_one())
+
+
+async def live_run_id(conn: AsyncConnection) -> int | None:
+    """The run live now, or `None` (SD13, PD10), read inside the caller's transaction."""
+    run = await current_run(conn)
+    return run.run_id if run is not None and run.status == "live" else None
+
+
+async def insert_entry(
+    conn: AsyncConnection,
+    *,
+    wallet_id: int,
+    kind: EntryKind,
+    amount_cents: int,
+    now_ms: int,
+    run_id: int | None = None,
+    reverses_entry_id: int | None = None,
+    counterpart_entry_id: int | None = None,
+    actor_key_id: int | None = None,
+    actor_label: str | None = None,
+    idempotency_key: str | None = None,
+) -> EntryRow:
+    row = (
+        await conn.execute(
+            insert(WalletEntry)
+            .values(
+                wallet_id=wallet_id,
+                kind=kind,
+                amount_cents=amount_cents,
+                run_id=run_id,
+                reverses_entry_id=reverses_entry_id,
+                counterpart_entry_id=counterpart_entry_id,
+                actor_key_id=actor_key_id,
+                actor_label=actor_label,
+                idempotency_key=idempotency_key,
+                created_at=at(now_ms),
+            )
+            .returning(*_ENTRY)
+        )
+    ).one()
+    return _entry(row)
+
+
+async def get_entry(conn: AsyncConnection, entry_id: int) -> EntryRow | None:
+    row = (
+        await conn.execute(select(*_ENTRY).where(WalletEntry.entry_id == entry_id))
+    ).one_or_none()
+    return None if row is None else _entry(row)
+
+
+async def find_entry_by_key(conn: AsyncConnection, idempotency_key: str) -> EntryRow | None:
+    row = (
+        await conn.execute(select(*_ENTRY).where(WalletEntry.idempotency_key == idempotency_key))
+    ).one_or_none()
+    return None if row is None else _entry(row)
+
+
+async def reversal_of(conn: AsyncConnection, entry_id: int) -> EntryRow | None:
+    row = (
+        await conn.execute(select(*_ENTRY).where(WalletEntry.reverses_entry_id == entry_id))
+    ).one_or_none()
+    return None if row is None else _entry(row)
+
+
+# --- deleting -------------------------------------------------------------------
+
+
+async def delete_wallet(
+    conn: AsyncConnection,
+    wallet_id: int,
+    *,
+    now_ms: int,
+    actor_key_id: int | None = None,
+    actor_label: str | None = None,
+) -> None:
+    """Delete a live wallet (SD15): a `closing` entry for any balance left, then blank it.
+
+    The closing entry carries the live run, as any entry does (PD10); the entries
+    and the anonymous row stay, so a borrel's top-up totals never change (AC32).
+    An unknown or already deleted wallet is `WalletNotFound`, nothing written.
+    """
+    if await lock_wallet(conn, wallet_id) is None:
+        raise WalletNotFound(f"no wallet {wallet_id}")
+    left = await balance(conn, wallet_id)
+    if left > 0:
+        await insert_entry(
+            conn,
+            wallet_id=wallet_id,
+            kind="closing",
+            amount_cents=-left,
+            now_ms=now_ms,
+            run_id=await live_run_id(conn),
+            actor_key_id=actor_key_id,
+            actor_label=actor_label,
+        )
+    await conn.execute(
+        update(Wallet)
+        .where(Wallet.wallet_id == wallet_id)
+        .values(
+            name=None,
+            name_key=None,
+            qr_token=None,
+            short_code=None,
+            cookie_hash=None,
+            deleted_at=at(now_ms),
+        )
+    )
+
+
+# --- settings -------------------------------------------------------------------
+
+
+async def get_settings(conn: AsyncConnection) -> WalletSettingsRow:
+    row = (
+        await conn.execute(
+            select(
+                WalletSettings.signup_code,
+                WalletSettings.unfunded_days,
+                WalletSettings.inactive_months,
+            )
+        )
+    ).one_or_none()
+    if row is None:
+        return WalletSettingsRow()
+    return WalletSettingsRow(row.signup_code, int(row.unfunded_days), int(row.inactive_months))
+
+
+async def put_settings(conn: AsyncConnection, settings: WalletSettingsRow) -> WalletSettingsRow:
+    """Write the one settings row, inserting it the first time (as `app/db/theme.py`)."""
+    values = {
+        "signup_code": settings.signup_code,
+        "unfunded_days": settings.unfunded_days,
+        "inactive_months": settings.inactive_months,
+    }
+    statement = insert(WalletSettings).values(**values)
+    await conn.execute(
+        statement.on_conflict_do_update(index_elements=[WalletSettings.id], set_=values)
+    )
+    return settings
