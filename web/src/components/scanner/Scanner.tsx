@@ -1,13 +1,13 @@
 /**
- * The kassa's camera (B-05 SD17; AC14, AC42): the rear camera into a `<video>`,
- * a frame sampled about every 200 ms and decoded, and on a token every track
- * stopped before `onToken`. Permission denied (or no camera) says so; the code
- * field stays where it is.
+ * The camera, shared by the kassa and the bar (B-05 SD17; AC14, AC42; B-06
+ * SD12): the rear camera into a `<video>`, a frame sampled about every 200 ms
+ * and decoded, and on a token every track stopped before `onToken`. Permission
+ * denied (or no camera) says so; the code field stays where it is.
  */
 import { useEffect, useRef, useState } from 'react'
-import { Button } from '../../components/ui/Button'
+import { Button } from '../ui/Button'
 import { decode } from './decodeQr'
-import styles from './KassaPage.module.css'
+import styles from './Scanner.module.css'
 
 export const SAMPLE_MS = 200
 

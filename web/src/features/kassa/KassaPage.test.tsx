@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { formatEuro } from '../../lib/format'
 import { KassaPage } from './KassaPage'
 
-vi.mock('./decodeQr', () => ({ decode: vi.fn(async () => 'tok-scanned') }))
+vi.mock('../../components/scanner/decodeQr', () => ({ decode: vi.fn(async () => 'tok-scanned') }))
 
 const JAN = {
   wallet_id: 7,

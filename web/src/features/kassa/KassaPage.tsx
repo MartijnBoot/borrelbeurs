@@ -15,16 +15,16 @@
  * (/review R2).
  */
 import { type FormEvent, useRef, useState } from 'react'
+import { canUseCamera } from '../../components/scanner/camera'
+import { Scanner } from '../../components/scanner/Scanner'
 import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Field } from '../../components/ui/Field'
 import { formatEuro } from '../../lib/format'
 import { type KassaWallet, lookup, newCode, type Topup, topups, type WalletQuery } from './api'
-import { canUseCamera } from './camera'
 import { refusalText } from './errors'
 import styles from './KassaPage.module.css'
 import { MoveDialog } from './MoveDialog'
-import { Scanner } from './Scanner'
 import { TopupList } from './TopupList'
 import { TopUpPanel } from './TopUpPanel'
 
