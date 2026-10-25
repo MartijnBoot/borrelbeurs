@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { formatEuro } from '../../lib/format'
 import { KassaPage } from './KassaPage'
 
+vi.mock('./decodeQr', () => ({ decode: vi.fn(async () => 'tok-scanned') }))
+
 const JAN = {
   wallet_id: 7,
   name: 'Jan',
@@ -60,9 +62,25 @@ beforeEach(() => {
   )
 })
 
+const secure = Object.getOwnPropertyDescriptor(window, 'isSecureContext')
+const devices = Object.getOwnPropertyDescriptor(navigator, 'mediaDevices')
+
+function setContext(isSecure: boolean, getUserMedia?: () => Promise<MediaStream>) {
+  Object.defineProperty(window, 'isSecureContext', { value: isSecure, configurable: true })
+  Object.defineProperty(navigator, 'mediaDevices', {
+    value: getUserMedia === undefined ? undefined : { getUserMedia },
+    configurable: true,
+  })
+}
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+  if (secure) Object.defineProperty(window, 'isSecureContext', secure)
+  else delete (window as { isSecureContext?: boolean }).isSecureContext
+  if (devices) Object.defineProperty(navigator, 'mediaDevices', devices)
+  else delete (navigator as { mediaDevices?: unknown }).mediaDevices
 })
 
 async function find(code: string) {
@@ -145,5 +163,59 @@ describe('KassaPage', () => {
     render(<KassaPage />)
     await find('   ')
     expect(fetch).not.toHaveBeenCalled()
+  })
+})
+
+describe('the camera (AC14, AC42)', () => {
+  it('is not offered outside a secure context, and nothing says why', () => {
+    setContext(false, async () => ({}) as MediaStream)
+    render(<KassaPage />)
+    expect(screen.queryByRole('button', { name: 'Camera' })).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByLabelText('Code typen')).toBeTruthy()
+  })
+
+  it('is offered beside "Code typen" in a secure context', () => {
+    setContext(true, async () => ({}) as MediaStream)
+    render(<KassaPage />)
+    expect(screen.getByRole('button', { name: 'Camera' })).toBeTruthy()
+    expect(screen.getByLabelText('Code typen')).toBeTruthy()
+  })
+
+  it('a refused camera says so and leaves the code field', async () => {
+    setContext(true, () => Promise.reject(new DOMException('denied', 'NotAllowedError')))
+    render(<KassaPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Camera' }))
+    await act(async () => {})
+    expect(screen.getByRole('alert').textContent).toBe('Geen toegang tot de camera.')
+    expect(screen.getByLabelText('Code typen')).toBeTruthy()
+  })
+
+  it('a scanned token is looked up as qr_token, and every track is stopped', async () => {
+    const stopTrack = vi.fn()
+    setContext(
+      true,
+      async () => ({ getTracks: () => [{ stop: stopTrack }] }) as unknown as MediaStream,
+    )
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined)
+    vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockReturnValue(64)
+    vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockReturnValue(64)
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+      drawImage: () => {},
+      getImageData: (_x: number, _y: number, width: number, height: number) => ({
+        data: new Uint8ClampedArray(width * height * 4),
+        width,
+        height,
+      }),
+    } as unknown as CanvasRenderingContext2D)
+
+    render(<KassaPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Camera' }))
+    await act(() => new Promise((resolve) => setTimeout(resolve, 300)))
+
+    expect(lookups()).toEqual([{ qr_token: 'tok-scanned' }])
+    expect(stopTrack).toHaveBeenCalled()
+    expect(screen.queryByRole('region', { name: 'Camera' })).toBeNull()
+    expect(screen.getByRole('region', { name: 'Jan' })).toBeTruthy()
   })
 })

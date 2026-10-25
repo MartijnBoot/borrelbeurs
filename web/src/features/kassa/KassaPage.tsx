@@ -1,6 +1,7 @@
 /**
  * The kassa page (`/kassa`, B-05 SD22): find a wallet by its typed short code,
- * then top it up and see its top-ups. The code goes to the server exactly as
+ * or by its QR code where the browser allows a camera (SD17), then top it up
+ * and see its top-ups. The code goes to the server exactly as
  * typed; the server reads its spelling (AC14). An unknown code is "Onbekende
  * wallet".
  *
@@ -15,9 +16,11 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Field } from '../../components/ui/Field'
 import { formatEuro } from '../../lib/format'
 import { type KassaWallet, lookup, newCode, type Topup, topups, type WalletQuery } from './api'
+import { canUseCamera } from './camera'
 import { refusalText } from './errors'
 import styles from './KassaPage.module.css'
 import { MoveDialog } from './MoveDialog'
+import { Scanner } from './Scanner'
 import { TopupList } from './TopupList'
 import { TopUpPanel } from './TopUpPanel'
 
@@ -35,6 +38,8 @@ export function KassaPage() {
   const [moving, setMoving] = useState(false)
   const [renewing, setRenewing] = useState(false)
   const [renewed, setRenewed] = useState<string | null>(null)
+  const [scanning, setScanning] = useState(false)
+  const [camera] = useState(canUseCamera)
 
   async function open(query: WalletQuery) {
     setBusy(true)
@@ -85,10 +90,28 @@ export function KassaPage() {
             onChange={(event) => setTyped(event.target.value)}
           />
         </Field>
-        <button type="submit" className={styles.primary} disabled={busy}>
-          Zoeken
-        </button>
+        <div className={styles.actions}>
+          <button type="submit" className={styles.primary} disabled={busy}>
+            Zoeken
+          </button>
+          {camera && (
+            <Button disabled={busy} onClick={() => setScanning(true)}>
+              Camera
+            </Button>
+          )}
+        </div>
       </form>
+      {scanning && (
+        <Scanner
+          onToken={(token) => {
+            setScanning(false)
+            setMoving(false)
+            setRenewed(null)
+            void open({ qr_token: token })
+          }}
+          onClose={() => setScanning(false)}
+        />
+      )}
       {error !== null && (
         <div className={styles.err} role="alert">
           {error}
