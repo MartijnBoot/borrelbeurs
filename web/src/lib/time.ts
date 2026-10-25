@@ -45,6 +45,12 @@ export const formatDayMonthTime = (ms: number) => {
   return `${part.day} ${part.month?.replace(/\.$/, '')} ${part.hour}:${part.minute}`
 }
 
+/** `d mmm`, e.g. `24 okt` (B-05 T18: a wallet's sign-up date), from the same parts. */
+export const formatDayMonth = (ms: number) => {
+  const part = Object.fromEntries(DAY_MONTH_TIME.formatToParts(ms).map((p) => [p.type, p.value]))
+  return `${part.day} ${part.month?.replace(/\.$/, '')}`
+}
+
 /** Chart times are `UTCTimestamp`s: whole seconds since the epoch. */
 const chartMs = (time: Time) => Number(time) * 1000
 

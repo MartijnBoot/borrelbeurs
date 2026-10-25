@@ -4,6 +4,7 @@ import {
   chartTickMark,
   chartTime,
   formatClock,
+  formatDayMonth,
   formatDayMonthTime,
   formatHourMinute,
   formatWhen,
@@ -41,6 +42,18 @@ describe('times are Amsterdam time, whatever zone the machine is in', () => {
     [Date.UTC(2026, 11, 31, 23, 30), '1 jan 00:30'],
   ])('formatDayMonthTime(%i) is %s', (ms, text) => {
     expect(formatDayMonthTime(ms)).toBe(text)
+  })
+})
+
+describe('formatDayMonth (B-05 T18)', () => {
+  it.each([
+    // CEST: 22:30 UTC is already the next day in Amsterdam.
+    [Date.UTC(2026, 9, 24, 22, 30), '25 okt'],
+    // CET: 23:30 UTC on New Year's Eve is 1 January.
+    [Date.UTC(2026, 11, 31, 23, 30), '1 jan'],
+    [Date.UTC(2026, 2, 3, 13, 5), '3 mrt'],
+  ])('formatDayMonth(%i) is %s', (ms, text) => {
+    expect(formatDayMonth(ms)).toBe(text)
   })
 })
 

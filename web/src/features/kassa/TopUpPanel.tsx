@@ -11,17 +11,15 @@ import { useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { formatEuro } from '../../lib/format'
-import { HttpError } from '../../lib/http'
 import { newIdempotencyKey } from '../../lib/idempotencyKey'
 import { formatHourMinute } from '../../lib/time'
 import { type KassaWallet, topUp } from './api'
+import { NETWORK, refusalText } from './errors'
 import styles from './KassaPage.module.css'
 
 export const MIN_CENTS = 1_000
 export const MAX_CENTS = 10_000
 export const STEP_CENTS = 500
-
-const NETWORK = 'Verbindingsfout. Probeer opnieuw.'
 
 interface Intent {
   amountCents: number
@@ -56,12 +54,10 @@ export function TopUpPanel({ wallet, onBooked }: { wallet: KassaWallet; onBooked
       await topUp(wallet.wallet_id, intent.amountCents, intent.key)
       onBooked()
     } catch (failure) {
-      if (failure instanceof HttpError) {
-        setError(failure.code === 'wallet_not_found' ? 'Onbekende wallet' : NETWORK)
-      } else {
-        setFailed(intent)
-        setError(NETWORK)
-      }
+      const text = refusalText(failure)
+      // Only a request that got no answer may have been booked: that one is retried.
+      if (text === NETWORK) setFailed(intent)
+      setError(text)
     } finally {
       setBusy(false)
     }

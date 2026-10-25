@@ -52,6 +52,9 @@ beforeEach(() => {
         return json(201, { entry_id: 3, wallet_id: 7, amount_cents: 1000, created_at: 'x' })
       }
       if (path === '/api/kassa/wallets/7/topups') return json(200, TOPUPS)
+      if (path === '/api/kassa/wallets/7/new-code') {
+        return json(200, { qr_token: 'tok-new', short_code: 'AAAA-BBBB' })
+      }
       throw new Error(`unexpected ${path}`)
     }),
   )
@@ -103,6 +106,39 @@ describe('KassaPage', () => {
     await act(async () => {})
     expect(lookups()).toHaveLength(2)
     expect(screen.getByRole('region', { name: 'Jan' }).textContent).toContain(formatEuro(2500))
+  })
+
+  it('"Nieuwe code" asks first, then shows the new code and looks up by it (AC28)', async () => {
+    render(<KassaPage />)
+    await find('K7Q4-M2XD')
+    fireEvent.click(screen.getByRole('button', { name: 'Nieuwe code' }))
+    expect(screen.getByRole('dialog').textContent).toContain(
+      'Nieuwe code maken voor Jan? De oude QR-code en code werken dan niet meer.',
+    )
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Nieuwe code' }))
+    await act(async () => {})
+
+    expect(
+      vi.mocked(fetch).mock.calls.some(([path]) => path === '/api/kassa/wallets/7/new-code'),
+    ).toBe(true)
+    expect(screen.getByText('AAAA-BBBB')).toBeTruthy()
+    expect(lookups().at(-1)).toEqual({ short_code: 'AAAA-BBBB' })
+  })
+
+  it('"Nieuwe code" cancelled sends nothing', async () => {
+    render(<KassaPage />)
+    await find('K7Q4-M2XD')
+    const before = vi.mocked(fetch).mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'Nieuwe code' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Annuleren' }))
+    expect(vi.mocked(fetch).mock.calls).toHaveLength(before)
+  })
+
+  it('"Saldo overzetten van…" opens the move search', async () => {
+    render(<KassaPage />)
+    await find('K7Q4-M2XD')
+    fireEvent.click(screen.getByRole('button', { name: 'Saldo overzetten van…' }))
+    expect(screen.getByRole('region', { name: 'Saldo overzetten' })).toBeTruthy()
   })
 
   it('an empty field asks nothing', async () => {

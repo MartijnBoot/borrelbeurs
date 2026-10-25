@@ -5,14 +5,19 @@
  * wallet".
  *
  * After every write the wallet is looked up again, so the balance, the
- * 2-minute warning and the list are the server's, never a local sum.
+ * 2-minute warning and the list are the server's, never a local sum. "Nieuwe
+ * code" (SD14) makes the old code useless, so the page looks the wallet up
+ * by the new one from then on, and shows it.
  */
 import { type FormEvent, useState } from 'react'
+import { Button } from '../../components/ui/Button'
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Field } from '../../components/ui/Field'
 import { formatEuro } from '../../lib/format'
-import { HttpError } from '../../lib/http'
-import { type KassaWallet, lookup, type Topup, topups, type WalletQuery } from './api'
+import { type KassaWallet, lookup, newCode, type Topup, topups, type WalletQuery } from './api'
+import { refusalText } from './errors'
 import styles from './KassaPage.module.css'
+import { MoveDialog } from './MoveDialog'
 import { TopupList } from './TopupList'
 import { TopUpPanel } from './TopUpPanel'
 
@@ -22,16 +27,14 @@ interface Found {
   topups: Topup[]
 }
 
-function failureText(error: unknown): string {
-  if (error instanceof HttpError && error.code === 'wallet_not_found') return 'Onbekende wallet'
-  return 'Verbindingsfout. Probeer opnieuw.'
-}
-
 export function KassaPage() {
   const [typed, setTyped] = useState('')
   const [found, setFound] = useState<Found | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [moving, setMoving] = useState(false)
+  const [renewing, setRenewing] = useState(false)
+  const [renewed, setRenewed] = useState<string | null>(null)
 
   async function open(query: WalletQuery) {
     setBusy(true)
@@ -41,7 +44,7 @@ export function KassaPage() {
       setFound({ query, wallet, topups: await topups(wallet.wallet_id) })
     } catch (failure) {
       setFound(null)
-      setError(failureText(failure))
+      setError(refusalText(failure))
     } finally {
       setBusy(false)
     }
@@ -49,7 +52,21 @@ export function KassaPage() {
 
   function search(event: FormEvent) {
     event.preventDefault()
+    setMoving(false)
+    setRenewed(null)
     if (typed.trim()) void open({ short_code: typed })
+  }
+
+  async function renew(wallet: KassaWallet) {
+    setRenewing(false)
+    setError(null)
+    try {
+      const fresh = await newCode(wallet.wallet_id)
+      setRenewed(fresh.short_code)
+      await open({ short_code: fresh.short_code })
+    } catch (failure) {
+      setError(refusalText(failure))
+    }
   }
 
   return (
@@ -86,7 +103,37 @@ export function KassaPage() {
             wallet={found.wallet}
             onBooked={() => void open(found.query)}
           />
-          <TopupList topups={found.topups} />
+          <TopupList topups={found.topups} onReversed={() => void open(found.query)} />
+          <div className={styles.actions}>
+            <Button onClick={() => setMoving(true)}>Saldo overzetten van…</Button>
+            <Button onClick={() => setRenewing(true)}>Nieuwe code</Button>
+          </div>
+          {renewed !== null && (
+            <p className={styles.renewed}>
+              Nieuwe code: <strong>{renewed}</strong>
+            </p>
+          )}
+          {moving && (
+            <MoveDialog
+              target={found.wallet}
+              onMoved={() => {
+                setMoving(false)
+                void open(found.query)
+              }}
+              onClose={() => setMoving(false)}
+            />
+          )}
+          <ConfirmDialog
+            open={renewing}
+            message={
+              `Nieuwe code maken voor ${found.wallet.name}?` +
+              ' De oude QR-code en code werken dan niet meer.'
+            }
+            confirmLabel="Nieuwe code"
+            cancelLabel="Annuleren"
+            onConfirm={() => void renew(found.wallet)}
+            onCancel={() => setRenewing(false)}
+          />
         </section>
       )}
     </div>

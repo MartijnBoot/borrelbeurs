@@ -54,3 +54,45 @@ export async function topUp(walletId: number, amountCents: number, key: string):
     schema: BookedEntry,
   })
 }
+
+export const FoundWallet: z.ZodType<Schemas['FoundWallet']> = z.object({
+  wallet_id: z.number().int(),
+  name: z.string(),
+  created_at: z.string(),
+  balance_cents: z.number().int(),
+  last_topup_at: z.string().nullable(),
+})
+export type FoundWallet = z.infer<typeof FoundWallet>
+
+const NewCode: z.ZodType<Schemas['NewCode']> = z.object({
+  qr_token: z.string(),
+  short_code: z.string(),
+})
+
+/** SD12: 409 `already_reversed`, `insufficient_balance` or `wallet_deleted` when refused. */
+export async function reverse(entryId: number, key: string): Promise<void> {
+  await request('POST', `/api/kassa/topups/${entryId}/reversal`, {
+    headers: { 'Idempotency-Key': key },
+    schema: BookedEntry,
+  })
+}
+
+/** SD11, PD17: names containing `text`, and the wallet a typed short code names, first. */
+export function searchWallets(text: string): Promise<FoundWallet[]> {
+  const query = new URLSearchParams({ name: text })
+  return request('GET', `/api/kassa/wallets?${query}`, { schema: z.array(FoundWallet) })
+}
+
+/** SD11: the balance and the name of `fromWalletId` onto `walletId`; 409 `nothing_to_move`. */
+export async function move(walletId: number, fromWalletId: number, key: string): Promise<void> {
+  await request('POST', `/api/kassa/wallets/${walletId}/move`, {
+    body: { from_wallet_id: fromWalletId },
+    headers: { 'Idempotency-Key': key },
+    schema: BookedEntry,
+  })
+}
+
+/** SD14: the old token and short code stop working at once. */
+export function newCode(walletId: number): Promise<z.infer<typeof NewCode>> {
+  return request('POST', `/api/kassa/wallets/${walletId}/new-code`, { schema: NewCode })
+}
