@@ -500,3 +500,83 @@ def test_0013_admits_the_kassa_role_and_its_downgrade_restores_three(
     assert not {"wallet", "wallet_entry", "wallet_settings"} & asyncio.run(_tables(empty_database))
     with pytest.raises(IntegrityError, match="auth_key_role_check"):
         _in_transaction(empty_database, kassa_key)
+
+
+def test_0014_gives_existing_runs_no_wallet_switch_and_no_credit(
+    empty_database: str, alembic: RunAlembic
+) -> None:
+    """B-06 T1 (SD1, AC1): a run that exists when 0014 runs gets the switch off and a
+    limit of 0, so a deploy never changes a borrel in progress."""
+    assert alembic(empty_database, "upgrade", "0013").returncode == 0
+
+    async def old_run(connection: AsyncConnection) -> None:
+        await connection.execute(
+            text("INSERT INTO run (name, run_seed, params) VALUES ('Oud', 1, '{}')")
+        )
+
+    _in_transaction(empty_database, old_run)
+    step = alembic(empty_database, "upgrade", "head")
+    assert step.returncode == 0, step.stderr
+
+    found: list[tuple[bool, int]] = []
+
+    async def read(connection: AsyncConnection) -> None:
+        result = await connection.execute(
+            text("SELECT wallet_required, credit_limit_cents FROM run")
+        )
+        found.extend((bool(row[0]), int(row[1])) for row in result)
+
+    _in_transaction(empty_database, read)
+    assert found == [(False, 0)]
+
+
+def test_0014_downgrade_refuses_while_a_payment_exists(
+    empty_database: str, alembic: RunAlembic
+) -> None:
+    """B-06 T1: the downgrade restores B-05's CHECKs, so it fails loudly while a B-06
+    row exists, and once it is gone drops the new columns."""
+    assert alembic(empty_database, "upgrade", "head").returncode == 0
+
+    async def payment(connection: AsyncConnection) -> None:
+        wallet_id = (
+            await connection.execute(
+                text(
+                    "INSERT INTO wallet (name, name_key, qr_token, short_code, cookie_hash) "
+                    "VALUES ('Jan', 'jan', 't', 'C', 'h') RETURNING wallet_id"
+                )
+            )
+        ).scalar_one()
+        await connection.execute(
+            text(
+                "INSERT INTO wallet_entry (wallet_id, kind, amount_cents) "
+                "VALUES (:w, 'payment', -100)"
+            ),
+            {"w": wallet_id},
+        )
+
+    async def remove_it(connection: AsyncConnection) -> None:
+        await connection.execute(text("DELETE FROM wallet_entry WHERE kind = 'payment'"))
+
+    _in_transaction(empty_database, payment)
+    refused = alembic(empty_database, "downgrade", "0013")
+    assert refused.returncode != 0, "the downgrade must fail loudly while a payment exists"
+    assert "wallet_entry_" in refused.stderr
+
+    _in_transaction(empty_database, remove_it)
+    step = alembic(empty_database, "downgrade", "0013")
+    assert step.returncode == 0, step.stderr
+
+    columns: list[str] = []
+
+    async def read(connection: AsyncConnection) -> None:
+        result = await connection.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name IN ('run', 'wallet_entry') AND column_name IN "
+                "('wallet_required', 'credit_limit_cents', 'order_id', 'refunds_entry_id')"
+            )
+        )
+        columns.extend(str(row[0]) for row in result)
+
+    _in_transaction(empty_database, read)
+    assert columns == []

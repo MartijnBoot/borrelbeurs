@@ -694,12 +694,14 @@ async def _entry(
     run_id: int | None = None,
     reverses: int | None = None,
     counterpart: int | None = None,
+    order_id: int | None = None,
+    refunds: int | None = None,
 ) -> int:
     result = await connection.execute(
         text(
             "INSERT INTO wallet_entry (wallet_id, kind, amount_cents, run_id, "
-            "reverses_entry_id, counterpart_entry_id) "
-            "VALUES (:w, :kind, :amount, :run, :rev, :cp) RETURNING entry_id"
+            "reverses_entry_id, counterpart_entry_id, order_id, refunds_entry_id) "
+            "VALUES (:w, :kind, :amount, :run, :rev, :cp, :order, :refunds) RETURNING entry_id"
         ),
         {
             "w": wallet_id,
@@ -708,6 +710,8 @@ async def _entry(
             "run": run_id,
             "rev": reverses,
             "cp": counterpart,
+            "order": order_id,
+            "refunds": refunds,
         },
     )
     return int(result.scalar_one())
@@ -787,26 +791,46 @@ def test_deleted_wallets_free_their_name_and_codes(database_url: str) -> None:
     _in_transaction(database_url, write)
 
 
-def test_the_five_entry_kinds_with_their_signs_are_accepted(database_url: str) -> None:
+def test_the_seven_entry_kinds_with_their_signs_are_accepted(database_url: str) -> None:
+    """B-06 PD2, PD3: a payment or refund of 0, and a debt closed or moved."""
+
     async def write(connection: AsyncConnection) -> None:
+        run_id, _ = await _run_and_drink(connection)
         wallet_id = await _wallet(connection)
         topup = await _entry(connection, wallet_id, "topup", 1500)
         await _entry(connection, wallet_id, "reversal", -1500, reverses=topup)
         out = await _entry(connection, wallet_id, "move_out", -500)
         await _entry(connection, wallet_id, "move_in", 500, counterpart=out)
         await _entry(connection, wallet_id, "closing", -500)
+        for amount, key in ((-840, "k-1"), (0, "k-2")):
+            order_id = await _order(connection, run_id, key)
+            payment = await _entry(connection, wallet_id, "payment", amount, order_id=order_id)
+            await _entry(connection, wallet_id, "refund", -amount, refunds=payment)
+        await _entry(connection, wallet_id, "closing", 210)
+        debt_out = await _entry(connection, wallet_id, "move_out", 210)
+        await _entry(connection, wallet_id, "move_in", -210, counterpart=debt_out)
 
     _in_transaction(database_url, write)
 
 
 @pytest.mark.parametrize(
     ("kind", "amount"),
-    [("topup", -100), ("reversal", 100), ("move_in", 0), ("closing", 100), ("move_out", 100)],
+    [
+        ("topup", -100),
+        ("topup", 0),
+        ("reversal", 100),
+        ("payment", 1),
+        ("refund", -1),
+        ("move_in", 0),
+        ("move_out", 0),
+        ("closing", 0),
+    ],
 )
 def test_an_entrys_sign_is_fixed_by_its_kind(database_url: str, kind: str, amount: int) -> None:
     async def write(connection: AsyncConnection) -> None:
         wallet_id = await _wallet(connection)
         topup = await _entry(connection, wallet_id, "topup", 1000)
+        payment = await _entry(connection, wallet_id, "payment", -100)
         await _entry(
             connection,
             wallet_id,
@@ -814,6 +838,7 @@ def test_an_entrys_sign_is_fixed_by_its_kind(database_url: str, kind: str, amoun
             amount,
             reverses=topup if kind == "reversal" else None,
             counterpart=topup if kind == "move_in" else None,
+            refunds=payment if kind == "refund" else None,
         )
 
     with pytest.raises(IntegrityError, match="wallet_entry_amount_check"):
@@ -823,7 +848,7 @@ def test_an_entrys_sign_is_fixed_by_its_kind(database_url: str, kind: str, amoun
 def test_an_unknown_entry_kind_is_rejected(database_url: str) -> None:
     async def write(connection: AsyncConnection) -> None:
         wallet_id = await _wallet(connection)
-        await _entry(connection, wallet_id, "payment", -100)
+        await _entry(connection, wallet_id, "purchase", -100)
 
     # An unknown kind fails the sign rule too; Postgres names whichever it checks first.
     with pytest.raises(IntegrityError, match=r"wallet_entry_(kind|amount)_check"):
@@ -904,6 +929,142 @@ def test_deleting_a_run_keeps_its_wallet_entries_without_a_run(database_url: str
     _in_transaction(database_url, write)
 
     assert found == [(None, 1000)]
+
+
+# B-06 (T1): payments, refunds, the run's switch and credit limit (plan PD3).
+
+
+def test_a_refund_must_name_its_payment_and_only_a_refund_may(database_url: str) -> None:
+    async def bare_refund(connection: AsyncConnection) -> None:
+        wallet_id = await _wallet(connection)
+        await _entry(connection, wallet_id, "refund", 100)
+
+    async def topup_naming_one(connection: AsyncConnection) -> None:
+        wallet_id = await _wallet(connection)
+        payment = await _entry(connection, wallet_id, "payment", -100)
+        await _entry(connection, wallet_id, "topup", 1000, refunds=payment)
+
+    for body in (bare_refund, topup_naming_one):
+        with pytest.raises(IntegrityError, match="wallet_entry_refund_check"):
+            _in_transaction(database_url, body)
+
+
+def test_a_payment_is_refunded_at_most_once(database_url: str) -> None:
+    """SD9: once per payment, by a unique constraint."""
+
+    async def write(connection: AsyncConnection) -> None:
+        wallet_id = await _wallet(connection)
+        payment = await _entry(connection, wallet_id, "payment", -840)
+        await _entry(connection, wallet_id, "refund", 840, refunds=payment)
+        await _entry(connection, wallet_id, "refund", 840, refunds=payment)
+
+    with pytest.raises(IntegrityError, match="wallet_entry_refunds_entry_id_key"):
+        _in_transaction(database_url, write)
+
+
+def test_only_a_payment_may_name_an_order(database_url: str) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        run_id, _ = await _run_and_drink(connection)
+        order_id = await _order(connection, run_id, "k-1")
+        wallet_id = await _wallet(connection)
+        await _entry(connection, wallet_id, "topup", 1000, order_id=order_id)
+
+    with pytest.raises(IntegrityError, match="wallet_entry_order_check"):
+        _in_transaction(database_url, write)
+
+
+def test_an_order_is_paid_at_most_once(database_url: str) -> None:
+    """AC34: one payment per order, by a unique constraint."""
+
+    async def write(connection: AsyncConnection) -> None:
+        run_id, _ = await _run_and_drink(connection)
+        order_id = await _order(connection, run_id, "k-1")
+        wallet_id = await _wallet(connection)
+        await _entry(connection, wallet_id, "payment", -260, order_id=order_id)
+        await _entry(connection, wallet_id, "payment", -260, order_id=order_id)
+
+    with pytest.raises(IntegrityError, match="wallet_entry_order_id_key"):
+        _in_transaction(database_url, write)
+
+
+def test_a_run_defaults_to_no_wallet_required_and_no_credit(database_url: str) -> None:
+    """SD1, SD2: the server default is what existing runs are backfilled with."""
+    found: list[tuple[bool, int]] = []
+
+    async def write(connection: AsyncConnection) -> None:
+        run_id, _ = await _run_and_drink(connection)
+        row = (
+            await connection.execute(
+                text("SELECT wallet_required, credit_limit_cents FROM run WHERE run_id = :r"),
+                {"r": run_id},
+            )
+        ).one()
+        found.append((bool(row[0]), int(row[1])))
+
+    _in_transaction(database_url, write)
+
+    assert found == [(False, 0)]
+
+
+@pytest.mark.parametrize("cents", [0, 50, 5000])
+def test_a_credit_limit_on_the_grid_is_accepted(database_url: str, cents: int) -> None:
+    async def write(connection: AsyncConnection) -> None:
+        run_id, _ = await _run_and_drink(connection)
+        await connection.execute(
+            text("UPDATE run SET credit_limit_cents = :c WHERE run_id = :r"),
+            {"c": cents, "r": run_id},
+        )
+
+    _in_transaction(database_url, write)
+
+
+@pytest.mark.parametrize("cents", [-50, 5050, 25])
+def test_a_credit_limit_off_the_grid_is_rejected(database_url: str, cents: int) -> None:
+    """SD2: €0,00 to €50,00 in €0,50 steps."""
+
+    async def write(connection: AsyncConnection) -> None:
+        run_id, _ = await _run_and_drink(connection)
+        await connection.execute(
+            text("UPDATE run SET credit_limit_cents = :c WHERE run_id = :r"),
+            {"c": cents, "r": run_id},
+        )
+
+    with pytest.raises(IntegrityError, match="run_credit_limit_cents_check"):
+        _in_transaction(database_url, write)
+
+
+def test_deleting_a_run_keeps_its_payments_without_an_order_or_a_run(database_url: str) -> None:
+    """SD10, AC24: `ON DELETE SET NULL` on both links; the row and its amount stay."""
+    found: list[tuple[object, ...]] = []
+
+    async def write(connection: AsyncConnection) -> None:
+        run_id, drink_id = await _run_and_drink(connection)
+        order_id = await _order(connection, run_id, "k-1")
+        await _line(connection, order_id, drink_id, qty=1, unit=260, total=260)
+        wallet_id = await _wallet(connection)
+        payment = await _entry(
+            connection, wallet_id, "payment", -260, run_id=run_id, order_id=order_id
+        )
+        await connection.execute(
+            text("DELETE FROM order_line WHERE order_id = :o"), {"o": order_id}
+        )
+        await connection.execute(text('DELETE FROM "order" WHERE order_id = :o'), {"o": order_id})
+        await connection.execute(text("DELETE FROM drink WHERE run_id = :r"), {"r": run_id})
+        await connection.execute(text("DELETE FROM run WHERE run_id = :r"), {"r": run_id})
+        row = (
+            await connection.execute(
+                text(
+                    "SELECT order_id, run_id, amount_cents, wallet_id FROM wallet_entry "
+                    "WHERE entry_id = :e"
+                ),
+                {"e": payment},
+            )
+        ).one()
+        found.append((row[0], row[1], row[2], row[3] == wallet_id))
+
+    _in_transaction(database_url, write)
+
+    assert found == [(None, None, -260, True)]
 
 
 def test_the_wallet_settings_row_defaults_to_id_1(database_url: str) -> None:

@@ -17,6 +17,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     Double,
@@ -28,6 +29,7 @@ from sqlalchemy import (
     SmallInteger,
     Text,
     UniqueConstraint,
+    false,
     func,
     text,
 )
@@ -49,6 +51,10 @@ class Run(Base):
         CheckConstraint("quote_grace_versions >= 0", name="run_quote_grace_versions_check"),
         CheckConstraint("candle_interval_ms > 0", name="run_candle_interval_ms_check"),
         CheckConstraint("char_length(btrim(name)) BETWEEN 1 AND 100", name="run_name_check"),
+        CheckConstraint(
+            "credit_limit_cents BETWEEN 0 AND 5000 AND credit_limit_cents % 50 = 0",
+            name="run_credit_limit_cents_check",
+        ),
         Index(
             "run_one_live",
             text("(true)"),
@@ -68,6 +74,8 @@ class Run(Base):
     quote_grace_versions: Mapped[int] = mapped_column(Integer, server_default=text("2"))
     candle_interval_ms: Mapped[int] = mapped_column(Integer, server_default=text("60000"))
     name: Mapped[str] = mapped_column(Text)
+    wallet_required: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    credit_limit_cents: Mapped[int] = mapped_column(Integer, server_default=text("0"))
 
 
 class RunConfigRevision(Base):
@@ -475,18 +483,28 @@ class Wallet(Base):
 
 class WalletEntry(Base):
     """One append-only ledger entry in integer cents (B-05 SD9); the sign is fixed by
-    the kind. `run_id` is the run live when it was written, or NULL (SD13)."""
+    the kind, except that a move or a closing may carry a debt (B-06 SD8). `run_id`
+    is the run live when it was written, or NULL (SD13). A `payment` names its order
+    (B-06 SD10) and a `refund` the payment it returns (SD9)."""
 
     __tablename__ = "wallet_entry"
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('topup', 'reversal', 'move_out', 'move_in', 'closing')",
+            "kind IN ('topup', 'reversal', 'move_out', 'move_in', 'closing', 'payment', 'refund')",
             name="wallet_entry_kind_check",
         ),
         CheckConstraint(
-            "(kind IN ('topup', 'move_in') AND amount_cents > 0) OR "
-            "(kind IN ('reversal', 'move_out', 'closing') AND amount_cents < 0)",
+            "(kind = 'topup' AND amount_cents > 0) OR "
+            "(kind = 'reversal' AND amount_cents < 0) OR "
+            "(kind = 'payment' AND amount_cents <= 0) OR "
+            "(kind = 'refund' AND amount_cents >= 0) OR "
+            "(kind IN ('move_out', 'move_in', 'closing') AND amount_cents <> 0)",
             name="wallet_entry_amount_check",
+        ),
+        CheckConstraint("order_id IS NULL OR kind = 'payment'", name="wallet_entry_order_check"),
+        CheckConstraint(
+            "(kind = 'refund') = (refunds_entry_id IS NOT NULL)",
+            name="wallet_entry_refund_check",
         ),
         CheckConstraint(
             "(kind = 'reversal') = (reverses_entry_id IS NOT NULL)",
@@ -498,6 +516,8 @@ class WalletEntry(Base):
         ),
         UniqueConstraint("reverses_entry_id", name="wallet_entry_reverses_entry_id_key"),
         UniqueConstraint("idempotency_key", name="wallet_entry_idempotency_key_key"),
+        UniqueConstraint("order_id", name="wallet_entry_order_id_key"),
+        UniqueConstraint("refunds_entry_id", name="wallet_entry_refunds_entry_id_key"),
         Index("wallet_entry_wallet_id", "wallet_id"),
         Index("wallet_entry_run_id", "run_id"),
     )
@@ -519,6 +539,12 @@ class WalletEntry(Base):
     actor_label: Mapped[str | None] = mapped_column(Text)
     idempotency_key: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    order_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("order.order_id", ondelete="SET NULL")
+    )
+    refunds_entry_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("wallet_entry.entry_id")
+    )
 
 
 class WalletSettings(Base):
