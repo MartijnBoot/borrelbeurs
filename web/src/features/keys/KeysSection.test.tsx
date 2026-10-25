@@ -22,6 +22,14 @@ const KEYS = [
     last_used_at: null,
     revoked: true,
   },
+  {
+    key_id: 4,
+    label: 'Kassa 1',
+    role: 'kassa',
+    created_at: '2026-10-25T18:00:00Z',
+    last_used_at: null,
+    revoked: false,
+  },
 ]
 
 const SECRET = 'bb_3_c2VjcmV0LXNlY3JldC1zZWNyZXQ'
@@ -74,10 +82,22 @@ describe('KeysSection', () => {
   it('lists every key with its status', async () => {
     await open()
     const rows = screen.getAllByRole('row').slice(1)
-    expect(rows).toHaveLength(2)
+    expect(rows).toHaveLength(3)
     expect(within(rows[0]).getByText('Bestuur')).toBeTruthy()
     expect(within(rows[0]).getByText('Actief')).toBeTruthy()
     expect(within(rows[1]).getByText('Ingetrokken')).toBeTruthy()
+  })
+
+  it('lists a kassa key as "Kassa" and creates one with role kassa (B-05 AC40)', async () => {
+    await open()
+    expect(within(screen.getAllByRole('row')[3]).getByText('Kassa')).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Rol'), { target: { value: 'kassa' } })
+    fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'Kassa 2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Nieuwe sleutel' }))
+    await settle()
+
+    expect(writes()[0]).toEqual(['/api/keys', 'POST', '{"role":"kassa","label":"Kassa 2"}'])
   })
 
   it('a new key posts {role, label} and is shown once (AC36)', async () => {

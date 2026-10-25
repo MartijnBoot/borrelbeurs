@@ -10,7 +10,8 @@ afterEach(cleanup)
 const ALLOWED: Record<string, string[]> = {
   display: ['/koers'],
   bar: ['/bar', '/manipulation'],
-  admin: ['/', '/koers', '/bar', '/manipulation', '/settings', '/analytics'],
+  admin: ['/', '/koers', '/bar', '/manipulation', '/settings', '/analytics', '/kassa'],
+  kassa: ['/kassa'],
 }
 
 function renderMenu(routes: string[], onLogout = vi.fn()) {
@@ -57,6 +58,7 @@ describe('NavMenu (AC22, SD13)', () => {
       'Spel mechanica',
       'Instellingen',
       'Analyse',
+      'Kassa',
     ]) {
       expect(menu.getByRole('menuitem', { name: label })).toBeTruthy()
     }

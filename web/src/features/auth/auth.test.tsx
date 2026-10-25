@@ -9,19 +9,21 @@ import { AppRoutes } from '../../app/routes'
 // jsdom has no Web Animations API; the board's marquees are tested on their own.
 vi.mock('../../components/ui/Marquee', () => ({ Marquee: () => null }))
 
-type Role = 'display' | 'bar' | 'admin'
+type Role = 'display' | 'bar' | 'admin' | 'kassa'
 
 // Phase 3 SD2, as GET /api/auth/me returns it.
 const ALLOWED: Record<Role, string[]> = {
   display: ['/koers'],
   bar: ['/bar', '/manipulation'],
-  admin: ['/', '/koers', '/bar', '/manipulation', '/settings', '/analytics'],
+  admin: ['/', '/koers', '/bar', '/manipulation', '/settings', '/analytics', '/kassa'],
+  kassa: ['/kassa'],
 }
 
 const KEYS: Record<string, Role> = {
   'key-display': 'display',
   'key-bar': 'bar',
   'key-admin': 'admin',
+  'key-kassa': 'kassa',
 }
 
 let session: Role | null
@@ -103,6 +105,8 @@ describe('login (AC21)', () => {
     ['key-display', '/koers'],
     ['key-bar', '/bar'],
     ['key-admin', '/'],
+    // B-05 SD7, AC36.
+    ['key-kassa', '/kassa'],
   ])('%s lands on %s', async (key, landing) => {
     await open('/login')
     await logIn(key)

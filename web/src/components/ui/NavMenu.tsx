@@ -16,6 +16,7 @@ const LABELS: Readonly<Record<string, string>> = {
   '/manipulation': 'Spel mechanica',
   '/settings': 'Instellingen',
   '/analytics': 'Analyse',
+  '/kassa': 'Kassa',
 }
 
 export interface NavMenuProps {

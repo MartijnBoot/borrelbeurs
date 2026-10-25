@@ -4,7 +4,7 @@
  * real app. Screenshots are attached per viewport as artifacts, not diffed.
  */
 import type { Page, TestInfo } from '@playwright/test'
-import { expect, test, type Role } from './fixtures'
+import { expect, test, type MintedRole } from './fixtures'
 import { drinks, hello, mockSocket, newsItem, order, snapshot, XSS } from './frames'
 import type { ServerMessage } from '../src/features/exchange/model/schemas'
 
@@ -15,7 +15,7 @@ const TILES = '[class^="_tiles_"]'
 
 async function openBoard(
   page: Page,
-  loginAs: (role: Role) => Promise<void>,
+  loginAs: (role: MintedRole) => Promise<void>,
   viewport: { width: number; height: number },
   frames: () => ServerMessage[],
 ) {

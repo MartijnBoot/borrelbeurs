@@ -14,6 +14,7 @@ const LIVE = { run_id: 7, name: 'Vrijmibo', status: 'live' }
 const HEALTH = { status: 'ok', last_tick_age_ms: 400, last_commit_age_ms: 900 }
 const BAR = { role: 'bar', label: 'Tap 1', connected_at_ms: 0, last_seen_ms: 0 }
 const DISPLAY = { role: 'display', label: 'Scherm', connected_at_ms: 0, last_seen_ms: 0 }
+const KASSA = { role: 'kassa', label: 'Kassa 1', connected_at_ms: 0, last_seen_ms: 0 }
 
 // Vitest runs in Node; `src/` has no Node types, so the one call this file needs is typed here.
 type Listener = (reason: unknown) => void
@@ -70,6 +71,8 @@ describe('HomePage', () => {
       ['Bar', '/bar'],
       ['Spel mechanica', '/manipulation'],
       ['Instellingen', '/settings'],
+      // B-05 SD22, AC40.
+      ['Kassa', '/kassa'],
     ]) {
       expect(screen.getByRole('link', { name: new RegExp(name) }).getAttribute('href')).toBe(href)
     }
@@ -105,6 +108,12 @@ describe('HomePage', () => {
     await open()
     expect(within(status()).queryByText('Koersbord niet verbonden')).toBeNull()
     expect(within(status()).getByText(/Scherm: 1/)).toBeTruthy()
+  })
+
+  it('counts kassa connections between Bar and Beheer (B-05 SD22, AC40)', async () => {
+    connections = [BAR, KASSA, KASSA, DISPLAY]
+    await open()
+    expect(within(status()).getByText(/Scherm: 1, Bar: 1, Kassa: 2, Beheer: 0/)).toBeTruthy()
   })
 
   it('polls health and connections every 5 s, and stops on unmount', async () => {

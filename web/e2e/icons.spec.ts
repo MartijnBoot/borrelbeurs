@@ -9,7 +9,15 @@
 import { readFileSync } from 'node:fs'
 import type { Browser, Locator, Page } from '@playwright/test'
 import { drinks, hello, mockSocket, order, snapshot } from './frames'
-import { expect, server, storeTheme, submitKey, test, type Preset, type Role } from './fixtures'
+import {
+  expect,
+  server,
+  storeTheme,
+  submitKey,
+  test,
+  type Preset,
+  type MintedRole,
+} from './fixtures'
 
 const FAVICON = readFileSync(new URL('../public/favicon.png', import.meta.url))
 const TILE = '[class^="_tile_"]' // see board.spec.ts
@@ -156,7 +164,7 @@ test('a heading icon takes the theme’s text colour live, preset and custom (AC
 })
 
 /** Every route of AC10 (and the board), as the role that may open it. */
-const ROUTES: readonly [string, Role | null][] = [
+const ROUTES: readonly [string, MintedRole | null][] = [
   ['/', 'admin'],
   ['/koers', 'display'],
   ['/bar', 'bar'],
@@ -166,7 +174,7 @@ const ROUTES: readonly [string, Role | null][] = [
   ['/login', null],
 ]
 
-async function pageAs(browser: Browser, role: Role | null): Promise<Page> {
+async function pageAs(browser: Browser, role: MintedRole | null): Promise<Page> {
   const context = await browser.newContext({ baseURL: server().base_url })
   const page = await context.newPage()
   if (role === null) return page
@@ -194,7 +202,7 @@ function bannedOnPage(page: Page): Promise<string[]> {
 
 test('no page shows an emoji or font symbol, under any preset (AC10)', async ({ browser }) => {
   test.setTimeout(120_000)
-  const pages = new Map<Role | null, Page>()
+  const pages = new Map<MintedRole | null, Page>()
   for (const role of new Set(ROUTES.map(([, r]) => r))) pages.set(role, await pageAs(browser, role))
   const presets: Preset[] = ['oudgeld', 'blauw', 'groen', 'paars', 'rood']
   let visited = 0
