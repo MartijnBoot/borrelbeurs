@@ -98,6 +98,15 @@ hotfix.
 | D-47 | Upload size checked after reading the whole body | `api.py:254-256` | Any authenticated admin request can make the server buffer an unbounded body | 6 |
 | D-48 | Theme image→slot mapping kept in `localStorage['theme-images']` | `theme.js:150,215` | Uploaded logo, background and promo tile show only in the admin's own browser, never on the big screen | 6 |
 
+## G. Found while specifying B-05
+
+Found by the B-05 spec's code inventory (2026-10-25), against `main` at `374e206`. Unverified on
+a real phone; the inference is from the browser rule, not an observed failure.
+
+| ID | Defect | Where | Consequence | Phase |
+|---|---|---|---|---|
+| D-49 | The bar page makes its `Idempotency-Key` with `crypto.randomUUID()`, which browsers only provide in a secure context (HTTPS or loopback) | `web/src/features/bar/useBarController.ts:76`, called per intent at `model/orderIntents.ts:229,262` | At the venue (`http://192.168.8.10/`, Phase 8 SD1) **every order tap likely throws `TypeError`**. The e2e and image tests use `http://127.0.0.1`, which counts as secure, so none can catch it | open — unscheduled ([B-05 SD24](phase-b-05-player-wallets.md)) |
+
 ### Phase 6 evidence
 
 Each defect Phase 6 fixes, the acceptance criteria that pin it

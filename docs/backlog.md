@@ -15,10 +15,9 @@ Top is next. Every item that is not `specced` or `dropped` appears here exactly 
 
 | # | ID | Feature | Size | Status |
 |---|---|---|---|---|
-| 1 | B-05 | Player wallets with a QR code | L | idea |
-| 2 | B-06 | Pay at the bar by scanning a player's wallet | M | idea |
-| 3 | B-07 | Price bounds on the Prijsstap grid | S | idea |
-| 4 | B-08 | Short keys you can read aloud | S | idea |
+| 1 | B-06 | Pay at the bar by scanning a player's wallet | M | idea |
+| 2 | B-07 | Price bounds on the Prijsstap grid | S | idea |
+| 3 | B-08 | Short keys you can read aloud | S | idea |
 
 ## Items
 
@@ -185,7 +184,7 @@ worth much.
 
 ### B-05 — Player wallets with a QR code
 
-- **Status:** idea
+- **Status:** specced → `docs/specs/phase-b-05-player-wallets.md`
 - **Added:** 2026-10-18
 - **Size:** L (a phase of its own) — a guess: a new kind of user, new tables, a camera
   library, two new pages
