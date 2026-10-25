@@ -743,7 +743,7 @@ T12 fills this in. Neither package is added before it holds the owner's answer.
 
 | Date | Owner's answer | Generator (exact version) | Decoder (exact version) |
 |---|---|---|---|
-| | | | |
+| 2026-10-25 | Approve both (at the start of `/build b-05`; versions re-checked on npm that day) | `uqr` 0.1.3 (MIT, no runtime deps) | `jsqr` 1.4.0 (Apache-2.0, no runtime deps) |
 
 ## Icon approval (SD25, B-02 SD9)
 
