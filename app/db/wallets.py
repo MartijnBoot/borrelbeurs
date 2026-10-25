@@ -24,7 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Final, Literal
 
-from sqlalchemy import Row, func, select, update
+from sqlalchemy import ColumnElement, Row, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -172,11 +172,15 @@ def _entry(row: Any) -> EntryRow:  # a `Row` of `_ENTRY`
 # --- creating and finding -------------------------------------------------------
 
 
+def _literal(text: str) -> str:
+    """`text` for a `LIKE … ESCAPE '\\'` pattern, its `%` and `_` taken literally."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 async def taken_name_keys(conn: AsyncConnection, prefix_key: str) -> set[str]:
     """The keys of live wallets whose key starts with `prefix_key` (PD7's one query)."""
-    escaped = prefix_key.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     result = await conn.execute(
-        select(Wallet.name_key).where(Wallet.name_key.like(f"{escaped}%", escape="\\"))
+        select(Wallet.name_key).where(Wallet.name_key.like(f"{_literal(prefix_key)}%", escape="\\"))
     )
     return {str(key) for key in result.scalars()}
 
@@ -494,3 +498,40 @@ async def topups(conn: AsyncConnection, wallet_id: int) -> list[tuple[EntryRow, 
         .order_by(WalletEntry.created_at.desc(), WalletEntry.entry_id.desc())
     )
     return [(_entry(row), bool(row.reversed)) for row in rows]
+
+
+@dataclass(frozen=True)
+class SearchRow:
+    """A wallet as the move search lists it (SD11, PD17)."""
+
+    wallet: WalletRow
+    balance_cents: int
+    last_topup_at: datetime | None
+
+
+async def search(
+    conn: AsyncConnection, *, fragment_key: str, short_code: str | None
+) -> list[SearchRow]:
+    """Live wallets whose `name_key` contains `fragment_key`, sorted as names are (PD18),
+    with the wallet `short_code` names first."""
+    matches: ColumnElement[bool] = Wallet.name_key.like(f"%{_literal(fragment_key)}%", escape="\\")
+    if short_code is not None:
+        matches = or_(matches, Wallet.short_code == short_code)
+    rows = await conn.execute(
+        select(
+            *_WALLET,
+            Wallet.name_key,
+            func.coalesce(func.sum(WalletEntry.amount_cents), 0).label("balance"),
+            func.max(WalletEntry.created_at)
+            .filter(WalletEntry.kind == "topup")
+            .label("last_topup_at"),
+        )
+        .outerjoin(WalletEntry, WalletEntry.wallet_id == Wallet.wallet_id)
+        .where(Wallet.deleted_at.is_(None), matches)
+        .group_by(Wallet.wallet_id)
+    )
+    ordered = sorted(
+        rows,
+        key=lambda row: (row.short_code != short_code, row.name_key, row.wallet_id),
+    )
+    return [SearchRow(_wallet(row), int(row.balance), row.last_topup_at) for row in ordered]

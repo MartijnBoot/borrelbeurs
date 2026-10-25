@@ -175,7 +175,7 @@ async def topups(engine: AsyncEngine, wallet_id: int) -> list[tuple[EntryRow, bo
 async def _book_once(
     engine: AsyncEngine,
     key: str,
-    same: Callable[[EntryRow], bool],
+    same: Callable[[AsyncConnection, EntryRow], Awaitable[bool]],
     book: Callable[[AsyncConnection], Awaitable[EntryRow]],
 ) -> Booked:
     """Run `book` in one transaction unless `key` already booked an entry (PD9).
@@ -185,8 +185,8 @@ async def _book_once(
     loser reads the winner's entry and judges it the same way.
     """
 
-    def replay(stored: EntryRow) -> Booked:
-        if not same(stored):
+    async def replay(conn: AsyncConnection, stored: EntryRow) -> Booked:
+        if not await same(conn, stored):
             raise IdempotencyKeyReused("this Idempotency-Key was already used for another request")
         return Booked(stored, replay=True)
 
@@ -194,16 +194,16 @@ async def _book_once(
         async with engine.begin() as conn:
             stored = await wallets.find_entry_by_key(conn, key)
             if stored is not None:
-                return replay(stored)
+                return await replay(conn, stored)
             return Booked(await book(conn), replay=False)
     except IntegrityError as error:
         if _KEY_INDEX not in str(error.orig):
             raise
         async with engine.connect() as conn:
             winner = await wallets.find_entry_by_key(conn, key)
-        if winner is None:
-            raise
-        return replay(winner)
+            if winner is None:
+                raise
+            return await replay(conn, winner)
 
 
 async def top_up(
@@ -220,7 +220,7 @@ async def top_up(
     It never refuses a second top-up: the 2-minute warning is the page's (SD10).
     """
 
-    def same(stored: EntryRow) -> bool:
+    async def same(_: AsyncConnection, stored: EntryRow) -> bool:
         return (stored.kind, stored.wallet_id, stored.amount_cents) == (
             "topup",
             wallet_id,
@@ -243,3 +243,131 @@ async def top_up(
         )
 
     return await _book_once(engine, idempotency_key, same, book)
+
+
+class TopupNotFound(AppError):
+    """No top-up has this id. Any other entry kind answers the same, so no route tells
+    which other entries exist (SD12, AC24)."""
+
+    status_code = 404
+    code = "topup_not_found"
+
+
+async def reverse(
+    engine: AsyncEngine, *, entry_id: int, idempotency_key: str, actor: Actor, now_ms: int
+) -> Booked:
+    """One `reversal` of minus the top-up's amount, naming it, with the original's run
+    (SD12; AC21, AC22). Once per top-up, never below zero, never on a deleted wallet.
+
+    The wallet is locked before the reversal and the balance are read, so two
+    reversals at once serialise and the second sees the first (AC23).
+    """
+
+    async def same(_: AsyncConnection, stored: EntryRow) -> bool:
+        return stored.kind == "reversal" and stored.reverses_entry_id == entry_id
+
+    async def book(conn: AsyncConnection) -> EntryRow:
+        original = await wallets.get_entry(conn, entry_id)
+        if original is None or original.kind != "topup":
+            raise TopupNotFound(f"no top-up {entry_id}")
+        if await wallets.lock_wallet(conn, original.wallet_id) is None:
+            raise wallets.WalletDeleted("this wallet is deleted")
+        if await wallets.reversal_of(conn, entry_id) is not None:
+            raise wallets.AlreadyReversed("this top-up is already reversed")
+        if await wallets.balance(conn, original.wallet_id) < original.amount_cents:
+            raise wallets.InsufficientBalance("the balance is too low to reverse this top-up")
+        return await wallets.insert_entry(
+            conn,
+            wallet_id=original.wallet_id,
+            kind="reversal",
+            amount_cents=-original.amount_cents,
+            now_ms=now_ms,
+            run_id=original.run_id,
+            reverses_entry_id=entry_id,
+            actor_key_id=actor.key_id,
+            actor_label=actor.label,
+            idempotency_key=idempotency_key,
+        )
+
+    return await _book_once(engine, idempotency_key, same, book)
+
+
+async def search(engine: AsyncEngine, text: str) -> list[wallets.SearchRow]:
+    """Every live wallet whose name contains `text` (case-folded), and the wallet a typed
+    short code names, first (SD11, PD17)."""
+    async with engine.connect() as conn:
+        return await wallets.search(
+            conn, fragment_key=name_key(text), short_code=normalise_short_code(text)
+        )
+
+
+async def move(
+    engine: AsyncEngine,
+    *,
+    wallet_id: int,
+    from_wallet_id: int,
+    idempotency_key: str,
+    actor: Actor,
+    now_ms: int,
+) -> Booked:
+    """Move the whole balance and the name of `from_wallet_id` onto `wallet_id`, in one
+    transaction (SD11; AC26, AC27).
+
+    Both wallets are locked in id order. The order inside is fixed (plan T8): the
+    out and in entries, then the old wallet deleted, freeing its name, then the new
+    wallet takes it, since the name's unique index allows one holder at a time.
+    The `move_in` carries the key.
+    """
+
+    async def same(conn: AsyncConnection, stored: EntryRow) -> bool:
+        if stored.kind != "move_in" or stored.wallet_id != wallet_id:
+            return False
+        assert stored.counterpart_entry_id is not None
+        counterpart = await wallets.get_entry(conn, stored.counterpart_entry_id)
+        return counterpart is not None and counterpart.wallet_id == from_wallet_id
+
+    async def book(conn: AsyncConnection) -> EntryRow:
+        if wallet_id == from_wallet_id:
+            raise wallets.NothingToMove("a wallet cannot take its own balance")
+        target, source = await wallets.lock_wallets(conn, wallet_id, from_wallet_id)
+        if target is None or source is None:
+            raise WalletNotFound("one of the two wallets is deleted")
+        amount = await wallets.balance(conn, from_wallet_id)
+        if amount <= 0:
+            raise wallets.NothingToMove(f"{source.name} has no balance to move")
+        run_id = await wallets.live_run_id(conn)
+        out = await wallets.insert_entry(
+            conn,
+            wallet_id=from_wallet_id,
+            kind="move_out",
+            amount_cents=-amount,
+            now_ms=now_ms,
+            run_id=run_id,
+            actor_key_id=actor.key_id,
+            actor_label=actor.label,
+        )
+        moved_in = await wallets.insert_entry(
+            conn,
+            wallet_id=wallet_id,
+            kind="move_in",
+            amount_cents=amount,
+            now_ms=now_ms,
+            run_id=run_id,
+            counterpart_entry_id=out.entry_id,
+            actor_key_id=actor.key_id,
+            actor_label=actor.label,
+            idempotency_key=idempotency_key,
+        )
+        await wallets.delete_wallet(
+            conn, from_wallet_id, now_ms=now_ms, actor_key_id=actor.key_id, actor_label=actor.label
+        )
+        await wallets.rename(conn, wallet_id, source.name)
+        return moved_in
+
+    return await _book_once(engine, idempotency_key, same, book)
+
+
+async def new_code(engine: AsyncEngine, wallet_id: int) -> WalletRow:
+    """A new QR token and short code; the old ones stop working at once (SD14, AC28)."""
+    async with engine.begin() as conn:
+        return await wallets.replace_codes(conn, wallet_id)

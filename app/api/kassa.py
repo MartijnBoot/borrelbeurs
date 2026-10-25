@@ -12,12 +12,21 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Final, Self
 
-from fastapi import APIRouter, Depends, Header, Request, Response
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from app.api.deps import Principal, clock_of, db_engine, refuse_while_draining, require_role
 from app.api.orders import IDEMPOTENCY_KEY_PATTERN
 from app.runtime import wallets as actions
+from app.runtime.wallet_codes import display_short_code
 
 router = APIRouter(prefix="/kassa", tags=["kassa"])
 
@@ -77,6 +86,27 @@ class TopupRequest(BaseModel):
         if value not in TOPUP_AMOUNTS:
             raise ValueError("a top-up is 1000 to 10000 cents in steps of 500")
         return value
+
+
+class MoveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    from_wallet_id: StrictInt
+
+
+class FoundWallet(BaseModel):
+    """A wallet the move search lists (SD11, PD17)."""
+
+    wallet_id: int
+    name: str
+    created_at: datetime
+    balance_cents: int
+    last_topup_at: datetime | None
+
+
+class NewCode(BaseModel):
+    qr_token: str
+    short_code: str
 
 
 class BookedEntry(BaseModel):
@@ -161,3 +191,78 @@ async def top_up(
         now_ms=clock_of(request).wall_ms(),
     )
     return _booked(booked, response)
+
+
+@router.post(
+    "/topups/{entry_id}/reversal",
+    status_code=201,
+    responses={200: {"model": BookedEntry, "description": "A replay of the stored reversal"}},
+)
+async def reverse(
+    entry_id: int,
+    request: Request,
+    response: Response,
+    idempotency_key: IdempotencyKey,
+    principal: Kassa,
+    _: Draining,
+) -> BookedEntry:
+    booked = await actions.reverse(
+        db_engine(request),
+        entry_id=entry_id,
+        idempotency_key=idempotency_key,
+        actor=_actor(principal),
+        now_ms=clock_of(request).wall_ms(),
+    )
+    return _booked(booked, response)
+
+
+@router.get("/wallets")
+async def search(
+    name: Annotated[
+        str, Query(), StringConstraints(strip_whitespace=True, min_length=1, max_length=40)
+    ],
+    request: Request,
+    _: Kassa,
+) -> list[FoundWallet]:
+    return [
+        FoundWallet(
+            wallet_id=row.wallet.wallet_id,
+            name=row.wallet.name,
+            created_at=row.wallet.created_at,
+            balance_cents=row.balance_cents,
+            last_topup_at=row.last_topup_at,
+        )
+        for row in await actions.search(db_engine(request), name)
+    ]
+
+
+@router.post(
+    "/wallets/{wallet_id}/move",
+    status_code=201,
+    responses={200: {"model": BookedEntry, "description": "A replay of the stored move"}},
+)
+async def move(
+    wallet_id: int,
+    body: MoveRequest,
+    request: Request,
+    response: Response,
+    idempotency_key: IdempotencyKey,
+    principal: Kassa,
+    _: Draining,
+) -> BookedEntry:
+    """The `move_in` entry the move booked on `wallet_id` (SD11)."""
+    booked = await actions.move(
+        db_engine(request),
+        wallet_id=wallet_id,
+        from_wallet_id=body.from_wallet_id,
+        idempotency_key=idempotency_key,
+        actor=_actor(principal),
+        now_ms=clock_of(request).wall_ms(),
+    )
+    return _booked(booked, response)
+
+
+@router.post("/wallets/{wallet_id}/new-code")
+async def new_code(wallet_id: int, request: Request, _: Kassa, __: Draining) -> NewCode:
+    wallet = await actions.new_code(db_engine(request), wallet_id)
+    return NewCode(qr_token=wallet.qr_token, short_code=display_short_code(wallet.short_code))

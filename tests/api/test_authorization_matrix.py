@@ -86,6 +86,11 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     ("POST", "/api/kassa/lookup"): KASSA,
     ("GET", "/api/kassa/wallets/{wallet_id}/topups"): KASSA,
     ("POST", "/api/kassa/wallets/{wallet_id}/topups"): KASSA,
+    # B-05 SD11, SD12, SD14.
+    ("POST", "/api/kassa/topups/{entry_id}/reversal"): KASSA,
+    ("GET", "/api/kassa/wallets"): KASSA,
+    ("POST", "/api/kassa/wallets/{wallet_id}/move"): KASSA,
+    ("POST", "/api/kassa/wallets/{wallet_id}/new-code"): KASSA,
 }
 
 # B-05 SD8: the player's own routes. A player is not a role: these carry
