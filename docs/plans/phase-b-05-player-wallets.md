@@ -751,7 +751,7 @@ T14 fills this in. No page shows the icon (T20) before it holds "go".
 
 | Round | Date | Owner's answer | Grids redrawn |
 |---|---|---|---|
-| | | | |
+| 1 | 2026-10-25 | Go (first proposal, T13 `fe4730f`) | none |
 
 ---
 
