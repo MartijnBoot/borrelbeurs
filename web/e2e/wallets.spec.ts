@@ -226,8 +226,8 @@ test('a player signs up, the kassa tops up, reverses and moves, admin sees the t
   // 8. Admin: the outstanding balance and the borrel's top-ups (AC34); the kassa counted (AC40).
   await admin.reload()
   const totals = section(admin, 'Wallets').getByRole('region', { name: 'Totalen' })
-  await expect(totals).toContainText(/Openstaand saldo: €\s15,00/)
-  await expect(totals).toContainText(/Walletborrel: €\s15,00/)
+  await expect(totals).toContainText(/Tegoed: €\s15,00/)
+  await expect(totals).toContainText(/Walletborrel: opgewaardeerd €\s15,00, besteed €\s0,00/)
   await admin.goto('/')
   await expect(admin.getByText(/Kassa: 1/)).toBeVisible({ timeout: 15_000 })
 

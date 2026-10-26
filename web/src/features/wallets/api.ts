@@ -1,6 +1,6 @@
 /**
- * Admin's wallet routes (B-05 SD6, SD15, SD16). The totals are the server's:
- * the page adds nothing up.
+ * Admin's wallet routes (B-05 SD6, SD15, SD16; B-06 PD10). The totals are the
+ * server's: the page adds nothing up.
  */
 import { z } from 'zod'
 import type { components } from '../../api/generated/schema'
@@ -9,12 +9,14 @@ import { request } from '../../lib/http'
 type Schemas = components['schemas']
 
 export const Overview: z.ZodType<Schemas['WalletsOverview']> = z.object({
-  outstanding_cents: z.number().int(),
+  positive_balance_cents: z.number().int(),
+  negative_balance_cents: z.number().int(),
   per_borrel: z.array(
     z.object({
       run_id: z.number().int().nullable(),
       name: z.string().nullable(),
       net_topup_cents: z.number().int(),
+      net_payment_cents: z.number().int(),
     }),
   ),
   wallets: z.array(

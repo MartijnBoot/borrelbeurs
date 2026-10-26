@@ -1088,6 +1088,7 @@ export interface components {
         /**
          * BorrelTopups
          * @description `run_id` and `name` are null on the row of entries without a run (PD2).
+         *     `net_payment_cents` is what wallets paid at the borrel, net of refunds (B-06 PD10).
          */
         BorrelTopups: {
             /** Run Id */
@@ -1096,6 +1097,8 @@ export interface components {
             name: string | null;
             /** Net Topup Cents */
             net_topup_cents: number;
+            /** Net Payment Cents */
+            net_payment_cents: number;
         };
         /** CompareRowData */
         CompareRowData: {
@@ -1982,10 +1985,15 @@ export interface components {
             /** Inactive Months */
             inactive_months: number;
         };
-        /** WalletsOverview */
+        /**
+         * WalletsOverview
+         * @description `positive_balance_cents` is "Tegoed", `negative_balance_cents` (at most 0) "Rood".
+         */
         WalletsOverview: {
-            /** Outstanding Cents */
-            outstanding_cents: number;
+            /** Positive Balance Cents */
+            positive_balance_cents: number;
+            /** Negative Balance Cents */
+            negative_balance_cents: number;
             /** Per Borrel */
             per_borrel: components["schemas"]["BorrelTopups"][];
             /** Wallets */

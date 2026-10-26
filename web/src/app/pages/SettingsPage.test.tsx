@@ -182,7 +182,12 @@ const SERVED: Readonly<Record<string, unknown>> = {
   '/api/keys': [KEY],
   '/api/analytics/runs': [],
   '/api/profiles': [],
-  '/api/admin/wallets': { outstanding_cents: 0, per_borrel: [], wallets: [] },
+  '/api/admin/wallets': {
+    positive_balance_cents: 0,
+    negative_balance_cents: 0,
+    per_borrel: [],
+    wallets: [],
+  },
   '/api/admin/wallet-settings': { signup_code: null, unfunded_days: 30, inactive_months: 12 },
 }
 

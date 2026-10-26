@@ -5,18 +5,20 @@
  *   poster's link `<origin>/speler?code=<code>` (PD20); cleared, sign-up is
  *   closed.
  * - **Bewaartermijnen:** the two retention periods, whole days and months.
- * - **Totalen:** what the association still owes in drinks, and the top-ups per
- *   borrel net of reversals, newest first, with "Zonder borrel" for those
- *   booked when none was live (PD2).
+ * - **Totalen:** "Tegoed", what the association still owes in drinks, and
+ *   "Rood", what players owe, never netted (B-06 SD20, PD10); per borrel the
+ *   top-ups net of reversals and the wallet payments net of refunds, newest
+ *   first, with "Zonder borrel" for those booked when none was live (PD2).
  * - **The list:** each wallet's name, balance and last activity, with
- *   "Verwijderen" behind a confirm naming the balance that is lost.
+ *   "Verwijderen" behind a confirm naming the balance that is lost, or the
+ *   debt that is written off (B-06 SD8, PD18).
  */
 import { type FormEvent, useCallback, useEffect, useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Field } from '../../components/ui/Field'
 import fieldStyles from '../../components/ui/Field.module.css'
-import { formatEuro } from '../../lib/format'
+import { formatBalance, formatEuro } from '../../lib/format'
 import { HttpError } from '../../lib/http'
 import { formatDayMonth } from '../../lib/time'
 import {
@@ -32,6 +34,13 @@ import styles from './WalletsSection.module.css'
 
 const NETWORK = 'Verbindingsfout. Probeer opnieuw.'
 const PERIODS = 'Kies 1–365 dagen en 1–60 maanden.'
+
+function deleteQuestion(wallet: ListedWallet): string {
+  const question = `Wallet '${wallet.name}' verwijderen?`
+  return wallet.balance_cents < 0
+    ? `${question} De schuld van ${formatEuro(-wallet.balance_cents)} vervalt.`
+    : `${question} Het saldo van ${formatEuro(wallet.balance_cents)} vervalt.`
+}
 
 function signupLink(code: string): string {
   return `${window.location.origin}/speler?code=${encodeURIComponent(code)}`
@@ -196,12 +205,14 @@ export function WalletsSection() {
 
       <section className={styles.subsection} aria-label="Totalen">
         <h3>Totalen</h3>
-        <p>Openstaand saldo: {formatEuro(overview.outstanding_cents)}</p>
+        <p>Tegoed: {formatEuro(overview.positive_balance_cents)}</p>
+        <p>Rood: {formatBalance(overview.negative_balance_cents)}</p>
         {overview.per_borrel.length > 0 && (
-          <ul className={styles.list} aria-label="Opwaarderingen per borrel">
+          <ul className={styles.list} aria-label="Per borrel">
             {overview.per_borrel.map((row) => (
               <li key={row.run_id ?? 'zonder'}>
-                {row.name ?? 'Zonder borrel'}: {formatEuro(row.net_topup_cents)}
+                {row.name ?? 'Zonder borrel'}: opgewaardeerd {formatEuro(row.net_topup_cents)},
+                besteed {formatEuro(row.net_payment_cents)}
               </li>
             ))}
           </ul>
@@ -217,7 +228,7 @@ export function WalletsSection() {
             {overview.wallets.map((wallet) => (
               <li key={wallet.wallet_id} className={styles.wallet}>
                 <strong>{wallet.name}</strong>
-                <span>{formatEuro(wallet.balance_cents)}</span>
+                <span>{formatBalance(wallet.balance_cents)}</span>
                 <span className={styles.muted}>
                   laatst actief {formatDayMonth(Date.parse(wallet.last_activity_at))}
                 </span>
@@ -237,12 +248,7 @@ export function WalletsSection() {
 
       <ConfirmDialog
         open={deleting !== null}
-        message={
-          deleting === null
-            ? ''
-            : `Wallet '${deleting.name}' verwijderen? Het saldo van ` +
-              `${formatEuro(deleting.balance_cents)} vervalt.`
-        }
+        message={deleting === null ? '' : deleteQuestion(deleting)}
         confirmLabel="Verwijderen"
         cancelLabel="Annuleren"
         onConfirm={() => deleting !== null && void remove(deleting)}

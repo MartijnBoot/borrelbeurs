@@ -718,12 +718,14 @@ class ListedWallet:
 
 @dataclass(frozen=True)
 class RunTopups:
-    """One borrel's top-ups net of their reversals (SD12, SD16). `run_id` `None` is the
+    """One borrel's top-ups net of their reversals (SD12, SD16), and its wallet payments
+    net of their refunds as a positive amount (B-06 SD20, PD10). `run_id` `None` is the
     entries with no run: none was live, or the run was deleted (PD2)."""
 
     run_id: int | None
     name: str | None
     net_topup_cents: int
+    net_payment_cents: int = 0
 
 
 async def list_wallets(conn: AsyncConnection) -> list[ListedWallet]:
@@ -743,34 +745,49 @@ async def list_wallets(conn: AsyncConnection) -> list[ListedWallet]:
     return [ListedWallet(_wallet(row), int(row.balance), row.active) for row in ordered]
 
 
-async def outstanding_cents(conn: AsyncConnection) -> int:
-    """The sum of every live wallet's balance (SD16). A deleted wallet's ledger sums to 0."""
-    result = await conn.execute(
-        select(func.coalesce(func.sum(WalletEntry.amount_cents), 0))
+async def balance_totals(conn: AsyncConnection) -> tuple[int, int]:
+    """The sums of the live wallets' positive and negative balances (B-06 SD20, PD10):
+    what the association still owes in drinks, and what players owe. Never netted."""
+    balances = (
+        select(func.sum(WalletEntry.amount_cents).label("balance"))
         .join(Wallet, Wallet.wallet_id == WalletEntry.wallet_id)
         .where(Wallet.deleted_at.is_(None))
+        .group_by(WalletEntry.wallet_id)
+        .subquery()
     )
-    return int(result.scalar_one())
+    row = (
+        await conn.execute(
+            select(
+                func.coalesce(func.sum(balances.c.balance).filter(balances.c.balance > 0), 0),
+                func.coalesce(func.sum(balances.c.balance).filter(balances.c.balance < 0), 0),
+            )
+        )
+    ).one()
+    return int(row[0]), int(row[1])
 
 
 async def topups_per_run(conn: AsyncConnection) -> list[RunTopups]:
-    """Top-ups net of reversals per run, newest borrel first (PD18); the entries without a
-    run last, only when they do not sum to zero (PD2 reading A).
+    """Top-ups net of reversals and payments net of refunds per run, newest borrel first
+    (PD18; B-06 PD10); the entries without a run last, only when either sum is not
+    zero (PD2 reading A).
 
-    A reversal carries its top-up's run (SD12), so a run's sum is already net. A closing
-    or move entry is no top-up and counts nowhere, so deleting a wallet changes no row
-    (AC32).
+    A reversal carries its top-up's run (SD12) and a refund its payment's (B-06 SD9), so
+    a run's sums are already net. A closing or move entry counts nowhere, so deleting a
+    wallet changes no row (AC32).
     """
+    topups = WalletEntry.kind.in_(("topup", "reversal"))
+    payments = WalletEntry.kind.in_(("payment", "refund"))
     rows = (
         await conn.execute(
             select(
                 WalletEntry.run_id,
                 Run.name,
                 Run.started_at,
-                func.sum(WalletEntry.amount_cents).label("net"),
+                func.coalesce(func.sum(WalletEntry.amount_cents).filter(topups), 0).label("net"),
+                func.coalesce(func.sum(WalletEntry.amount_cents).filter(payments), 0).label("paid"),
             )
             .outerjoin(Run, Run.run_id == WalletEntry.run_id)
-            .where(WalletEntry.kind.in_(("topup", "reversal")))
+            .where(or_(topups, payments))
             .group_by(WalletEntry.run_id, Run.name, Run.started_at)
         )
     ).all()
@@ -779,8 +796,8 @@ async def topups_per_run(conn: AsyncConnection) -> list[RunTopups]:
         key=lambda row: (row.started_at, row.run_id),
         reverse=True,
     )
-    totals = [RunTopups(int(row.run_id), row.name, int(row.net)) for row in runs]
-    unrun = [int(row.net) for row in rows if row.run_id is None]
-    if unrun and unrun[0]:
-        totals.append(RunTopups(None, None, unrun[0]))
+    totals = [RunTopups(int(row.run_id), row.name, int(row.net), -int(row.paid)) for row in runs]
+    unrun = [(int(row.net), -int(row.paid)) for row in rows if row.run_id is None]
+    if unrun and any(unrun[0]):
+        totals.append(RunTopups(None, None, *unrun[0]))
     return totals

@@ -497,7 +497,8 @@ class Overview:
     """Admin's Wallets section, one `REPEATABLE READ` snapshot so the totals and the list
     agree, as `app.db.analytics.run_detail` reads."""
 
-    outstanding_cents: int
+    positive_balance_cents: int
+    negative_balance_cents: int
     per_run: list[wallets.RunTopups]
     wallets: list[wallets.ListedWallet]
 
@@ -506,8 +507,10 @@ async def overview(engine: AsyncEngine) -> Overview:
     async with engine.connect() as conn:
         await conn.execution_options(isolation_level="REPEATABLE READ", postgresql_readonly=True)
         async with conn.begin():
+            positive, negative = await wallets.balance_totals(conn)
             return Overview(
-                await wallets.outstanding_cents(conn),
+                positive,
+                negative,
                 await wallets.topups_per_run(conn),
                 await wallets.list_wallets(conn),
             )
