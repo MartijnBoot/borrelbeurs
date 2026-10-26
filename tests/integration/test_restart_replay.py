@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import http.cookiejar
 import json
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -147,12 +148,19 @@ def test_a_same_key_retry_after_a_restart_replays_the_receipt_byte_for_byte(
         app.kill()
 
 
+def _now_ms() -> int:
+    """The app sweeps unfunded wallets at boot on the wall clock: a wallet dated 1970 is gone."""
+    return int(time.time() * 1000)
+
+
 def _wallet(url: str) -> wallets.WalletRow:
     async def create() -> wallets.WalletRow:
         engine = create_async_engine(url, poolclass=pool.NullPool)
         try:
             async with engine.begin() as conn:
-                return await wallets.create_wallet(conn, name="Jan", cookie_hash="h-jan", now_ms=0)
+                return await wallets.create_wallet(
+                    conn, name="Jan", cookie_hash="h-jan", now_ms=_now_ms()
+                )
         finally:
             await engine.dispose()
 

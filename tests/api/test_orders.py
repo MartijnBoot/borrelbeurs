@@ -560,12 +560,14 @@ def test_the_checks_come_in_sd15s_order(
     switch = _pay(bar, "k-order-002", good, None)
     wallet = _pay(bar, "k-order-003", good, {"qr_token": "no-such-token"})
     balance = _pay(bar, "k-order-004", good, {"qr_token": poor.qr_token})
+    stale_unpaid = _pay(bar, "k-order-005", stale, None)
 
-    assert [r.json()["error"]["code"] for r in (price, switch, wallet, balance)] == [
+    assert [r.json()["error"]["code"] for r in (price, switch, wallet, balance, stale_unpaid)] == [
         "price_changed",
         "wallet_required",
         "wallet_not_found",
         "insufficient_balance",
+        "price_changed",
     ]
     assert _market(bar) == before
     assert _counts(settings, api_env) == counts
