@@ -1,0 +1,44 @@
+/* B-06 SD9: the bar's recent payments, under the pending list; theme tokens only. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--grid);
+}
+
+.muted {
+  margin: 0;
+  color: var(--muted);
+}
+
+.error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  color: var(--danger);
+}

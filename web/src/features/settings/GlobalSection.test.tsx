@@ -3,6 +3,7 @@
 // The D-03 gate: an untouched save sends nothing; an edit sends exactly its field.
 // B-01 T5: the new names, and an (i) per field (E1-E10).
 // B-03 T4: the six noise controls after Kaarsbreedte (SD4-SD6; AC10-AC14; E34-E39).
+// B-06 T17: "Wallet verplicht" and "Rood staan tot" at the top level (SD1-SD3; AC2, AC3).
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectExplained } from '../../components/ui/infoTesting'
@@ -62,7 +63,14 @@ const PARAMS = {
 function config(params: Record<string, unknown> = PARAMS, candle = 60, revision = 3) {
   return {
     revision,
-    run: { run_id: 7, name: 'Vrijmibo', status: 'live', candle_interval_s: candle },
+    run: {
+      run_id: 7,
+      name: 'Vrijmibo',
+      status: 'live',
+      candle_interval_s: candle,
+      wallet_required: true,
+      credit_limit_cents: 0,
+    },
     params,
     drinks: [],
   }
@@ -341,6 +349,56 @@ describe('GlobalSection', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Overnemen' }))
       expect(input('Sterkte ruis').value).toBe('0,18')
       expect(input('Grens ruis').value).toBe('3')
+    })
+  })
+
+  describe('the wallet settings (B-06)', () => {
+    const walletSwitch = () => screen.getByRole('switch', { name: 'Wallet verplicht' })
+
+    it('show the server values: the switch on, the limit in euros (SD1, SD2)', async () => {
+      served = { ...config(), run: { ...config().run, credit_limit_cents: 250 } }
+      await open()
+      expect(walletSwitch().getAttribute('aria-checked')).toBe('true')
+      expect(input('Rood staan tot (€)').value).toBe('2,50')
+    })
+
+    it.each(['wallet_required', 'credit_limit_cents'] as const)(
+      '%s has an (i) with its explanation (AC3)',
+      async (key) => {
+        const { container } = render(<GlobalSection />)
+        await settle()
+        expectExplained(container, explanations[key])
+      },
+    )
+
+    it('toggling "Wallet verplicht" sends {wallet_required: false} at the top level (AC2)', async () => {
+      await open()
+      fireEvent.click(walletSwitch())
+      await save()
+      expect(patches()).toEqual([{ wallet_required: false }])
+    })
+
+    it('a limit of 2,50 sends {credit_limit_cents: 250} at the top level (AC2)', async () => {
+      await open()
+      fireEvent.change(input('Rood staan tot (€)'), { target: { value: '2,50' } })
+      await save()
+      expect(patches()).toEqual([{ credit_limit_cents: 250 }])
+    })
+
+    it('a 422 on credit_limit_cents shows under that field (AC2)', async () => {
+      refuse(['body', 'credit_limit_cents'], 'Input should be a multiple of 50')
+      await open()
+      fireEvent.change(input('Rood staan tot (€)'), { target: { value: '0,25' } })
+      await save()
+      expect(input('Rood staan tot (€)').getAttribute('aria-invalid')).toBe('true')
+      expect(screen.getByText('Input should be a multiple of 50')).toBeTruthy()
+    })
+
+    it('an emptied limit blocks the save', async () => {
+      await open()
+      fireEvent.change(input('Rood staan tot (€)'), { target: { value: '' } })
+      await save()
+      expect(patches()).toEqual([])
     })
   })
 })

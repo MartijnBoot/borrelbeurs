@@ -101,6 +101,8 @@ class RunConfigData(BaseModel):
     name: str
     status: RunStatus
     candle_interval_s: int
+    wallet_required: bool
+    credit_limit_cents: int
 
 
 class DrinkConfigData(BaseModel):
@@ -157,6 +159,8 @@ async def config_document(conn: AsyncConnection, run: RunRow) -> ConfigData:
             name=run.name,
             status=run.status,
             candle_interval_s=run.candle_interval_ms // 1000,
+            wallet_required=run.wallet_required,
+            credit_limit_cents=run.credit_limit_cents,
         ),
         params=ParamsData.model_validate({**scalars, **targets}),
         drinks=[_drink_data(d) for d in drinks],
@@ -206,6 +210,8 @@ def _is_empty(patch: ConfigPatch) -> bool:
     return (
         patch.name is None
         and patch.candle_interval_s is None
+        and patch.wallet_required is None
+        and patch.credit_limit_cents is None
         and (patch.params is None or not patch.params.model_fields_set)
     )
 
@@ -225,6 +231,12 @@ async def _merged(conn: AsyncConnection, run: RunRow, patch: ConfigPatch) -> Run
             if patch.candle_interval_s is None
             else patch.candle_interval_s * 1000
         ),
+        wallet_required=(
+            run.wallet_required if patch.wallet_required is None else patch.wallet_required
+        ),
+        credit_limit_cents=(
+            run.credit_limit_cents if patch.credit_limit_cents is None else patch.credit_limit_cents
+        ),
         params={**run.params, **changes},
     )
     return None if merged == run else merged
@@ -238,6 +250,8 @@ async def _record(conn: AsyncConnection, run: RunRow, *, author: str) -> int:
         name=run.name,
         params=run.params,
         candle_interval_ms=run.candle_interval_ms,
+        wallet_required=run.wallet_required,
+        credit_limit_cents=run.credit_limit_cents,
     )
     return await append_revision(conn, run, author=author)
 
@@ -306,6 +320,8 @@ async def commit_transition(
             bar_price_cents=view.bar_price_cents if bar_price_cents is None else bar_price_cents,
             last_commit_wall_ms=now_ms,
             candle_interval_ms=run.candle_interval_ms,
+            wallet_required=run.wallet_required,
+            credit_limit_cents=run.credit_limit_cents,
         ),
         events=(
             ConfigChanged(
@@ -316,6 +332,8 @@ async def commit_transition(
                 tick_interval_ms=run.tick_interval_ms,
                 candle_interval_ms=run.candle_interval_ms,
                 quote_grace_versions=view.quote_grace_versions,
+                wallet_required=run.wallet_required,
+                credit_limit_cents=run.credit_limit_cents,
                 drinks=tuple(
                     (d, name, bool(on))
                     for d, name, on in zip(drink_ids, spec.names, spec.active.tolist(), strict=True)

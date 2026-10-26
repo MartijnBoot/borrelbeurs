@@ -38,6 +38,29 @@ afterEach(() => {
 })
 
 describe('postOrder', () => {
+  it('parses a receipt with wallet null, and one stored before B-06 without the key', async () => {
+    const unpaid = { ...RECEIPT, wallet: null }
+    fetchMock.mockResolvedValueOnce(respond(201, unpaid))
+    fetchMock.mockResolvedValueOnce(respond(200, RECEIPT))
+    await expect(postOrder({ key: 'key-0001', body: BODY })).resolves.toEqual({
+      kind: 'accepted',
+      receipt: unpaid,
+    })
+    await expect(postOrder({ key: 'key-0001', body: BODY })).resolves.toEqual({
+      kind: 'accepted',
+      receipt: RECEIPT,
+    })
+  })
+
+  it('parses a paid receipt with the wallet and its balance after (B-06 SD16)', async () => {
+    const paid = { ...RECEIPT, wallet: { name: 'Jan', balance_after_cents: -90 } }
+    fetchMock.mockResolvedValue(respond(201, paid))
+    await expect(postOrder({ key: 'key-0001', body: BODY })).resolves.toEqual({
+      kind: 'accepted',
+      receipt: paid,
+    })
+  })
+
   it('posts the body with the Idempotency-Key header and a timeout signal', async () => {
     fetchMock.mockResolvedValue(respond(201, RECEIPT))
     await postOrder({ key: 'key-0001', body: BODY })

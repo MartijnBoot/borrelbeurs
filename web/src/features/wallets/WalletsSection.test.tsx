@@ -1,21 +1,24 @@
 // @vitest-environment jsdom
 // The Wallets section (B-05 SD6, SD15, SD16; AC30, AC33, AC34; PD2, PD12, PD20).
+// B-06 SD20, PD10, PD18: "Tegoed" and "Rood", payments per borrel, debt (AC25, AC30).
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { formatEuro } from '../../lib/format'
+import { formatBalance, formatEuro } from '../../lib/format'
 import { formatDayMonth } from '../../lib/time'
 import { WalletsSection } from './WalletsSection'
 
 const OVERVIEW = {
-  outstanding_cents: 5000,
+  positive_balance_cents: 5000,
+  negative_balance_cents: -350,
   per_borrel: [
-    { run_id: 8, name: 'Novemberborrel', net_topup_cents: 3500 },
-    { run_id: 7, name: 'Oktoberborrel', net_topup_cents: 1000 },
-    { run_id: null, name: null, net_topup_cents: 1500 },
+    { run_id: 8, name: 'Novemberborrel', net_topup_cents: 3500, net_payment_cents: 1240 },
+    { run_id: 7, name: 'Oktoberborrel', net_topup_cents: 1000, net_payment_cents: 0 },
+    { run_id: null, name: null, net_topup_cents: 1500, net_payment_cents: 0 },
   ],
   wallets: [
     { wallet_id: 1, name: 'alpha', balance_cents: 0, last_activity_at: '2026-10-20T19:00:00Z' },
     { wallet_id: 2, name: 'Beta', balance_cents: 3500, last_activity_at: '2026-10-25T19:00:00Z' },
+    { wallet_id: 3, name: 'Gamma', balance_cents: -350, last_activity_at: '2026-10-25T20:00:00Z' },
   ],
 }
 const STORED = { signup_code: 'Borrel2026', unfunded_days: 30, inactive_months: 12 }
@@ -132,20 +135,22 @@ describe('Bewaartermijnen (AC33)', () => {
   })
 })
 
-describe('Totalen (AC34, PD2)', () => {
-  it('shows the outstanding balance and each borrel, newest first, then "Zonder borrel"', async () => {
+describe('Totalen (AC34, PD2; B-06 AC30, PD10)', () => {
+  it('shows "Tegoed" and "Rood" apart, and each borrel, newest first, then "Zonder borrel"', async () => {
     await open()
     const totals = region('Totalen')
-    expect(totals.textContent).toContain(`Openstaand saldo: ${formatEuro(5000)}`)
+    expect(totals.textContent).toContain(`Tegoed: ${formatEuro(5000)}`)
+    expect(totals.textContent).toContain('Rood: −€ 3,50')
     expect(
       within(totals)
         .getAllByRole('listitem')
         .map((row) => row.textContent),
     ).toEqual([
-      `Novemberborrel: ${formatEuro(3500)}`,
-      `Oktoberborrel: ${formatEuro(1000)}`,
-      `Zonder borrel: ${formatEuro(1500)}`,
+      `Novemberborrel: opgewaardeerd ${formatEuro(3500)}, besteed ${formatEuro(1240)}`,
+      `Oktoberborrel: opgewaardeerd ${formatEuro(1000)}, besteed ${formatEuro(0)}`,
+      `Zonder borrel: opgewaardeerd ${formatEuro(1500)}, besteed ${formatEuro(0)}`,
     ])
+    expect(totals.textContent).not.toMatch(/omzet|opbrengst|verdien/i)
   })
 })
 
@@ -153,8 +158,14 @@ describe('the list (AC30, AC34)', () => {
   it('shows each wallet with its balance and last activity, in the served order', async () => {
     await open()
     const rows = within(region('Alle wallets')).getAllByRole('listitem')
-    expect(rows.map((row) => row.querySelector('strong')?.textContent)).toEqual(['alpha', 'Beta'])
+    expect(rows.map((row) => row.querySelector('strong')?.textContent)).toEqual([
+      'alpha',
+      'Beta',
+      'Gamma',
+    ])
     expect(rows[1].textContent).toContain(formatEuro(3500))
+    expect(rows[2].textContent).toContain(formatBalance(-350))
+    expect(rows[2].textContent).toContain('−€ 3,50')
     expect(rows[1].textContent).toContain(
       `laatst actief ${formatDayMonth(Date.parse('2026-10-25T19:00:00Z'))}`,
     )
@@ -181,7 +192,16 @@ describe('the list (AC30, AC34)', () => {
       within(region('Alle wallets'))
         .getAllByRole('listitem')
         .map((row) => row.querySelector('strong')?.textContent),
-    ).toEqual(['Beta'])
+    ).toEqual(['Beta', 'Gamma'])
+  })
+
+  it('a wallet in debt asks with the debt that is written off (PD18)', async () => {
+    await open()
+    const rows = within(region('Alle wallets')).getAllByRole('listitem')
+    fireEvent.click(within(rows[2]).getByRole('button', { name: 'Verwijderen' }))
+    expect(screen.getByRole('dialog').textContent).toContain(
+      `Wallet 'Gamma' verwijderen? De schuld van ${formatEuro(350)} vervalt.`,
+    )
   })
 
   it('cancel deletes nothing', async () => {
@@ -193,7 +213,13 @@ describe('the list (AC30, AC34)', () => {
   })
 
   it('no wallets says so', async () => {
-    overview = { outstanding_cents: 0, per_borrel: [], wallets: [] }
+    overview = {
+      ...OVERVIEW,
+      positive_balance_cents: 0,
+      negative_balance_cents: 0,
+      per_borrel: [],
+      wallets: [],
+    }
     await open()
     expect(within(region('Alle wallets')).getByText('Nog geen wallets')).toBeTruthy()
     expect(within(region('Totalen')).queryByRole('list')).toBeNull()

@@ -57,6 +57,7 @@ the laptop (Phase 8 SD1, SD2). `production` still refuses an insecure cookie.
 Render EU (Frankfurt). Dutch student association; no residency requirement beyond keeping
 personal data in the EU. Note the app stores no personal data — orders are anonymous.
 *Amended by B-05: one name per player wallet (Addendum).*
+*Amended by B-06: a wallet's purchases are linked to its name while it exists (Addendum).*
 
 ## 5. Naming and tags
 
@@ -103,7 +104,8 @@ was decided; the marks beside it point here.
   other associations" is answered the same way: a second association gets a second deployment.
 - **§4, personal data: one name per player wallet.** The app now stores one free-text name per
   wallet, chosen by the player (1–40 characters), and nothing else that identifies a person.
-  Orders stay anonymous. A name goes with its wallet: deleted by the player or by admin, or by
+  Orders stay anonymous. *Amended by B-06: a paid order is linked to its wallet's name while
+  the wallet exists (Addendum, B-06).* A name goes with its wallet: deleted by the player or by admin, or by
   the automatic clean-up — a wallet never topped up within the unfunded period (default 30
   days), or with no ledger entry for the inactivity period (default 12 months). A deleted
   wallet's row keeps only its ledger; its name, codes and cookie hash are blanked
@@ -113,3 +115,22 @@ was decided; the marks beside it point here.
   persists across borrels, but it is a cookie on the phone and a name, not an account with a
   login: no email, no password, no recovery. A lost phone means signing up again and the kassa
   moving the balance. The second trigger, an audit trail per person, still stands.
+
+## Addendum (B-06, 2026-10-26)
+
+Date: 2026-10-26
+
+Paying at the bar from a wallet (B-06 SD10) changes one thing this record states. The owner
+approved the amendment at the B-06 interview (Q13). The original text above, and B-05's
+addendum, stand as they were decided; the marks beside them point here.
+
+- **§4, personal data: a wallet's purchases are linked to its name while the wallet exists.**
+  A `payment` entry names the order it paid, so the bar's and the kassa's refund lists can show
+  "2× Bier, 1× Wijn — €8,40 om 21:14" beside the wallet's name. This replaces B-05's "Orders
+  stay anonymous.": an order paid from a wallet is linked to that wallet's name for as long as
+  the wallet exists. An order booked without a wallet stays anonymous. The link goes when
+  either end goes: deleting the wallet blanks its name (B-05 `wallet_deleted_check`), so its
+  payments are anonymous again; deleting the run sets the payment's order and run to NULL
+  (`ON DELETE SET NULL`), so it keeps its amount and time and loses only the drinks. Wallets,
+  names and payments stay out of the xlsx export and `/analytics`, so final exports, which are
+  never pruned, still hold no names.

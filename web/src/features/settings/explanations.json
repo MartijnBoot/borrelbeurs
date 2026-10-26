@@ -92,6 +92,26 @@
       "Tijdens de borrel: alle grafieken op het koersbord worden meteen opnieuw getekend, over de laatste Grafiekgeschiedenis."
     ]
   },
+  "wallet_required": {
+    "id": "E40",
+    "name": "Wallet verplicht",
+    "paragraphs": [
+      "Aan: elke bestelling aan de bar wordt betaald uit de wallet van een speler. Zonder gescande wallet kan de bar niet afrekenen.",
+      "Uit: de bar kan ook zonder wallet afrekenen; de bestelling telt dan mee zoals altijd en er gaat van geen saldo iets af. Met een gescande wallet betaalt die wallet.",
+      "Standaard: aan. Elke borrel die je hier aanmaakt begint aan, ook vanuit een profiel of met gekopieerde drankjes.",
+      "Tijdens de borrel: geldt voor de volgende bestelling die binnenkomt. Heeft geen invloed op de prijzen."
+    ]
+  },
+  "credit_limit_cents": {
+    "id": "E41",
+    "name": "Rood staan tot (€)",
+    "paragraphs": [
+      "Hoe ver het saldo van een wallet onder nul mag zakken als de bar ermee afrekent. Bij de kassa gaat een saldo nooit onder nul: een opwaardering terugdraaien kan alleen als het saldo dat toelaat.",
+      "Hoger: spelers kunnen meer drinken voordat ze aanvullen. 0: niemand staat rood.",
+      "Standaard: 0. Toegestaan: 0 tot en met 50, in veelvouden van 0,5.",
+      "Tijdens de borrel: geldt voor de volgende betaling die binnenkomt. Een wallet die al dieper rood staat, blijft zo staan tot hij wordt aangevuld. Heeft geen invloed op de prijzen."
+    ]
+  },
   "bm_enabled": {
     "id": "E34",
     "name": "Willekeurige ruis",

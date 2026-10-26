@@ -6,6 +6,7 @@ default it names, and every "Toegestaan:" range is rendered from the server's
 pydantic validation and must equal the text exactly. `mismatches` holds every
 rule; the last two tests prove it fires on a changed default and a changed range.
 B-03's E34-E39 are run parameters, so the existing rules cover them (B-03 AC15).
+B-06's E40-E41 are run columns with rules of their own (T17, PD17).
 """
 
 from __future__ import annotations
@@ -173,6 +174,12 @@ def mismatches(
     start["candle_interval_s"] = ("Standaard", _candle_default_s())
     allowed["candle_interval_s"] = render_range(ConfigPatch, "candle_interval_s")
 
+    # B-06: `create_run` turns "Wallet verplicht" on and the limit starts at 0.
+    start["wallet_required"] = ("Standaard", True)
+    allowed["wallet_required"] = None
+    start["credit_limit_cents"] = ("Standaard", 0)
+    allowed["credit_limit_cents"] = render_range(ConfigPatch, "credit_limit_cents", scale=100)
+
     for key, value in (("a", DEFAULT_A), ("d", DEFAULT_D), ("s0", DEFAULT_S0), ("c", DEFAULT_C)):
         start[key] = ("Leeg bij toevoegen", value)
         allowed[key] = render_range(DrinkCreate, key)
@@ -265,7 +272,7 @@ def test_every_quoted_value_and_range_matches_the_code() -> None:
 
 def test_every_entry_has_a_rule() -> None:
     """No row with a quoted value or range is left unchecked (T4's autonomy note)."""
-    assert len(ENTRIES) == 39  # B-01's 33 and B-03's six
+    assert len(ENTRIES) == 41  # B-01's 33, B-03's six and B-06's two
     assert not [p for p in mismatches(ENTRIES) if "nothing checks" in p or "no rule" in p]
 
 
@@ -277,6 +284,9 @@ def test_the_ranges_render_as_the_server_validates() -> None:
     assert render_range(ParamsPatch, "y_clip") == "1 tot en met 20"
     assert render_range(ConfigPatch, "candle_interval_s") == (
         "5 tot en met 3600, in veelvouden van 5"
+    )
+    assert render_range(ConfigPatch, "credit_limit_cents", scale=100) == (
+        "0 tot en met 50, in veelvouden van 0,5"
     )
     assert render_range(DrinkCreate, "a") == "elk getal"
     assert render_range(JumpRequest, "duration_ms", scale=1000) == "1 tot en met 1800"

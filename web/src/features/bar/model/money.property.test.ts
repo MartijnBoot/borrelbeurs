@@ -5,14 +5,21 @@
 // buffer, intents and controller -- with a simulated server, a deterministic
 // scheduler and a synchronous fake transport. Ticks, foreign orders, WS
 // snapshots, polls, hellos (same and new boot), dropped frames, presses,
-// releases, taps, "Ververs", clock advances, transport outcomes (201, 200
-// replay, 409, 422, 503, network error, timeout, a commit whose answer is
-// lost), confirms, cancels, "Opnieuw" and "Sluiten".
+// releases, basket edits ("add", "remove", "empty"), "Afrekenen" (B-06 T12),
+// wallet scans, rescans and scans of an unknown wallet (B-06 T13), "Ververs",
+// clock advances, transport outcomes (201, 200 replay, 409, 422, 503, network
+// error, timeout, a commit whose answer is lost, and the wallet refusals: 409
+// `insufficient_balance`, 409 `wallet_required`, 404 `wallet_not_found`),
+// confirms, cancels, "Opnieuw" and "Sluiten".
 //
 // Every request the transport sees is checked:
-// - AC1: a tap's `(quote_version, unit_price_cents)` is the controller's
-//   `displayed` quote at that tap, and that pair appears together in one
-//   recorded server message; a confirm's is the head conflict's 409 record;
+// - AC1 (B-06 AC5): a checkout's `quote_version` and **every** line's
+//   `unit_price_cents` are the controller's `displayed` quote at that tap,
+//   its lines are the basket's, and each `(version, drink, price)` appears in
+//   the one recorded server message of that version; a confirm's are the head
+//   conflict's 409 record, with the conflict's lines;
+// - B-06 AC5, AC11: a checkout and a confirm carry the held wallet's query
+//   exactly as scanned, or no `wallet` when none is held;
 // - AC9, AC13: a new intent's key has never been seen;
 // - AC10: any other request reuses a seen key with a byte-identical body.
 //
@@ -31,8 +38,9 @@ import {
   type ServerMessage,
   type SnapshotData,
 } from '../../exchange'
-import type { OrderBody, OrderOutcome, Receipt } from '../api/orders'
+import type { OrderBody, OrderOutcome, Receipt, WalletQuery } from '../api/orders'
 import { createBarController, type BarController } from './barController'
+import type { Basket } from './basket'
 
 const ENV = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env
 const REPLAY = ENV?.PROPERTY_SEED
@@ -40,6 +48,9 @@ const CASES = REPLAY === undefined ? Number(ENV?.PROPERTY_CASES ?? 10_000) : 1
 const BASE_SEED = REPLAY === undefined ? Date.now() >>> 0 : Number(REPLAY) >>> 0
 
 const DRINKS = [1, 2, 3]
+/** Wallets the simulated server knows, by their query's text; `GONE` it does not. */
+const KNOWN: readonly WalletQuery[] = [{ qr_token: 'tok-jan' }, { short_code: 'k7mq-x2p9' }]
+const GONE: WalletQuery = { qr_token: 'tok-gone' }
 const THEME = {
   preset: 'blauw' as const,
   revision: 0,
@@ -52,6 +63,8 @@ const RUN = {
   tick_interval_ms: 1000,
   candle_interval_ms: 60000,
   quote_grace_versions: 2,
+  wallet_required: false,
+  credit_limit_cents: 0,
 }
 
 function mulberry32(seed: number): () => number {
@@ -109,11 +122,12 @@ interface Request {
 }
 
 type Context =
-  | { kind: 'tap'; expected: Quote | null }
-  | { kind: 'confirm'; expected: Quote }
+  | { kind: 'checkout'; expected: Quote | null; lines: Basket; wallet: WalletQuery | null }
+  | { kind: 'confirm'; expected: Quote; lines: Basket; wallet: WalletQuery | null }
   | { kind: 'resend' }
 
-function runCase(seed: number): void {
+/** New orders this case posted with more than one line, and with a wallet (anti-vacuity). */
+function runCase(seed: number): { baskets: number; paid: number } {
   const rand = mulberry32(seed)
   const pick = <T>(items: readonly T[]): T => items[Math.floor(rand() * items.length)]
   const clock = scheduler()
@@ -134,6 +148,8 @@ function runCase(seed: number): void {
   const requests: Request[] = []
   let context: Context = { kind: 'resend' }
   let posted = 0
+  let baskets = 0
+  let paid = 0
 
   const pairs = (v: number, p: Record<number, number>) =>
     Object.entries(p).map(([d, c]) => `${v}:${d}:${c}`)
@@ -226,14 +242,18 @@ function runCase(seed: number): void {
       if (stored.text !== request.text) fail(`key ${request.key} reused with another body`)
       return stored.receipt
     }
-    const line = request.body.lines[0]
+    const lines = request.body.lines.map((l) => ({
+      ...l,
+      line_total_cents: l.qty * l.unit_price_cents,
+    }))
     const receipt: Receipt = {
       order_id: orderId + 1,
       version: version + 1,
       wall_ts_ms: clock.now(),
       quote_version: request.body.quote_version,
-      lines: [{ ...line, line_total_cents: line.unit_price_cents }],
-      total_cents: line.unit_price_cents,
+      lines,
+      total_cents: lines.reduce((sum, l) => sum + l.line_total_cents, 0),
+      wallet: request.body.wallet === undefined ? null : { name: 'Jan', balance_after_cents: 0 },
     }
     committed.set(request.key, { text: request.text, receipt })
     broadcastOrder(receipt.lines)
@@ -251,19 +271,36 @@ function runCase(seed: number): void {
     } else {
       if (known !== undefined) fail(`AC9/AC13: a new intent reused key ${key}`)
       const expected = context.expected
-      if (expected === null) fail('a tap with no displayed quote posted')
-      const line = body.lines[0]
-      const want = expected.prices[line.drink_id]
-      if (body.quote_version !== expected.version || line.unit_price_cents !== want) {
+      if (expected === null) fail('a checkout with no displayed quote posted')
+      const source = context.kind === 'checkout' ? 'displayed quote' : '409 record'
+      if (body.quote_version !== expected.version) {
         fail(
-          `AC1: ${context.kind} posted ${body.quote_version}/${line.unit_price_cents}, ` +
-            `the ${context.kind === 'tap' ? 'displayed quote' : '409 record'} is ` +
-            `${expected.version}/${want}`,
+          `AC1: ${context.kind} posted version ${body.quote_version}, the ${source} is ${expected.version}`,
         )
       }
-      const pair = `${body.quote_version}:${line.drink_id}:${line.unit_price_cents}`
-      const seen = context.kind === 'tap' ? quoted : conflicted
-      if (!seen.has(pair)) fail(`AC2: ${pair} is not one recorded message's pair`)
+      const wanted = context.lines.map((l) => `${l.drinkId}x${l.qty}`).join(',')
+      const got = body.lines.map((l) => `${l.drink_id}x${l.qty}`).join(',')
+      if (got !== wanted) fail(`AC5: ${context.kind} posted lines ${got}, the basket is ${wanted}`)
+      const seen = context.kind === 'checkout' ? quoted : conflicted
+      for (const line of body.lines) {
+        const want = expected.prices[line.drink_id]
+        if (line.unit_price_cents !== want) {
+          fail(
+            `AC1: ${context.kind} posted ${line.drink_id} at ${line.unit_price_cents}, ` +
+              `the ${source} has ${want}`,
+          )
+        }
+        const pair = `${body.quote_version}:${line.drink_id}:${line.unit_price_cents}`
+        if (!seen.has(pair)) fail(`AC2: ${pair} is not one recorded message's pair`)
+      }
+      const wallet = JSON.stringify(body.wallet ?? null)
+      if (wallet !== JSON.stringify(context.wallet)) {
+        fail(
+          `AC5/AC11: ${context.kind} carried wallet ${wallet}, held ${JSON.stringify(context.wallet)}`,
+        )
+      }
+      if (body.lines.length > 1) baskets += 1
+      if (body.wallet !== undefined) paid += 1
       sent.set(key, text)
     }
     const request: Request = { key, body, text, settled: false, ok: () => {}, err: () => {} }
@@ -283,13 +320,28 @@ function runCase(seed: number): void {
     setTimeout: clock.setTimeout,
     clearTimeout: clock.clearTimeout,
     post,
-    uuid: () => `case-${seed}-key-${++keyN}`,
+    newKey: () => `case-${seed}-key-${++keyN}`,
   })
 
   function respond(request: Request) {
     request.settled = true
+    const fresh = !committed.has(request.key)
+    const wallet = request.body.wallet
+    if (fresh && wallet !== undefined && JSON.stringify(wallet) === JSON.stringify(GONE)) {
+      request.err(new HttpError(404, 'wallet_not_found', 'no'))
+      return
+    }
     const roll = rand()
-    if (roll < 0.25) {
+    if (fresh && roll < 0.05) {
+      request.err(
+        wallet === undefined
+          ? new HttpError(409, 'wallet_required', 'no')
+          : new HttpError(409, 'insufficient_balance', 'no', {
+              balance_cents: Math.floor(rand() * 2000) - 500,
+              credit_limit_cents: 250,
+            }),
+      )
+    } else if (roll < 0.25) {
       request.ok({ kind: 'accepted', receipt: commit(request) })
     } else if (roll < 0.4 && !committed.has(request.key)) {
       move()
@@ -318,7 +370,14 @@ function runCase(seed: number): void {
   for (let i = 0; i < events; i++) {
     const roll = rand() * 100
     context = { kind: 'resend' }
-    if (roll < 18) broadcastTick()
+    const held = controller.view.wallet
+    if (rand() < 0.08) {
+      // "scan" with none held, "rescan" over one, or a scan the server no longer knows.
+      const scanned = rand() < 0.2 ? GONE : pick(KNOWN)
+      if (held === null || rand() < 0.5) {
+        controller.hold({ query: scanned, name: 'Jan', balance_cents: Math.floor(rand() * 3000) })
+      }
+    } else if (roll < 18) broadcastTick()
     else if (roll < 22)
       broadcastOrder([{ drink_id: pick(DRINKS), qty: 1, unit_price_cents: 1, line_total_cents: 1 }])
     else if (roll < 25) deliver(envelope('snapshot', snapshotData()))
@@ -333,13 +392,17 @@ function runCase(seed: number): void {
       if (rand() < 0.8) deliver(envelope('snapshot', snapshotData()))
     } else if (roll < 39) controller.press()
     else if (roll < 47) controller.release()
+    else if (roll < 53) controller.add(pick(DRINKS))
+    else if (roll < 55) controller.remove(pick(DRINKS))
+    else if (roll < 56) controller.clear()
     else if (roll < 62) {
-      const expected = controller.view.displayed
-      context = { kind: 'tap', expected }
+      const { displayed: expected, basket: lines } = controller.view
+      context = { kind: 'checkout', expected, lines, wallet: held?.query ?? null }
       const before = posted
-      const id = controller.tap(pick(DRINKS))
+      const id = controller.checkout()
       if ((id === null) !== (posted === before))
-        fail('a tap posted without an intent, or vice versa')
+        fail('a checkout posted without an intent, or vice versa')
+      if (id !== null && lines.length === 0) fail('an empty basket was checked out')
     } else if (roll < 65) controller.refresh()
     else if (roll < 78) clock.advance(Math.floor(rand() * 3000))
     else if (roll < 92) {
@@ -349,7 +412,8 @@ function runCase(seed: number): void {
       const head = controller.view.headConflict
       if (head !== null) {
         if (rand() < 0.7) {
-          context = { kind: 'confirm', expected: head.quote }
+          const wallet = held?.query ?? null
+          context = { kind: 'confirm', expected: head.quote, lines: head.lines, wallet }
           controller.confirm()
         } else controller.cancel()
       }
@@ -364,19 +428,31 @@ function runCase(seed: number): void {
     context = { kind: 'resend' }
   }
   controller.dispose()
+  return { baskets, paid }
 }
 
 describe('the money property (SD20)', () => {
   it(`holds for ${CASES} random interleavings`, { timeout: 60_000 }, () => {
-    console.log(`money property: ${CASES} cases, base seed ${BASE_SEED}`)
+    let baskets = 0
+    let paid = 0
     for (let i = 0; i < CASES; i++) {
       const seed = (BASE_SEED + i) >>> 0
       try {
-        runCase(seed)
+        const posted = runCase(seed)
+        baskets += posted.baskets
+        paid += posted.paid
       } catch (error) {
         const reason = error instanceof PropertyFailure ? error.message : String(error)
         expect.fail(`case seed ${seed} (replay: PROPERTY_SEED=${seed}): ${reason}`)
       }
+    }
+    console.log(
+      `money property: ${CASES} cases, base seed ${BASE_SEED}, ` +
+        `${baskets} multi-line orders and ${paid} wallet orders posted`,
+    )
+    if (REPLAY === undefined) {
+      expect(baskets).toBeGreaterThan(0)
+      expect(paid).toBeGreaterThan(0)
     }
   })
 })

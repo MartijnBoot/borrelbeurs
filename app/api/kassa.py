@@ -10,21 +10,21 @@ An unknown or deleted wallet is 404 `wallet_not_found`.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Final, Self
+from typing import Annotated, Final
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from pydantic import (
     BaseModel,
     ConfigDict,
-    Field,
     StrictInt,
     StringConstraints,
     field_validator,
-    model_validator,
 )
 
+from app.api.bar import PaymentData, payment_data
 from app.api.deps import Principal, clock_of, db_engine, refuse_while_draining, require_role
 from app.api.orders import IDEMPOTENCY_KEY_PATTERN
+from app.api.wallet_query import WalletQuery
 from app.runtime import wallets as actions
 from app.runtime.wallet_codes import display_short_code
 
@@ -36,21 +36,6 @@ IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", pattern=IDEMPOTE
 
 # SD10: €10 to €100 in €5 steps.
 TOPUP_AMOUNTS: Final = frozenset(range(1_000, 10_001, 500))
-
-
-class LookupRequest(BaseModel):
-    """Exactly one of a scanned QR token or a typed short code (AC14)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    qr_token: Annotated[str, Field(min_length=1, max_length=200)] | None = None
-    short_code: Annotated[str, Field(min_length=1, max_length=40)] | None = None
-
-    @model_validator(mode="after")
-    def _exactly_one(self) -> Self:
-        if (self.qr_token is None) == (self.short_code is None):
-            raise ValueError("give exactly one of qr_token and short_code")
-        return self
 
 
 class RecentTopup(BaseModel):
@@ -120,7 +105,7 @@ def _actor(principal: Principal) -> actions.Actor:
     return actions.Actor(key_id=principal.key_id, label=principal.label)
 
 
-def _booked(booked: actions.Booked, response: Response) -> BookedEntry:
+def booked_entry(booked: actions.Booked, response: Response) -> BookedEntry:
     if booked.replay:
         response.status_code = 200
     entry = booked.entry
@@ -133,7 +118,7 @@ def _booked(booked: actions.Booked, response: Response) -> BookedEntry:
 
 
 @router.post("/lookup")
-async def lookup(body: LookupRequest, request: Request, _: Kassa) -> KassaWalletData:
+async def lookup(body: WalletQuery, request: Request, _: Kassa) -> KassaWalletData:
     found = await actions.lookup(
         db_engine(request),
         qr_token=body.qr_token,
@@ -152,6 +137,21 @@ async def lookup(body: LookupRequest, request: Request, _: Kassa) -> KassaWallet
         if recent is None
         else RecentTopup(at=recent.created_at, amount_cents=recent.amount_cents),
     )
+
+
+class KassaPayment(PaymentData):
+    """A payment as the kassa lists it: who booked it (B-06 PD9)."""
+
+    actor_label: str | None
+
+
+@router.get("/wallets/{wallet_id}/payments")
+async def list_payments(wallet_id: int, request: Request, _: Kassa) -> list[KassaPayment]:
+    """B-06 SD9, AC23: the wallet's payments at any age, newest first."""
+    return [
+        KassaPayment(**dict(payment_data(row)), actor_label=row.entry.actor_label)
+        for row in await actions.wallet_payments(db_engine(request), wallet_id)
+    ]
 
 
 @router.get("/wallets/{wallet_id}/topups")
@@ -190,7 +190,7 @@ async def top_up(
         actor=_actor(principal),
         now_ms=clock_of(request).wall_ms(),
     )
-    return _booked(booked, response)
+    return booked_entry(booked, response)
 
 
 @router.post(
@@ -213,7 +213,7 @@ async def reverse(
         actor=_actor(principal),
         now_ms=clock_of(request).wall_ms(),
     )
-    return _booked(booked, response)
+    return booked_entry(booked, response)
 
 
 @router.get("/wallets")
@@ -259,7 +259,7 @@ async def move(
         actor=_actor(principal),
         now_ms=clock_of(request).wall_ms(),
     )
-    return _booked(booked, response)
+    return booked_entry(booked, response)
 
 
 @router.post("/wallets/{wallet_id}/new-code")

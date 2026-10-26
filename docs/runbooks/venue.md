@@ -41,6 +41,14 @@
 - Wallets (B-05) at the venue are the venue database's own, not Render's: every player signs
   up again and starts at zero there. The venue is plain HTTP, so the kassa page offers no
   camera: type the short code under the player's QR code ("Code typen").
+- Paying from a wallet at the bar (B-06): the bar page offers no camera here either; type the
+  player's short code into "Code typen" and tap "Zoeken". A borrel imported with
+  `app.cli.import_v1` starts with "Wallet verplicht" off, so the bar can still book without a
+  wallet ("Afrekenen zonder wallet") while players top up at the kassa; turn it on in Globale
+  instellingen once they have. A borrel made in admin starts with it on.
+- Before rolling back past B-06 (an older image on this database): turn "Wallet verplicht"
+  off first, and do not delete a wallet in debt until the newer image is back, since an older
+  image neither checks the switch nor writes a debt off.
 - Power cut: laptop on, Docker up, `start.cmd`. Everything acknowledged is there.
 
 ## After

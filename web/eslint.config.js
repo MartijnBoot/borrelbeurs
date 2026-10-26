@@ -161,6 +161,16 @@ export default tseslint.config(
       'no-restricted-syntax': ['error', ...htmlSinks, ...revenueArithmetic, unaryPlus],
     },
   },
+  // B-06 AC17 (PD13): the basket's total is the price on screen, which the bar page
+  // must compute from the displayed Quote -- not revenue, which still comes from the
+  // server. This one file may multiply by a quantity; every other bar file may not
+  // (lint-rules.test.ts pins both).
+  {
+    files: ['src/features/bar/model/basket.ts'],
+    rules: {
+      'no-restricted-syntax': ['error', envRead, ...htmlSinks, unaryPlus],
+    },
+  },
   {
     files: ['**/*.test.{ts,tsx}', 'e2e/**'],
     rules: {

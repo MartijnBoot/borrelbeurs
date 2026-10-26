@@ -105,7 +105,7 @@ a real phone; the inference is from the browser rule, not an observed failure.
 
 | ID | Defect | Where | Consequence | Phase |
 |---|---|---|---|---|
-| D-49 | The bar page makes its `Idempotency-Key` with `crypto.randomUUID()`, which browsers only provide in a secure context (HTTPS or loopback) | `web/src/features/bar/useBarController.ts:76`, called per intent at `model/orderIntents.ts:229,262` | At the venue (`http://192.168.8.10/`, Phase 8 SD1) **every order tap likely throws `TypeError`**. The e2e and image tests use `http://127.0.0.1`, which counts as secure, so none can catch it | open — unscheduled ([B-05 SD24](phase-b-05-player-wallets.md)) |
+| D-49 | The bar page makes its `Idempotency-Key` with `crypto.randomUUID()`, which browsers only provide in a secure context (HTTPS or loopback) | `web/src/features/bar/useBarController.ts:76`, called per intent at `model/orderIntents.ts:229,262` | At the venue (`http://192.168.8.10/`, Phase 8 SD1) **every order tap likely throws `TypeError`**. The e2e and image tests use `http://127.0.0.1`, which counts as secure, so none can catch it | fixed in B-06 ([B-05 SD24](phase-b-05-player-wallets.md); [B-06 SD12, AC31](phase-b-06-wallet-payments.md); evidence below) |
 
 ### Phase 6 evidence
 
@@ -148,6 +148,16 @@ evidence ([plan](../plans/phase-8-deploy-cutover.md)):
 |---|---|---|
 | D-42 | AC32 | T9 (no path in v2 reads `keys.json` or `ADMIN_TOKEN`, and a v1-shaped key is 401); H4 (v1's keys rotated by the human, recorded without key material) |
 | D-43 | AC1, AC2, AC3 | T11 (the image trimmed and checked for contents and size: **227.7 MB uncompressed**, limit 300 MB, measured 2026-10-11 on `borrelbeurs:local`); T18 (the same checks on every CI run) |
+
+### B-06 evidence
+
+The defect B-06 fixes, the acceptance criterion that pins it
+([phase-b-06-wallet-payments.md](phase-b-06-wallet-payments.md)), and the tasks whose tests are
+its evidence ([plan](../plans/phase-b-06-wallet-payments.md)):
+
+| ID | ACs | Evidence tasks |
+|---|---|---|
+| D-49 | AC31 | T11 (the bar's keys come from `lib/idempotencyKey.ts`, and `walletCode.provenance.test.ts` now scans the bar and fails on a planted `crypto.randomUUID()`); T19 (`web/e2e/payments.spec.ts` books with and without a wallet at `http://payments.test:<port>`, where `isSecureContext` is false and `crypto.randomUUID` is undefined) |
 
 ## Deliberately not treated as defects
 

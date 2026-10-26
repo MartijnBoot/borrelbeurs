@@ -1,10 +1,14 @@
 // The order-intent machine on fake timers with a scripted transport
-// (Phase 5 T7): SD5-SD10, PD7, PD9, PD11.
+// (Phase 5 T7): SD5-SD10, PD7, PD9, PD11. B-06 T12: a basket of lines and a wallet
+// (SD4, SD15, PD12).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HttpError } from '../../../lib/http'
 import { quoteFromPriceChanged, type Quote } from '../../exchange'
 import type { OrderBody, OrderOutcome } from '../api/orders'
+import { add, EMPTY, type Basket } from './basket'
 import { createOrderIntents, LINGER_MS, RETRY_DELAYS_MS, type OrderIntents } from './orderIntents'
+
+const one = (drinkId: number): Basket => add(EMPTY, drinkId)
 
 interface Call {
   key: string
@@ -23,7 +27,15 @@ function quote(version: number, prices: Record<number, number>, receivedAt = 0):
 }
 
 function accepted(body: OrderBody, unitPriceCents = body.lines[0].unit_price_cents): OrderOutcome {
-  const { drink_id } = body.lines[0]
+  const lines = body.lines.map((l, i) => {
+    const unit = i === 0 ? unitPriceCents : l.unit_price_cents
+    return {
+      drink_id: l.drink_id,
+      qty: l.qty,
+      unit_price_cents: unit,
+      line_total_cents: l.qty * unit,
+    }
+  })
   return {
     kind: 'accepted',
     receipt: {
@@ -31,18 +43,23 @@ function accepted(body: OrderBody, unitPriceCents = body.lines[0].unit_price_cen
       version: body.quote_version + 1,
       wall_ts_ms: 0,
       quote_version: body.quote_version,
-      lines: [
-        { drink_id, qty: 1, unit_price_cents: unitPriceCents, line_total_cents: unitPriceCents },
-      ],
-      total_cents: unitPriceCents,
+      lines,
+      total_cents: lines.reduce((sum, l) => sum + l.line_total_cents, 0),
+      wallet: null,
     },
   }
 }
 
-function priceChanged(version: number, drinkId: number, cents: number): OrderOutcome {
+function priceChanged(
+  version: number,
+  drinkId: number,
+  cents: number,
+  more: Record<number, number> = {},
+): OrderOutcome {
+  const others = Object.entries(more).map(([d, c]) => ({ drink_id: Number(d), price_cents: c }))
   return {
     kind: 'price_changed',
-    body: { version, prices: [{ drink_id: drinkId, price_cents: cents }] },
+    body: { version, prices: [{ drink_id: drinkId, price_cents: cents }, ...others] },
   }
 }
 
@@ -65,7 +82,7 @@ beforeEach(() => {
       new Promise<OrderOutcome>((resolve, reject) => {
         calls.push({ key, body, text: JSON.stringify(body), resolve, reject })
       }),
-    uuid: () => `key-${String(++keys).padStart(4, '0')}`,
+    newKey: () => `key-${String(++keys).padStart(4, '0')}`,
     now: () => 0,
     setTimeout: (fn, ms) => setTimeout(fn, ms),
     clearTimeout: (id) => clearTimeout(id),
@@ -84,7 +101,7 @@ const Q = quote(7, { 1: 250, 2: 300 })
 
 describe('create', () => {
   it('posts one line of qty 1 at the quote version and price, frozen', () => {
-    intents.create(Q, 1)
+    intents.create(Q, one(1), null)
     expect(calls).toHaveLength(1)
     expect(calls[0].body).toEqual({
       quote_version: 7,
@@ -92,28 +109,52 @@ describe('create', () => {
     })
     expect(Object.isFrozen(calls[0].body)).toBe(true)
     expect(Object.isFrozen(calls[0].body.lines[0])).toBe(true)
-    expect(intents.entries[0]).toMatchObject({ drinkId: 1, state: 'sending' })
+    expect(intents.entries[0]).toMatchObject({ lines: one(1), wallet: null, state: 'sending' })
+  })
+
+  it('posts every line of a basket at the quote version and prices, in basket order', () => {
+    const basket = add(add(add(EMPTY, 2), 1), 2)
+    intents.create(Q, basket, null)
+    expect(calls[0].body).toEqual({
+      quote_version: 7,
+      lines: [
+        { drink_id: 2, qty: 2, unit_price_cents: 300 },
+        { drink_id: 1, qty: 1, unit_price_cents: 250 },
+      ],
+    })
+    expect('wallet' in calls[0].body).toBe(false)
+  })
+
+  it('carries the wallet exactly as scanned (B-06 SD13)', () => {
+    intents.create(Q, one(1), { short_code: ' k7q4 m2xd ' })
+    expect(calls[0].body.wallet).toEqual({ short_code: ' k7q4 m2xd ' })
+  })
+
+  it('an empty basket creates nothing', () => {
+    expect(intents.create(Q, EMPTY, null)).toBeNull()
+    expect(calls).toHaveLength(0)
   })
 
   it('two creates within 100 ms on one drink post twice with distinct keys (AC9)', () => {
-    intents.create(Q, 1)
+    intents.create(Q, one(1), null)
     vi.advanceTimersByTime(50)
-    intents.create(Q, 1)
+    intents.create(Q, one(1), null)
     expect(calls.map((c) => c.key)).toEqual(['key-0001', 'key-0002'])
   })
 
   it('a drink missing from the quote creates nothing', () => {
-    expect(intents.create(Q, 99)).toBeNull()
+    expect(intents.create(Q, add(one(1), 99), null)).toBeNull()
     expect(calls).toHaveLength(0)
   })
 })
 
 describe('success', () => {
   it('a 2xx is accepted with the receipt price, promotes, and lingers 3 s (AC3, PD7)', async () => {
-    intents.create(Q, 1)
+    intents.create(Q, one(1), null)
     calls[0].resolve(accepted(calls[0].body, 260))
     await settle()
-    expect(intents.entries[0]).toMatchObject({ state: 'accepted', unitPriceCents: 260 })
+    expect(intents.entries[0].state).toBe('accepted')
+    expect(intents.entries[0].receipt?.lines[0].unit_price_cents).toBe(260)
     expect(promotes).toBe(1)
     await vi.advanceTimersByTimeAsync(LINGER_MS - 1)
     expect(intents.entries).toHaveLength(1)
@@ -125,7 +166,7 @@ describe('success', () => {
 describe('retries (SD8)', () => {
   it('network, timeout and 503 retry at +1, +2, +4 s with the same key and body; then unknown (AC10, AC11)', async () => {
     expect(RETRY_DELAYS_MS).toEqual([1000, 2000, 4000])
-    intents.create(Q, 1)
+    intents.create(Q, one(1), null)
     const failures = [network(), timeout(), unavailable(), network()]
     for (const [i, failure] of failures.entries()) {
       calls[i].reject(failure)
@@ -147,7 +188,7 @@ describe('retries (SD8)', () => {
   })
 
   it('a 500 or an unreadable 2xx may have been booked: retried with the same key, never failed (SD8)', async () => {
-    intents.create(Q, 1)
+    intents.create(Q, one(1), null)
     calls[0].reject(new HttpError(500, 'internal_error', 'boom'))
     await settle()
     expect(intents.entries[0].state).toBe('sending')
@@ -162,19 +203,20 @@ describe('retries (SD8)', () => {
   })
 
   it('a 503 then a 200 replay is one accepted entry (AC26)', async () => {
-    intents.create(Q, 1)
+    intents.create(Q, one(1), null)
     calls[0].reject(unavailable())
     await settle()
     await vi.advanceTimersByTimeAsync(1000)
     calls[1].resolve(accepted(calls[1].body))
     await settle()
     expect(intents.entries).toHaveLength(1)
-    expect(intents.entries[0]).toMatchObject({ state: 'accepted', unitPriceCents: 250 })
+    expect(intents.entries[0].state).toBe('accepted')
+    expect(intents.entries[0].receipt?.total_cents).toBe(250)
     expect(calls).toHaveLength(2)
   })
 
   async function toUnknown(): Promise<number> {
-    const id = intents.create(Q, 1)!
+    const id = intents.create(Q, one(1), null)!
     for (let i = 0; i < 4; i++) {
       calls[i].reject(network())
       await settle()
@@ -215,18 +257,19 @@ describe('retries (SD8)', () => {
 
 describe('409 (SD9)', () => {
   it('queues a conflict holding the 409 version and price, and promotes on arrival (AC12, PD9)', async () => {
-    intents.create(Q, 1)
+    intents.create(Q, one(1), null)
     calls[0].resolve(priceChanged(9, 1, 270))
     await settle()
     expect(promotes).toBe(1)
     const head = intents.headConflict
-    expect(head).toMatchObject({ drinkId: 1, quote: { version: 9, prices: { 1: 270 } } })
+    expect(head).toMatchObject({ lines: one(1), quote: { version: 9, prices: { 1: 270 } } })
+    expect(head?.body.lines[0].unit_price_cents).toBe(250)
     expect(Object.isFrozen(head?.quote)).toBe(true)
     expect(intents.entries[0].state).toBe('conflict')
   })
 
   it('confirm() posts a new key with exactly the 409 version and price (AC13)', async () => {
-    intents.create(Q, 1)
+    intents.create(Q, one(1), null)
     calls[0].resolve(priceChanged(9, 1, 270))
     await settle()
     intents.confirm()
@@ -242,7 +285,7 @@ describe('409 (SD9)', () => {
   })
 
   it('a second 409 on the confirmation opens a new conflict with the newer price', async () => {
-    intents.create(Q, 1)
+    intents.create(Q, one(1), null)
     calls[0].resolve(priceChanged(9, 1, 270))
     await settle()
     intents.confirm()
@@ -252,7 +295,7 @@ describe('409 (SD9)', () => {
   })
 
   it('cancel() posts nothing and shows cancelled for 3 s (AC13, PD7)', async () => {
-    intents.create(Q, 1)
+    intents.create(Q, one(1), null)
     calls[0].resolve(priceChanged(9, 1, 270))
     await settle()
     intents.cancel()
@@ -264,22 +307,47 @@ describe('409 (SD9)', () => {
   })
 
   it('two 409s queue in tap order even when they arrive in reverse (AC14)', async () => {
-    intents.create(Q, 1)
-    intents.create(Q, 2)
+    intents.create(Q, one(1), null)
+    intents.create(Q, one(2), null)
     calls[1].resolve(priceChanged(9, 2, 310))
     await settle()
     calls[0].resolve(priceChanged(9, 1, 270))
     await settle()
-    expect(intents.headConflict?.drinkId).toBe(1)
+    expect(intents.headConflict?.lines).toEqual(one(1))
     intents.cancel()
-    expect(intents.headConflict?.drinkId).toBe(2)
+    expect(intents.headConflict?.lines).toEqual(one(2))
     intents.confirm()
     expect(calls[2].body.lines[0]).toEqual({ drink_id: 2, qty: 1, unit_price_cents: 310 })
     expect(intents.headConflict).toBeNull()
   })
 
+  it('confirming a basket keeps its lines and wallet, priced from the 409, with a new key (AC11)', async () => {
+    const basket = add(add(EMPTY, 1), 2)
+    intents.create(Q, basket, { qr_token: 'tok-1' })
+    calls[0].resolve(priceChanged(9, 1, 270, { 2: 290 }))
+    await settle()
+    intents.confirm()
+    expect(calls[1].key).not.toBe(calls[0].key)
+    expect(calls[1].body).toEqual({
+      quote_version: 9,
+      lines: [
+        { drink_id: 1, qty: 1, unit_price_cents: 270 },
+        { drink_id: 2, qty: 1, unit_price_cents: 290 },
+      ],
+      wallet: { qr_token: 'tok-1' },
+    })
+  })
+
+  it('a 409 that does not price every line of the basket fails', async () => {
+    intents.create(Q, add(one(1), 2), null)
+    calls[0].resolve(priceChanged(9, 1, 270))
+    await settle()
+    expect(intents.headConflict).toBeNull()
+    expect(intents.entries[0].state).toBe('failed')
+  })
+
   it('a 409 without a price for the tapped drink fails, never guessing a price', async () => {
-    intents.create(Q, 1)
+    intents.create(Q, one(1), null)
     calls[0].resolve(priceChanged(9, 2, 310))
     await settle()
     expect(intents.headConflict).toBeNull()
@@ -289,7 +357,7 @@ describe('409 (SD9)', () => {
 
 describe('other answers', () => {
   it('a 422 is failed with exactly one post, and lingers 3 s (AC15, PD7)', async () => {
-    intents.create(Q, 1)
+    intents.create(Q, one(1), null)
     calls[0].reject(new HttpError(422, 'invalid_order', 'nope'))
     await settle()
     expect(intents.entries[0].state).toBe('failed')
@@ -299,7 +367,7 @@ describe('other answers', () => {
   })
 
   it('a 422 drink_unavailable is unavailable, never retried, and lingers 3 s (Phase 6 SD13)', async () => {
-    intents.create(Q, 1)
+    intents.create(Q, one(1), null)
     calls[0].reject(new HttpError(422, 'drink_unavailable', 'removed'))
     await settle()
     expect(intents.entries[0].state).toBe('unavailable')
@@ -308,8 +376,25 @@ describe('other answers', () => {
     expect(intents.entries).toHaveLength(0)
   })
 
+  it.each([
+    [409, 'wallet_required', {}],
+    [404, 'wallet_not_found', {}],
+    [409, 'insufficient_balance', { balance_cents: 750, credit_limit_cents: 0 }],
+  ])(
+    'a %i %s is refused with its details, never retried, and lingers (B-06 SD15)',
+    async (status, code, details) => {
+      intents.create(Q, one(1), null)
+      calls[0].reject(new HttpError(status, code, 'no', details))
+      await settle()
+      expect(intents.entries[0]).toMatchObject({ state: 'refused', refusal: { code, details } })
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(calls).toHaveLength(1)
+      expect(intents.entries).toHaveLength(0)
+    },
+  )
+
   it('a 401 leaves the entry in flight and never retries (SD8, SD12)', async () => {
-    intents.create(Q, 1)
+    intents.create(Q, one(1), null)
     calls[0].reject(new HttpError(401, 'unauthenticated', ''))
     await settle()
     await vi.advanceTimersByTimeAsync(60_000)
@@ -318,7 +403,7 @@ describe('other answers', () => {
   })
 
   it('an answer after dispose() changes nothing', async () => {
-    intents.create(Q, 1)
+    intents.create(Q, one(1), null)
     const before = intents.entries
     intents.dispose()
     calls[0].resolve(accepted(calls[0].body))
@@ -330,7 +415,7 @@ describe('other answers', () => {
 
 describe('a close racing an order (Phase 7 T17, R15)', () => {
   it('409 no_live_run is terminal: failed, never retried, then gone', async () => {
-    intents.create(Q, 1)
+    intents.create(Q, one(1), null)
     calls[0].reject(new HttpError(409, 'no_live_run', 'there is no live run'))
     await settle()
     expect(intents.entries[0].state).toBe('failed')

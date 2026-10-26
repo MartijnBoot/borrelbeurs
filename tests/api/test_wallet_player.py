@@ -152,6 +152,45 @@ def test_the_player_deletes_their_wallet(
     assert again.json()["name"] == "jan"
 
 
+def _pay(settings: Settings, url: str, wallet_id: int, amount: int) -> None:
+    _db(
+        settings,
+        url,
+        lambda conn: wallets.insert_entry(
+            conn, wallet_id=wallet_id, kind="payment", amount_cents=-amount, now_ms=0
+        ),
+    )
+
+
+def test_self_delete_in_debt_is_balance_negative_and_writes_nothing(
+    player: dict[str, Any], client: TestClient, settings: Settings, api_env: str
+) -> None:
+    """B-06 AC26, SD8: at -350 a 409, no entry, the row intact, the cookie kept."""
+    _top_up(settings, api_env, player["wallet_id"], 500)
+    _pay(settings, api_env, player["wallet_id"], 850)
+
+    response = client.delete("/api/wallet")
+
+    assert (response.status_code, response.json()["error"]["code"]) == (409, "balance_negative")
+    assert response.headers.get_list("set-cookie") == []
+    assert _sql(settings, api_env, "SELECT count(*) FROM wallet_entry") == [(2,)]
+    assert _sql(settings, api_env, "SELECT name, deleted_at FROM wallet") == [("Jan", None)]
+    assert client.get("/api/wallet").json()["balance_cents"] == -350
+
+
+def test_self_delete_at_exactly_zero_is_still_allowed(
+    player: dict[str, Any], client: TestClient, settings: Settings, api_env: str
+) -> None:
+    """B-06 SD8: only a balance below zero is refused."""
+    _top_up(settings, api_env, player["wallet_id"], 850)
+    _pay(settings, api_env, player["wallet_id"], 850)
+
+    response = client.delete("/api/wallet")
+
+    assert response.status_code == 204
+    assert _sql(settings, api_env, "SELECT count(*) FROM wallet_entry") == [(2,)]
+
+
 def test_self_delete_while_draining_is_503_and_writes_nothing(
     player: dict[str, Any], client: TestClient, settings: Settings, api_env: str
 ) -> None:

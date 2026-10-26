@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // BarPage (Phase 5 T15): the layout and the empty state (SD14, SD18, AC27).
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyMessage, exchangeStore, type ServerMessage, type SnapshotData } from '../exchange'
 import { BarPage } from './BarPage'
@@ -17,6 +17,8 @@ const RUN = {
   tick_interval_ms: 1000,
   candle_interval_ms: 60000,
   quote_grace_versions: 2,
+  wallet_required: false,
+  credit_limit_cents: 0,
 }
 
 const SNAPSHOT: SnapshotData = {
@@ -60,7 +62,10 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-const drinkButtons = () => screen.queryAllByRole('button', { name: /^\+1 / })
+const drinkButtons = () =>
+  screen.queryByRole('group', { name: 'Drankjes' }) === null
+    ? []
+    : within(screen.getByRole('group', { name: 'Drankjes' })).getAllByRole('button')
 
 describe('BarPage', () => {
   it('with no live run shows only "Geen actieve borrel"; a snapshot shows the pad without remount (AC27)', () => {
@@ -100,6 +105,31 @@ describe('BarPage', () => {
     expect(screen.getByRole('heading', { name: 'Financieel overzicht' })).toBeTruthy()
     expect(drinkButtons()).toHaveLength(1)
     expect(screen.getByText('Klaar')).toBeTruthy()
+  })
+})
+
+describe('letting go (B-06 T14: SD6, AC19, PD15)', () => {
+  const basket = () => screen.queryByRole('list', { name: 'Mandje' })
+
+  it('any pointer or key down in the page restarts the 60 s', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] })
+    try {
+      dispatch('hello', hello(1), null)
+      dispatch('snapshot', SNAPSHOT)
+      render(<BarPage />)
+      fireEvent.click(drinkButtons()[0])
+      act(() => vi.advanceTimersByTime(30_000))
+      fireEvent.pointerDown(screen.getByRole('heading', { name: 'Financieel overzicht' }))
+      act(() => vi.advanceTimersByTime(59_999))
+      expect(basket()).not.toBeNull()
+      fireEvent.keyDown(screen.getByRole('heading', { name: 'Bestellingen' }), { key: 'a' })
+      act(() => vi.advanceTimersByTime(59_999))
+      expect(basket()).not.toBeNull()
+      act(() => vi.advanceTimersByTime(1))
+      expect(basket()).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

@@ -19,7 +19,6 @@ import { readFileSync, statSync } from 'node:fs'
 import { startServer, stopServer, type ServerProcess } from './serverProcess'
 
 const TILE = '[class^="_tile_"]' // see board.spec.ts
-const DRINK = /^\+1 /
 const DRINKS = [
   ['Bier', '1,00', '2,50', '5,00'],
   ['Wijn', '1,50', '3,00', '6,00'],
@@ -103,6 +102,22 @@ async function addDrink(page: Page, name: string, min: string, start: string, ma
   await expect(drinks.getByRole('group', { name, exact: true })).toBeVisible()
 }
 
+/**
+ * A borrel made with "Nieuwe borrel" starts with "Wallet verplicht" on (B-06 SD1). This
+ * spec is about analytics, not wallets, so it turns the switch off over the admin API
+ * (the page's own session) and its orders book without one.
+ */
+async function walletOptional(page: Page) {
+  const current = await page.request.get('/api/runs/current')
+  expect(current.ok()).toBe(true)
+  const { run_id: runId } = (await current.json()) as { run_id: number }
+  const patched = await page.request.patch(`/api/runs/${runId}/config`, {
+    data: { wallet_required: false },
+    headers: { Origin: new URL(baseUrl).origin },
+  })
+  expect(patched.ok()).toBe(true)
+}
+
 async function goLive(page: Page) {
   const borrel = section(page, 'Borrel')
   await borrel.getByRole('button', { name: 'Live zetten' }).click()
@@ -118,9 +133,9 @@ async function closeBorrel(page: Page, name: string) {
   await expect(borrel.getByText('Geen borrel')).toBeVisible()
 }
 
-/** One tap on the bar's first drink, until the server has booked it (201). */
+/** The bar's first drink into the basket and "Afrekenen", until the server has booked it (201). */
 async function order(bar: Page) {
-  const button = bar.getByRole('button', { name: DRINK }).first()
+  const button = bar.getByRole('group', { name: 'Drankjes' }).getByRole('button').first()
   await expect(button).toBeEnabled()
   let booked = false
   const listener = (response: {
@@ -138,6 +153,7 @@ async function order(bar: Page) {
   }
   bar.on('response', listener)
   await button.click()
+  await bar.getByRole('button', { name: /^Afrekenen zonder wallet/ }).click()
   // A price that moved mid-tap asks first (Phase 5 SD9); confirming books it.
   await expect(async () => {
     const dialog = bar.getByRole('dialog')
@@ -159,6 +175,7 @@ test('two borrels: close, copy, compare, export and delete', async ({ page, brow
   await borrel.getByLabel('Naam').fill('Vrijdag')
   await borrel.getByRole('button', { name: 'Nieuwe borrel' }).click()
   await expect(borrel.getByText('Vrijdag')).toBeVisible()
+  await walletOptional(page)
   for (const [name, min, start, max] of DRINKS) await addDrink(page, name, min, start, max)
   const displayKey = await createKey(page, 'Scherm', 'Koersbord')
   const barKey = await createKey(page, 'Bar', 'Tap 1')
@@ -196,6 +213,7 @@ test('two borrels: close, copy, compare, export and delete', async ({ page, brow
   await copy.selectOption({ label: 'Vrijdag' })
   await borrel.getByRole('button', { name: 'Nieuwe borrel' }).click()
   await expect(borrel.getByText('Zaterdag')).toBeVisible()
+  await walletOptional(page)
   await expect(
     section(page, 'Drankjes beheren').getByRole('group', { name: 'Cola', exact: true }),
   ).toBeVisible()

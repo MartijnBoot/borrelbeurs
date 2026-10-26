@@ -1,11 +1,12 @@
 """The atomic order write and the earnings `GROUP BY` (T12).
 
-AC2, AC11 (query half), AC13; D-10, D-12; SD12.
+AC2, AC11 (query half), AC13; D-10, D-12; SD12. B-06 T4: the wallet payment (AC34, PD2).
 """
 
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 from typing import Any
 
 import numpy as np
@@ -15,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.config import Settings
+from app.db import wallets
 from app.db.codec import tick_prices
 from app.db.engine_state import StaleState
 from app.db.keys import create_key
@@ -22,7 +24,9 @@ from app.db.mapping import cents_from_quantised, spec_from_rows
 from app.db.orders import (
     OrderLineInput,
     OrderWritten,
+    PaymentInput,
     StoredOrder,
+    WalletPaid,
     earnings_by_drink,
     find_order_by_key,
     write_order,
@@ -41,7 +45,7 @@ T0 = 1_700_000_000_000
 WRITE_ORDER_STATEMENTS = 5
 
 
-def _receipt(order_id: int) -> dict[str, Any]:
+def _receipt(order_id: int, paid: WalletPaid | None) -> dict[str, Any]:
     return {"order_id": order_id}
 
 
@@ -485,7 +489,7 @@ def test_the_actor_and_receipt_are_stored_and_found_by_key(
                 lines=lines,
                 wall_ts_ms=T0 + 1_000,
                 actor_key_id=key_id,
-                response=lambda order_id: {"order_id": order_id, "total_cents": 1},
+                response=lambda order_id, paid: {"order_id": order_id, "total_cents": 1},
             )
             async with engine.connect() as conn:
                 found = await find_order_by_key(conn, "k-receipt")
@@ -529,3 +533,207 @@ def test_an_order_without_a_receipt_stores_none(settings: Settings, database_url
     found = asyncio.run(scenario())
     assert found is not None
     assert (found.actor_key_id, found.response) == (None, None)
+
+
+# --- B-06 T4: the payment in the same transaction (SD14, SD15; AC34, PD2, PD5) ----------
+
+# With a wallet: SET LOCAL lock_timeout, SELECT … FOR UPDATE (the wallet, by its
+# credential), SELECT sum (the balance), then the five above with INSERT wallet_entry
+# (the payment) between the lines and the receipt. A new statement must be added here.
+WALLET_WRITE_ORDER_STATEMENTS = 9
+
+
+async def _funded_wallet(engine: AsyncEngine, amount: int) -> wallets.WalletRow:
+    async with engine.begin() as conn:
+        wallet = await wallets.create_wallet(conn, name="Jan", cookie_hash="h-jan", now_ms=T0)
+        await wallets.insert_entry(
+            conn, wallet_id=wallet.wallet_id, kind="topup", amount_cents=amount, now_ms=T0
+        )
+    return wallet
+
+
+async def _ledger(engine: AsyncEngine) -> list[tuple[Any, ...]]:
+    async with engine.connect() as conn:
+        rows = await conn.execute(
+            text("SELECT kind, amount_cents, order_id FROM wallet_entry ORDER BY entry_id")
+        )
+        return [tuple(row) for row in rows]
+
+
+def _payment(wallet: wallets.WalletRow, limit: int = 0) -> PaymentInput:
+    return PaymentInput(
+        qr_token=wallet.qr_token, short_code=None, credit_limit_cents=limit, actor_label="Bar 1"
+    )
+
+
+def test_a_paid_write_order_issues_the_expected_statements(
+    settings: Settings, database_url: str
+) -> None:
+    """Pins the count the wallet parametrisation below covers."""
+
+    async def scenario() -> None:
+        engine = _engine(settings, database_url)
+        statements: list[str] = []
+
+        def record(*args: Any) -> None:
+            statements.append(args[2])
+
+        try:
+            run_id, spec, drink_ids, state = await _live(engine)
+            wallet = await _funded_wallet(engine, 10_000)
+            candidate, lines = _order(spec, state, drink_ids, {drink_ids[0]: 2}, T0 + 1_000)
+            event.listen(engine.sync_engine, "before_cursor_execute", record)
+            try:
+                written = await write_order(
+                    engine,
+                    run_id=run_id,
+                    idempotency_key="k-1",
+                    expected_version=state.version,
+                    state=candidate,
+                    spec=spec,
+                    drink_ids=drink_ids,
+                    lines=lines,
+                    wall_ts_ms=T0 + 1_000,
+                    response=_receipt,
+                    payment=_payment(wallet),
+                )
+            finally:
+                event.remove(engine.sync_engine, "before_cursor_execute", record)
+            assert len(statements) == WALLET_WRITE_ORDER_STATEMENTS, statements
+            total = 2 * lines[0].unit_price_cents
+            assert written.paid == WalletPaid(wallet.wallet_id, "Jan", 10_000 - total)
+            assert await _ledger(engine) == [
+                ("topup", 10_000, None),
+                ("payment", -total, written.order_id),
+            ]
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("fail_at", range(1, WALLET_WRITE_ORDER_STATEMENTS + 1))
+def test_a_failure_at_any_statement_of_a_paid_order_writes_nothing(
+    settings: Settings, database_url: str, fail_at: int
+) -> None:
+    """AC34: whichever statement fails, no order, line, tick, state change or payment."""
+
+    async def scenario() -> None:
+        engine = _engine(settings, database_url)
+        seen = 0
+
+        def inject(*args: Any) -> None:
+            nonlocal seen
+            seen += 1
+            if seen == fail_at:
+                raise Injected(f"statement {fail_at}: {args[2]}")
+
+        try:
+            run_id, spec, drink_ids, state = await _live(engine)
+            wallet = await _funded_wallet(engine, 10_000)
+            candidate, lines = _order(
+                spec, state, drink_ids, {drink_ids[0]: 2, drink_ids[4]: 1}, T0 + 1_000
+            )
+            before = (await _snapshot(engine, run_id), await _ledger(engine))
+            event.listen(engine.sync_engine, "before_cursor_execute", inject)
+            try:
+                with pytest.raises(Injected):
+                    await write_order(
+                        engine,
+                        run_id=run_id,
+                        idempotency_key="k-1",
+                        expected_version=state.version,
+                        state=candidate,
+                        spec=spec,
+                        drink_ids=drink_ids,
+                        lines=lines,
+                        wall_ts_ms=T0 + 1_000,
+                        response=_receipt,
+                        payment=_payment(wallet),
+                    )
+            finally:
+                event.remove(engine.sync_engine, "before_cursor_execute", inject)
+            assert (await _snapshot(engine, run_id), await _ledger(engine)) == before
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_a_free_order_paid_from_a_wallet_writes_a_payment_of_zero(
+    settings: Settings, database_url: str
+) -> None:
+    """PD2: every wallet order has exactly one payment entry, even at EUR 0,00."""
+
+    async def scenario() -> None:
+        engine = _engine(settings, database_url)
+        try:
+            run_id, spec, drink_ids, state = await _live(engine)
+            async with engine.begin() as conn:
+                wallet = await wallets.create_wallet(
+                    conn, name="Jan", cookie_hash="h-jan", now_ms=T0
+                )
+            candidate, lines = _order(spec, state, drink_ids, {drink_ids[0]: 1}, T0 + 1_000)
+            free = [dataclasses.replace(line, unit_price_cents=0) for line in lines]
+            written = await write_order(
+                engine,
+                run_id=run_id,
+                idempotency_key="k-free",
+                expected_version=state.version,
+                state=candidate,
+                spec=spec,
+                drink_ids=drink_ids,
+                lines=free,
+                wall_ts_ms=T0 + 1_000,
+                payment=_payment(wallet),
+            )
+            assert written.paid == WalletPaid(wallet.wallet_id, "Jan", 0)
+            assert await _ledger(engine) == [("payment", 0, written.order_id)]
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    ("limit", "error"),
+    [(0, wallets.InsufficientBalance), (None, wallets.WalletNotFound)],
+    ids=["too-little", "unknown-wallet"],
+)
+def test_a_refused_payment_writes_nothing(
+    settings: Settings, database_url: str, limit: int | None, error: type[Exception]
+) -> None:
+    """SD15: the refusal comes before the first write."""
+
+    async def scenario() -> None:
+        engine = _engine(settings, database_url)
+        try:
+            run_id, spec, drink_ids, state = await _live(engine)
+            wallet = await _funded_wallet(engine, 1_000)
+            candidate, lines = _order(spec, state, drink_ids, {drink_ids[0]: 9}, T0 + 1_000)
+            payment = (
+                _payment(wallet, limit)
+                if limit is not None
+                else PaymentInput(
+                    qr_token=None, short_code="ZZZZZZZZ", credit_limit_cents=0, actor_label=None
+                )
+            )
+            before = (await _snapshot(engine, run_id), await _ledger(engine))
+            with pytest.raises(error):
+                await write_order(
+                    engine,
+                    run_id=run_id,
+                    idempotency_key="k-1",
+                    expected_version=state.version,
+                    state=candidate,
+                    spec=spec,
+                    drink_ids=drink_ids,
+                    lines=lines,
+                    wall_ts_ms=T0 + 1_000,
+                    payment=payment,
+                )
+            assert (await _snapshot(engine, run_id), await _ledger(engine)) == before
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())

@@ -1,0 +1,25 @@
+/* The camera view, shared by the kassa and the bar (B-05 SD17, B-06 SD12). */
+.scanner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.video {
+  width: 100%;
+  max-height: 60vh;
+  border-radius: 12px;
+  background: #000;
+  object-fit: cover;
+}
+
+.err {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--danger);
+  border-radius: 10px;
+  font-size: 14px;
+  color: var(--danger);
+}

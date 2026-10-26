@@ -48,6 +48,16 @@ def test_create_on_an_empty_database_is_a_draft_and_the_current_run(login: Login
     assert admin.get("/api/runs/current").json() == created
 
 
+def test_a_created_run_has_the_wallet_switch_on_and_no_credit(login: Login) -> None:
+    """B-06 AC1 over HTTP: `POST /api/runs` makes a run with "Wallet verplicht" on."""
+    admin = login("admin")
+    run_id = admin.post("/api/runs", json={"name": "Vrijmibo"}).json()["run_id"]
+
+    run = admin.get(f"/api/runs/{run_id}/config").json()["run"]
+
+    assert (run["wallet_required"], run["credit_limit_cents"]) == (True, 0)
+
+
 def test_a_second_create_is_409_draft_exists_carrying_the_drafts_id(login: Login) -> None:
     admin = login("admin")
     first = admin.post("/api/runs", json={"name": "Een"}).json()

@@ -1,8 +1,11 @@
 /**
  * The bar page (`/bar`, Phase 5 SD18): v1's layout -- "Bar — Bestellen",
- * then a "Bestellingen" card (pad, pending list, 409 dialog) beside a
+ * then a "Bestellingen" card (pad and basket, pending list, 409 dialog) beside a
  * "Financieel overzicht" card (panel and revenue chart), stacked at
  * ≤1000 px.
+ *
+ * Any pointer or key down inside the live page counts as a tap, restarting the
+ * wait after which a held wallet and the basket are let go (B-06 SD6, PD15).
  *
  * With no live run it shows only "Geen actieve borrel" (SD14): no pad, no
  * panel and no controller. The same page shows the cards once a snapshot
@@ -10,10 +13,12 @@
  */
 import { PixelIcon } from '../../components/ui/PixelIcon'
 import { selectEmpty, useExchange } from '../exchange'
+import { lookupWallet } from './api/wallets'
 import { FinancialPanel } from './FinancialPanel'
 import { OrderConflict } from './OrderConflict'
 import { OrderPad } from './OrderPad'
 import { PendingOrders } from './PendingOrders'
+import { RecentPayments } from './RecentPayments'
 import { RevenueChart } from './RevenueChart'
 import { useBarController } from './useBarController'
 import styles from './BarPage.module.css'
@@ -33,12 +38,31 @@ export function BarPage() {
 
 function LiveBar() {
   const { view, actions } = useBarController()
+  // B-06 PD16: the newest accepted wallet order, so the payments list fetches after one.
+  const lastPaid = Math.max(
+    0,
+    ...view.entries.filter((e) => e.receipt?.wallet != null).map((e) => e.id),
+  )
+  // AC18: a refund may be of the held wallet; its balance on screen is then out of date.
+  const held = view.wallet?.query
+  const refreshHeldBalance = () => {
+    if (held === undefined) return
+    lookupWallet(held).then(
+      (found) => actions.updateBalance(held, found.balance_cents),
+      () => {}, // the server judges the order again (SD15), so a missed refresh costs nothing
+    )
+  }
   return (
-    <div className={styles.cards}>
+    <div
+      className={styles.cards}
+      onPointerDownCapture={actions.touch}
+      onKeyDownCapture={actions.touch}
+    >
       <section className={styles.card}>
         <h2 className={styles.cardTitle}>Bestellingen</h2>
         <OrderPad view={view} actions={actions} />
         <PendingOrders view={view} actions={actions} />
+        <RecentPayments lastPaid={lastPaid} onRefunded={refreshHeldBalance} />
         <OrderConflict view={view} actions={actions} />
       </section>
       <section className={styles.card}>

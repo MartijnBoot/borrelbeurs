@@ -480,7 +480,7 @@ const PARAMS = {
 
 const document_ = (params: object, candle: number, revision: number) => ({
   revision,
-  run: { ...draft, candle_interval_s: candle },
+  run: { ...draft, candle_interval_s: candle, wallet_required: true, credit_limit_cents: 0 },
   params,
   drinks: [],
 })

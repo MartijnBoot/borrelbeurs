@@ -168,6 +168,13 @@ def test_the_real_v1_files_import_as_one_draft_run(
     assert_specs_equal(spec, spec_from_config(live))
     # Draft only: the import never goes live (SD6).
     assert _counts(settings, scratch)["engine_state"] == 0
+    # B-06 PD1 A: an imported borrel starts with "Wallet verplicht" off and no credit.
+    assert _query(
+        settings,
+        scratch,
+        "SELECT wallet_required, credit_limit_cents FROM run WHERE run_id = :r",
+        r=run_id,
+    ) == [(False, 0)]
 
 
 def test_bar_price_precedence_and_news_levels_hold_end_to_end(

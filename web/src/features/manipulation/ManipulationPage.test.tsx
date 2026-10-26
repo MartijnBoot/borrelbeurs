@@ -15,6 +15,8 @@ const RUN = {
   tick_interval_ms: 1000,
   candle_interval_ms: 60000,
   quote_grace_versions: 2,
+  wallet_required: false,
+  credit_limit_cents: 0,
 }
 
 const DRINKS = [
@@ -44,7 +46,14 @@ const SNAPSHOT: SnapshotData = {
 
 const CONFIG = {
   revision: 3,
-  run: { run_id: 1, name: 'Vrijmibo', status: 'live', candle_interval_s: 60 },
+  run: {
+    run_id: 1,
+    name: 'Vrijmibo',
+    status: 'live',
+    candle_interval_s: 60,
+    wallet_required: true,
+    credit_limit_cents: 0,
+  },
   params: {
     idle_decay_minutes: 0.1,
     idle_rise_minutes: 0.1,

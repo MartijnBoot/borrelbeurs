@@ -260,6 +260,8 @@ async def _write_params(conn: AsyncConnection, run: RunRow) -> None:
         name=run.name,
         params=run.params,
         candle_interval_ms=run.candle_interval_ms,
+        wallet_required=run.wallet_required,
+        credit_limit_cents=run.credit_limit_cents,
     )
 
 

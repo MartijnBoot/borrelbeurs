@@ -1,5 +1,5 @@
 /**
- * The bar page's four timing constants (Phase 5 SD1, SD4), in one module.
+ * The bar page's timing constants (Phase 5 SD1, SD4; B-06 SD6), in one module.
  * Client constants, not run settings: making them configurable is out of
  * scope. `AGE_SHOW_MS` sits above Phase 4's 5 s poll, so the age line does
  * not flicker while polling.
@@ -15,3 +15,7 @@ export const CONFIRM_GUARD_MS = 400
 export const AGE_SHOW_MS = 8000
 /** Above this latest-quote age the pad is disabled (SD4). */
 export const STALE_MS = 15000
+/** B-06 SD6, PD15: with no tap on the page this long, a held wallet and the basket clear. */
+export const WALLET_IDLE_MS = 60_000
+/** B-06 PD16: the recent payments are fetched again this often while the page is open. */
+export const PAYMENTS_REFRESH_MS = 30_000

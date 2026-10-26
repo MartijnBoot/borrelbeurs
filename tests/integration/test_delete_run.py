@@ -16,6 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.config import Settings
+from app.db import wallets
 from app.db.market_events import insert_event
 from app.db.runs import (
     NameMismatch,
@@ -173,6 +174,84 @@ def test_deleting_a_run_removes_all_of_it_and_none_of_another(
     assert all(rows == [] for rows in deleted.values()), deleted
     # PD17: the shared "Bier" stays; "Jenever", used only by the deleted run, is gone.
     assert products == ["Bier", "Wijn"]
+
+
+def test_deleting_a_run_keeps_its_payments_and_refunds_without_order_or_run(
+    settings: Settings, database_url: str
+) -> None:
+    """B-06 T18: AC24 end to end. The entries keep their amount, time and wallet; their
+    order and run go to NULL; every balance is unchanged; the kassa's list shows them
+    with no lines."""
+
+    async def scenario() -> tuple[Any, ...]:
+        engine = _engine(settings, database_url)
+        try:
+            run_id = await _complete_run(engine, "Weg", ("Bier", "Wijn"))
+            async with engine.begin() as conn:
+                jan = await wallets.create_wallet(conn, name="Jan", cookie_hash="h-jan", now_ms=T0)
+                await wallets.insert_entry(
+                    conn, wallet_id=jan.wallet_id, kind="topup", amount_cents=5000, now_ms=T0
+                )
+                order_ids: list[int] = list(
+                    (
+                        await conn.execute(
+                            text('SELECT order_id FROM "order" WHERE run_id = :r ORDER BY 1'),
+                            {"r": run_id},
+                        )
+                    ).scalars()
+                )
+                paid = [
+                    await wallets.insert_entry(
+                        conn,
+                        wallet_id=jan.wallet_id,
+                        kind="payment",
+                        amount_cents=-520,
+                        now_ms=T0 + n,
+                        run_id=run_id,
+                        order_id=order_id,
+                    )
+                    for n, order_id in enumerate(order_ids[:2])
+                ]
+                await wallets.insert_entry(
+                    conn,
+                    wallet_id=jan.wallet_id,
+                    kind="refund",
+                    amount_cents=520,
+                    now_ms=T0 + 10,
+                    run_id=run_id,
+                    refunds_entry_id=paid[0].entry_id,
+                )
+            ledger = (
+                "SELECT entry_id, wallet_id, kind, amount_cents, created_at, order_id, run_id"
+                " FROM wallet_entry ORDER BY entry_id"
+            )
+            async with engine.connect() as conn:
+                before = [tuple(row) for row in await conn.execute(text(ledger))]
+                balance = await wallets.balance(conn, jan.wallet_id)
+                listed = await wallets.payments(conn, wallet_id=jan.wallet_id)
+
+            await delete_run(engine, run_id, confirm_name="Weg")
+
+            async with engine.connect() as conn:
+                after = [tuple(row) for row in await conn.execute(text(ledger))]
+                return (
+                    before,
+                    after,
+                    balance,
+                    await wallets.balance(conn, jan.wallet_id),
+                    listed,
+                    await wallets.payments(conn, wallet_id=jan.wallet_id),
+                )
+        finally:
+            await engine.dispose()
+
+    before, after, balance, balance_after, listed, listed_after = asyncio.run(scenario())
+    assert [row[5] for row in before if row[2] == "payment"] != [None, None], "anti-vacuity"
+    assert [row[:5] for row in after] == [row[:5] for row in before]
+    assert [row[5:] for row in after] == [(None, None)] * len(before)
+    assert balance_after == balance == 5000 - 520
+    assert [row.lines for row in listed] == [[("Bier", 1), ("Wijn", 1)]] * 2
+    assert [(row.lines, row.refunded) for row in listed_after] == [(None, False), (None, True)]
 
 
 def test_a_draft_without_orders_deletes(settings: Settings, database_url: str) -> None:

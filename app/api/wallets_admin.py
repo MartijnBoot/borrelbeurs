@@ -1,8 +1,9 @@
 """Admin's wallet routes (B-05 SD6, SD15, SD16; plan PD2, PD12, PD18).
 
-`GET /api/admin/wallets` is the Wallets section in one read: the outstanding
-balance, the top-ups per borrel net of reversals (newest first, then the entries
-without a run when they do not sum to zero), and every live wallet by
+`GET /api/admin/wallets` is the Wallets section in one read: the sums of the
+positive and the negative balances (B-06 SD20, PD10), the top-ups per borrel net
+of reversals and the payments net of refunds (newest first, then the entries
+without a run when either sum is not zero), and every live wallet by
 case-folded name. `DELETE /api/admin/wallets/{wallet_id}` deletes one as a player
 does (SD15), 204, or 404 `wallet_not_found`. `GET`/`PUT /api/admin/wallet-settings`
 read and replace the sign-up code and the two retention periods (PD12).
@@ -31,11 +32,13 @@ SIGNUP_CODE_MAX = 40
 
 
 class BorrelTopups(BaseModel):
-    """`run_id` and `name` are null on the row of entries without a run (PD2)."""
+    """`run_id` and `name` are null on the row of entries without a run (PD2).
+    `net_payment_cents` is what wallets paid at the borrel, net of refunds (B-06 PD10)."""
 
     run_id: int | None
     name: str | None
     net_topup_cents: int
+    net_payment_cents: int
 
 
 class ListedWalletData(BaseModel):
@@ -46,7 +49,10 @@ class ListedWalletData(BaseModel):
 
 
 class WalletsOverview(BaseModel):
-    outstanding_cents: int
+    """`positive_balance_cents` is "Tegoed", `negative_balance_cents` (at most 0) "Rood"."""
+
+    positive_balance_cents: int
+    negative_balance_cents: int
     per_borrel: list[BorrelTopups]
     wallets: list[ListedWalletData]
 
@@ -82,9 +88,15 @@ def _settings(row: WalletSettingsRow) -> WalletSettingsData:
 async def wallets_overview(request: Request, _: Admin) -> WalletsOverview:
     found = await actions.overview(db_engine(request))
     return WalletsOverview(
-        outstanding_cents=found.outstanding_cents,
+        positive_balance_cents=found.positive_balance_cents,
+        negative_balance_cents=found.negative_balance_cents,
         per_borrel=[
-            BorrelTopups(run_id=row.run_id, name=row.name, net_topup_cents=row.net_topup_cents)
+            BorrelTopups(
+                run_id=row.run_id,
+                name=row.name,
+                net_topup_cents=row.net_topup_cents,
+                net_payment_cents=row.net_payment_cents,
+            )
             for row in found.per_run
         ],
         wallets=[

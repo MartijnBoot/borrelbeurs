@@ -116,6 +116,8 @@ def _holder(
         market_events=(ActiveEvent(1, "crash", DRINKS, T0, T0 + 30_000),),
         quote_grace_versions=2,
         candle_interval_ms=60_000,
+        wallet_required=True,
+        credit_limit_cents=250,
     )
     return MarketHolder.from_rehydrated(
         run, engine=cast(AsyncEngine, None), clock=FakeClock(T0), sink=lambda events: None
@@ -252,6 +254,8 @@ def test_the_snapshot_carries_earnings_and_no_dead_fields() -> None:
         "tick_interval_ms": 1_000,
         "candle_interval_ms": 60_000,
         "quote_grace_versions": 2,
+        "wallet_required": True,
+        "credit_limit_cents": 250,
     }
     assert dumped["market_events"][0]["t_end_ms"] == T0 + 30_000
     assert set(dumped["bars"]) == {"11", "12", "13"}
@@ -340,6 +344,8 @@ def _config(
         tick_interval_ms=1_000,
         candle_interval_ms=candle_ms,
         quote_grace_versions=2,
+        wallet_required=False,
+        credit_limit_cents=500,
         drinks=tuple(
             (d, n, on) for d, n, on in zip(DRINKS, ("Bier", "Wijn", "Fris"), active, strict=True)
         ),
@@ -362,6 +368,8 @@ def test_config_changed_is_one_config_message_at_the_new_version() -> None:
             "tick_interval_ms": 1_000,
             "candle_interval_ms": 60_000,
             "quote_grace_versions": 2,
+            "wallet_required": False,
+            "credit_limit_cents": 500,
         },
         "drinks": [
             {"drink_id": 11, "name": "Bier", "active": True},

@@ -15,9 +15,8 @@ Top is next. Every item that is not `specced` or `dropped` appears here exactly 
 
 | # | ID | Feature | Size | Status |
 |---|---|---|---|---|
-| 1 | B-06 | Pay at the bar by scanning a player's wallet | M | idea |
-| 2 | B-07 | Price bounds on the Prijsstap grid | S | idea |
-| 3 | B-08 | Short keys you can read aloud | S | idea |
+| 1 | B-07 | Price bounds on the Prijsstap grid | S | idea |
+| 2 | B-08 | Short keys you can read aloud | S | idea |
 
 ## Items
 
@@ -221,7 +220,8 @@ display/bar/admin keys, new tables and a migration, a new top-up page. Not the e
 
 ### B-06 — Pay at the bar by scanning a player's wallet
 
-- **Status:** idea
+- **Status:** built → `docs/plans/phase-b-06-wallet-payments.md` (spec:
+  `docs/specs/phase-b-06-wallet-payments.md`)
 - **Added:** 2026-10-18
 - **Size:** M (a few tasks) — a guess: the server already accepts multi-line orders
 

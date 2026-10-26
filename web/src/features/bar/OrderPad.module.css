@@ -18,6 +18,42 @@
   user-select: none;
 }
 
+/* B-06 SD4: the basket under the drinks, then "Afrekenen". */
+.basket {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 1.05rem;
+}
+
+.line button {
+  min-width: 44px;
+}
+
+.checkout {
+  font-size: 1.1rem;
+  font-weight: 700;
+  min-height: 52px;
+}
+
 .stale {
   margin: 0;
   color: var(--danger);

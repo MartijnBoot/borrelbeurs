@@ -125,6 +125,32 @@ def test_a_sweep_closing_entry_carries_no_run(settings: Settings, database_url: 
     assert _run(settings, database_url, body) == [(None,)]
 
 
+def test_an_inactive_wallet_in_debt_is_swept_writing_the_debt_off(
+    settings: Settings, database_url: str
+) -> None:
+    """B-06 AC27, SD8: at -350 after the inactive period, a closing of +350 and no run."""
+
+    async def body(engine: AsyncEngine) -> tuple[Any, ...]:
+        debtor = await _wallet(engine, "Rood", T0 - 500 * DAY)
+        await _top_up(engine, debtor, 500, T0 - 400 * DAY)
+        async with engine.begin() as conn:
+            await wallets.insert_entry(
+                conn,
+                wallet_id=debtor.wallet_id,
+                kind="payment",
+                amount_cents=-850,
+                now_ms=T0 - 399 * DAY,
+            )
+        count = await sweep(engine, now_ms=T0)
+        closing = await _rows(
+            engine, "SELECT amount_cents, run_id FROM wallet_entry WHERE kind = 'closing'"
+        )
+        total = await _rows(engine, "SELECT sum(amount_cents) FROM wallet_entry")
+        return count, await _live_names(engine), closing, total
+
+    assert _run(settings, database_url, body) == (1, [], [(350, None)], [(0,)])
+
+
 def test_a_wallet_older_than_the_months_without_any_entry_goes_too(
     settings: Settings, database_url: str
 ) -> None:
@@ -279,6 +305,43 @@ def test_a_second_day_sweeps_again(settings: Settings, database_url: str) -> Non
                 await task
 
     assert _run(settings, database_url, body) == []
+
+
+def test_the_boot_sweep_writes_off_an_inactive_wallet_in_debt(
+    settings: Settings, database_url: str
+) -> None:
+    """B-06 T18: AC27, SD8 end to end -- the sweep the boot runs, before the app is ready."""
+
+    async def body(engine: AsyncEngine) -> tuple[list[str], list[tuple[Any, ...]]]:
+        debtor = await _wallet(engine, "Rood", T0 - 500 * DAY)
+        await _top_up(engine, debtor, 500, T0 - 400 * DAY)
+        async with engine.begin() as conn:
+            await wallets.insert_entry(
+                conn,
+                wallet_id=debtor.wallet_id,
+                kind="payment",
+                amount_cents=-850,
+                now_ms=T0 - 399 * DAY,
+            )
+        await _wallet(engine, "Nieuw", T0 - DAY)
+        app = FastAPI()
+        scoped = settings.model_copy(update={"database_url": database_url})
+        async with start_runtime(app, scoped, clock=AppClock(FakeClock(T0)), run_migrations=False):
+            assert app.state.ready
+            ledger = await _rows(
+                engine,
+                "SELECT kind, amount_cents, run_id, sum(amount_cents) OVER () FROM wallet_entry"
+                f" WHERE wallet_id = {debtor.wallet_id} ORDER BY entry_id",
+            )
+            return await _live_names(engine), ledger
+
+    names, ledger = _run(settings, database_url, body)
+    assert names == ["Nieuw"]
+    assert ledger == [
+        ("topup", 500, None, 0),
+        ("payment", -850, None, 0),
+        ("closing", 350, None, 0),
+    ]
 
 
 def test_boot_runs_one_sweep(settings: Settings, database_url: str) -> None:

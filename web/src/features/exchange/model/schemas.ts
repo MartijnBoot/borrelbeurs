@@ -48,6 +48,9 @@ export const RunInfo = z.strictObject({
   tick_interval_ms: Int,
   candle_interval_ms: Int,
   quote_grace_versions: NonNegative,
+  // B-06 SD17: "Wallet verplicht" and "Rood staan tot", followed live by the bar.
+  wallet_required: z.boolean(),
+  credit_limit_cents: NonNegative,
 })
 
 /** `active` is false once removed from a live run (Phase 6 SD13): listed, never priced. */

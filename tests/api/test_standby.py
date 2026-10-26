@@ -84,6 +84,11 @@ def test_healthz_reports_standby_and_readyz_is_not_ready(standby_client: TestCli
         ("POST", "/api/wallet"),
         ("GET", "/api/wallet"),
         ("POST", "/api/kassa/lookup"),
+        # B-06 AC33: the bar's wallet routes.
+        ("POST", "/api/bar/wallet-lookup"),
+        ("GET", "/api/bar/payments"),
+        ("POST", "/api/payments/1/refund"),
+        ("GET", "/api/kassa/wallets/1/payments"),
     ],
 )
 def test_every_api_request_and_the_theme_is_503_standby(

@@ -110,6 +110,10 @@ Settled at the spec interview (2026-10-06).
       > A setting profile picked on "Nieuwe borrel" wins for the 22 fields it holds.
     - No drinks. A random `run_seed`. `tick_interval_ms` 1000, `candle_interval_ms` 60 000,
       `quote_grace_versions` 2.
+
+      > **Amended by B-06** ([phase-b-06-wallet-payments.md](phase-b-06-wallet-payments.md)). "Wallet verplicht" on and "Rood staan tot" €0,
+      > whether the borrel is new, from a profile, or with copied drinks (B-06 SD1, SD2). A
+      > borrel imported with `app.cli.import_v1` starts with the switch off (plan PD1).
   - **It refuses:**
     - with 409 `live_run_exists` while a run is live;
     - with 409 `draft_exists` while a draft exists. The UI then opens that draft.

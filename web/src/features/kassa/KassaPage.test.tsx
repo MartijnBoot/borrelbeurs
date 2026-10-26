@@ -2,10 +2,10 @@
 // The kassa page (B-05 SD22; AC14, AC15): a typed code, the found wallet, a top-up.
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { formatEuro } from '../../lib/format'
+import { formatBalance, formatEuro } from '../../lib/format'
 import { KassaPage } from './KassaPage'
 
-vi.mock('./decodeQr', () => ({ decode: vi.fn(async () => 'tok-scanned') }))
+vi.mock('../../components/scanner/decodeQr', () => ({ decode: vi.fn(async () => 'tok-scanned') }))
 
 const JAN = {
   wallet_id: 7,
@@ -32,6 +32,17 @@ const TOPUPS = [
   },
 ]
 
+const PAYMENTS = [
+  {
+    entry_id: 9,
+    amount_cents: 840,
+    created_at: '2026-10-25T21:00:00Z',
+    lines: [{ name: 'Bier', qty: 2 }],
+    refunded: false,
+    actor_label: 'Bar 1',
+  },
+]
+
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
@@ -54,6 +65,11 @@ beforeEach(() => {
         return json(201, { entry_id: 3, wallet_id: 7, amount_cents: 1000, created_at: 'x' })
       }
       if (path === '/api/kassa/wallets/7/topups') return json(200, TOPUPS)
+      if (path === '/api/kassa/wallets/7/payments') return json(200, PAYMENTS)
+      if (path === '/api/payments/9/refund' && init?.method === 'POST') {
+        balance += 840
+        return json(201, { entry_id: 10, wallet_id: 7, amount_cents: 840, created_at: 'x' })
+      }
       if (path === '/api/kassa/wallets/7/new-code') {
         return json(200, { qr_token: 'tok-new', short_code: 'AAAA-BBBB' })
       }
@@ -130,6 +146,27 @@ describe('KassaPage', () => {
     expect(rows.map((row) => row.textContent?.includes('teruggedraaid'))).toEqual([false, true])
   })
 
+  it("shows the wallet's payments under its top-ups; a refund looks it up again (B-06 AC23)", async () => {
+    render(<KassaPage />)
+    await find('K7Q4-M2XD')
+    const [row] = within(screen.getByRole('list', { name: 'Betalingen' })).getAllByRole('listitem')
+    expect(row.textContent).toContain(`2× Bier — ${formatEuro(840)}`)
+    fireEvent.click(within(row).getByRole('button', { name: 'Terugboeken' }))
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Terugboeken' }))
+    await act(async () => {})
+    expect(lookups()).toHaveLength(2)
+    expect(screen.getByRole('region', { name: 'Jan' }).textContent).toContain(formatEuro(2340))
+  })
+
+  it('shows a debt with its minus sign (B-06 SD19, AC25)', async () => {
+    balance = -210
+    render(<KassaPage />)
+    await find('K7Q4-M2XD')
+    const card = screen.getByRole('region', { name: 'Jan' })
+    expect(card.textContent).toContain(formatBalance(-210))
+    expect(card.textContent).toContain('\u2212€')
+  })
+
   it('an unknown code is "Onbekende wallet" (AC14)', async () => {
     render(<KassaPage />)
     await find('ZZZZ-ZZZZ')
@@ -171,9 +208,7 @@ describe('KassaPage', () => {
             answerJan = resolve
           })
         }
-        if (path === '/api/kassa/wallets/7/topups' || path === '/api/kassa/wallets/8/topups') {
-          return json(200, [])
-        }
+        if (/^\/api\/kassa\/wallets\/[78]\/(topups|payments)$/.test(path)) return json(200, [])
         throw new Error(`unexpected ${path}`)
       }),
     )

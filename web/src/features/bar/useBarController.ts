@@ -1,6 +1,6 @@
 /**
  * The React binding for the bar controller (Phase 5 PD8): one controller per
- * page mount, with the real monotonic clock, timers, transport and uuids.
+ * page mount, with the real monotonic clock, timers, transport and keys.
  *
  * Created and disposed in one effect, as `app/providers.tsx` does the
  * exchange client, so StrictMode's mount-unmount-mount leaves exactly one
@@ -10,15 +10,29 @@
  * runs, the view is empty and every action is a no-op.
  */
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import { newIdempotencyKey } from '../../lib/idempotencyKey'
 import { exchangeStore, type DrinkId } from '../exchange'
-import { postOrder } from './api/orders'
-import { createBarController, type BarController, type BarView } from './model/barController'
+import { postOrder, type WalletQuery } from './api/orders'
+import {
+  createBarController,
+  type BarController,
+  type BarView,
+  type HeldWallet,
+} from './model/barController'
 import type { PressId } from './model/holdBuffer'
 
 export interface BarActions {
   press(id?: PressId): void
   release(id?: PressId): void
-  tap(drinkId: DrinkId): void
+  add(drinkId: DrinkId): void
+  remove(drinkId: DrinkId): void
+  clear(): void
+  hold(wallet: HeldWallet): void
+  updateBalance(query: WalletQuery, balanceCents: number): void
+  otherWallet(): void
+  abandon(): void
+  touch(): void
+  checkout(): void
   refresh(): void
   confirm(): void
   cancel(): void
@@ -31,6 +45,9 @@ const EMPTY_VIEW: BarView = Object.freeze({
   latest: null,
   entries: [],
   headConflict: null,
+  basket: [],
+  basketLocked: false,
+  wallet: null,
 })
 
 function createSlot() {
@@ -41,7 +58,15 @@ function createSlot() {
   const actions: BarActions = {
     press: (id) => controller?.press(id),
     release: (id) => controller?.release(id),
-    tap: (drinkId) => void controller?.tap(drinkId),
+    add: (drinkId) => controller?.add(drinkId),
+    remove: (drinkId) => controller?.remove(drinkId),
+    clear: () => controller?.clear(),
+    hold: (wallet) => controller?.hold(wallet),
+    updateBalance: (query, balanceCents) => controller?.updateBalance(query, balanceCents),
+    otherWallet: () => controller?.otherWallet(),
+    abandon: () => controller?.abandon(),
+    touch: () => controller?.touch(),
+    checkout: () => void controller?.checkout(),
     refresh: () => controller?.refresh(),
     confirm: () => controller?.confirm(),
     cancel: () => controller?.cancel(),
@@ -73,7 +98,7 @@ export function useBarController(): { view: BarView; actions: BarActions } {
       setTimeout: (fn, ms) => window.setTimeout(fn, ms),
       clearTimeout: (id) => window.clearTimeout(id),
       post: postOrder,
-      uuid: () => crypto.randomUUID(),
+      newKey: newIdempotencyKey,
     })
     slot.set(controller)
     return () => {

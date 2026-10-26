@@ -183,6 +183,8 @@ class RunRow:
     params: dict[str, Any]
     candle_interval_ms: int
     tick_interval_ms: int
+    wallet_required: bool
+    credit_limit_cents: int
 
 
 async def create_draft_run(
@@ -192,13 +194,19 @@ async def create_draft_run(
     params: Params,
     run_seed: int,
     candle_interval_ms: int | None = None,
+    wallet_required: bool = False,
 ) -> int:
-    """A draft row; `candle_interval_ms` `None` keeps the column's 60 s default."""
+    """A draft row; `candle_interval_ms` `None` keeps the column's 60 s default.
+
+    "Wallet verplicht" is off unless asked for: only `create_run` turns it on
+    (B-06 SD1, PD1 A), so an imported borrel and a test's draft start off.
+    """
     values: dict[str, Any] = {
         "status": "draft",
         "name": name,
         "params": params_to_json(params),
         "run_seed": run_seed,
+        "wallet_required": wallet_required,
     }
     if candle_interval_ms is not None:
         values["candle_interval_ms"] = candle_interval_ms
@@ -337,7 +345,14 @@ async def latest_revision(conn: AsyncConnection, run_id: int) -> int:
 async def get_run(conn: AsyncConnection, run_id: int, *, lock: bool = False) -> RunRow:
     """The run, or `RunNotFound`; with `lock`, under `SELECT … FOR UPDATE` (SD6)."""
     statement = select(
-        Run.run_id, Run.name, Run.status, Run.params, Run.candle_interval_ms, Run.tick_interval_ms
+        Run.run_id,
+        Run.name,
+        Run.status,
+        Run.params,
+        Run.candle_interval_ms,
+        Run.tick_interval_ms,
+        Run.wallet_required,
+        Run.credit_limit_cents,
     ).where(Run.run_id == run_id)
     row = (await conn.execute(statement.with_for_update() if lock else statement)).one_or_none()
     if row is None:
@@ -349,6 +364,8 @@ async def get_run(conn: AsyncConnection, run_id: int, *, lock: bool = False) -> 
         dict(row.params),
         int(row.candle_interval_ms),
         int(row.tick_interval_ms),
+        bool(row.wallet_required),
+        int(row.credit_limit_cents),
     )
 
 
@@ -359,11 +376,19 @@ async def update_run(
     name: str,
     params: dict[str, Any],
     candle_interval_ms: int,
+    wallet_required: bool,
+    credit_limit_cents: int,
 ) -> None:
     await conn.execute(
         update(Run)
         .where(Run.run_id == run_id)
-        .values(name=name, params=params, candle_interval_ms=candle_interval_ms)
+        .values(
+            name=name,
+            params=params,
+            candle_interval_ms=candle_interval_ms,
+            wallet_required=wallet_required,
+            credit_limit_cents=credit_limit_cents,
+        )
     )
 
 
@@ -461,6 +486,9 @@ async def create_run(
     then replace those params: `ProfileNotFound`, or `InvalidConfig` naming a
     stored value outside today's rules, with nothing written. Revision 1 records
     the run's Kaarsbreedte as `candle_interval_s`, with or without one (PD9).
+
+    Every path starts with "Wallet verplicht" on and "Rood staan tot" at 0
+    (B-06 SD1, SD2, AC1): neither comes from a profile or the copied run (SD3).
     """
     name = name.strip()
     async with engine.begin() as conn:
@@ -499,6 +527,7 @@ async def create_run(
             params=params,
             run_seed=secrets.randbits(63),
             candle_interval_ms=candle_interval_ms,
+            wallet_required=True,
         )
         for slot, drink in enumerate(drinks):
             await add_drink(
@@ -516,13 +545,16 @@ async def create_run(
                 bar_price_cents=drink.bar_price_cents,
                 product_id=products[drink.drink_id],
             )
+        created = await get_run(conn, run_id)
         await append_config_revision(
             conn,
             run_id,
             config={
                 "name": name,
                 "params": params_to_json(params),
-                "candle_interval_s": (await get_run(conn, run_id)).candle_interval_ms // 1000,
+                "candle_interval_s": created.candle_interval_ms // 1000,
+                "wallet_required": created.wallet_required,
+                "credit_limit_cents": created.credit_limit_cents,
                 "drinks": [dataclasses.asdict(d) for d in await all_drinks(conn, run_id)],
             },
             author=author,

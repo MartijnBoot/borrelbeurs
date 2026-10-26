@@ -19,6 +19,9 @@ export const RunConfig = z.object({
     name: z.string(),
     status: z.enum(['draft', 'live', 'ended']),
     candle_interval_s: z.number().int(),
+    // B-06 SD1, SD2: run columns, not params, so never part of a profile (SD3).
+    wallet_required: z.boolean(),
+    credit_limit_cents: z.number().int(),
   }),
   params: z.object({
     step_quant: z.number(),

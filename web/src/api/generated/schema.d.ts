@@ -708,6 +708,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/kassa/wallets/{wallet_id}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Payments
+         * @description B-06 SD9, AC23: the wallet's payments at any age, newest first.
+         */
+        get: operations["list_payments_api_kassa_wallets__wallet_id__payments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/kassa/wallets/{wallet_id}/topups": {
         parameters: {
             query?: never;
@@ -849,6 +869,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bar/wallet-lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Wallet Lookup */
+        post: operations["wallet_lookup_api_bar_wallet_lookup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bar/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recent Payments */
+        get: operations["recent_payments_api_bar_payments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/payments/{entry_id}/refund": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refund */
+        post: operations["refund_api_payments__entry_id__refund_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/theme.css": {
         parameters: {
             query?: never;
@@ -972,6 +1043,34 @@ export interface components {
             /** C */
             c: number;
         };
+        /**
+         * BarPayment
+         * @description `name` is the wallet's, `null` once it is deleted (B-05 SD15).
+         */
+        BarPayment: {
+            /** Entry Id */
+            entry_id: number;
+            /** Amount Cents */
+            amount_cents: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Lines */
+            lines: components["schemas"]["PaymentLine"][] | null;
+            /** Refunded */
+            refunded: boolean;
+            /** Name */
+            name: string | null;
+        };
+        /** BarWallet */
+        BarWallet: {
+            /** Name */
+            name: string;
+            /** Balance Cents */
+            balance_cents: number;
+        };
         /** BookedEntry */
         BookedEntry: {
             /** Entry Id */
@@ -989,6 +1088,7 @@ export interface components {
         /**
          * BorrelTopups
          * @description `run_id` and `name` are null on the row of entries without a run (PD2).
+         *     `net_payment_cents` is what wallets paid at the borrel, net of refunds (B-06 PD10).
          */
         BorrelTopups: {
             /** Run Id */
@@ -997,6 +1097,8 @@ export interface components {
             name: string | null;
             /** Net Topup Cents */
             net_topup_cents: number;
+            /** Net Payment Cents */
+            net_payment_cents: number;
         };
         /** CompareRowData */
         CompareRowData: {
@@ -1039,6 +1141,10 @@ export interface components {
             name?: string | null;
             /** Candle Interval S */
             candle_interval_s?: number | null;
+            /** Wallet Required */
+            wallet_required?: boolean | null;
+            /** Credit Limit Cents */
+            credit_limit_cents?: number | null;
             params?: components["schemas"]["ParamsPatch"] | null;
         };
         /**
@@ -1295,6 +1401,27 @@ export interface components {
             /** Version */
             version: number;
         };
+        /**
+         * KassaPayment
+         * @description A payment as the kassa lists it: who booked it (B-06 PD9).
+         */
+        KassaPayment: {
+            /** Entry Id */
+            entry_id: number;
+            /** Amount Cents */
+            amount_cents: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Lines */
+            lines: components["schemas"]["PaymentLine"][] | null;
+            /** Refunded */
+            refunded: boolean;
+            /** Actor Label */
+            actor_label: string | null;
+        };
         /** KassaWalletData */
         KassaWalletData: {
             /** Wallet Id */
@@ -1356,16 +1483,6 @@ export interface components {
         LoginRequest: {
             /** Key */
             key: string;
-        };
-        /**
-         * LookupRequest
-         * @description Exactly one of a scanned QR token or a typed short code (AC14).
-         */
-        LookupRequest: {
-            /** Qr Token */
-            qr_token?: string | null;
-            /** Short Code */
-            short_code?: string | null;
         };
         /** MarketEventInfo */
         MarketEventInfo: {
@@ -1444,6 +1561,7 @@ export interface components {
             quote_version: number;
             /** Lines */
             lines: components["schemas"]["OrderLine"][];
+            wallet?: components["schemas"]["WalletQuery"] | null;
         };
         /** OrderLine */
         OrderLine: {
@@ -1453,6 +1571,17 @@ export interface components {
             qty: number;
             /** Unit Price Cents */
             unit_price_cents: number;
+        };
+        /**
+         * PaidWallet
+         * @description The wallet that paid, as the bar shows it (B-06 SD7, SD16): stored with the
+         *     receipt, so a replay shows the balance as it was, whatever has happened since.
+         */
+        PaidWallet: {
+            /** Name */
+            name: string;
+            /** Balance After Cents */
+            balance_after_cents: number;
         };
         /** ParamsData */
         ParamsData: {
@@ -1555,6 +1684,13 @@ export interface components {
             /** Y Clip */
             y_clip?: number | null;
         };
+        /** PaymentLine */
+        PaymentLine: {
+            /** Name */
+            name: string;
+            /** Qty */
+            qty: number;
+        };
         /** PriceCurveData */
         PriceCurveData: {
             /** A */
@@ -1586,6 +1722,10 @@ export interface components {
         /**
          * Receipt
          * @description SD19's receipt, plus `quote_version` (PD6), exactly as returned and replayed.
+         *
+         *     `wallet` is set on every receipt B-06 writes, `null` for an unpaid order. A
+         *     receipt stored before B-06 has none, and `body()` leaves what was never set
+         *     out, so it replays byte for byte as it was first sent (B-06 PD6).
          */
         Receipt: {
             /** Order Id */
@@ -1600,6 +1740,7 @@ export interface components {
             lines: components["schemas"]["ReceiptLine"][];
             /** Total Cents */
             total_cents: number;
+            wallet?: components["schemas"]["PaidWallet"] | null;
         };
         /** ReceiptLine */
         ReceiptLine: {
@@ -1640,6 +1781,10 @@ export interface components {
             status: "draft" | "live" | "ended";
             /** Candle Interval S */
             candle_interval_s: number;
+            /** Wallet Required */
+            wallet_required: boolean;
+            /** Credit Limit Cents */
+            credit_limit_cents: number;
         };
         /** RunInfo */
         RunInfo: {
@@ -1651,6 +1796,10 @@ export interface components {
             candle_interval_ms: number;
             /** Quote Grace Versions */
             quote_grace_versions: number;
+            /** Wallet Required */
+            wallet_required: boolean;
+            /** Credit Limit Cents */
+            credit_limit_cents: number;
         };
         /** RunSummaryData */
         RunSummaryData: {
@@ -1815,6 +1964,16 @@ export interface components {
             created_at: string;
         };
         /**
+         * WalletQuery
+         * @description Exactly one of a scanned QR token or a typed short code (AC14).
+         */
+        WalletQuery: {
+            /** Qr Token */
+            qr_token?: string | null;
+            /** Short Code */
+            short_code?: string | null;
+        };
+        /**
          * WalletSettingsData
          * @description `signup_code` null is sign-up closed (SD6). A code is trimmed, and blank means null.
          */
@@ -1826,10 +1985,15 @@ export interface components {
             /** Inactive Months */
             inactive_months: number;
         };
-        /** WalletsOverview */
+        /**
+         * WalletsOverview
+         * @description `positive_balance_cents` is "Tegoed", `negative_balance_cents` (at most 0) "Rood".
+         */
         WalletsOverview: {
-            /** Outstanding Cents */
-            outstanding_cents: number;
+            /** Positive Balance Cents */
+            positive_balance_cents: number;
+            /** Negative Balance Cents */
+            negative_balance_cents: number;
             /** Per Borrel */
             per_borrel: components["schemas"]["BorrelTopups"][];
             /** Wallets */
@@ -3243,7 +3407,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["LookupRequest"];
+                "application/json": components["schemas"]["WalletQuery"];
             };
         };
         responses: {
@@ -3254,6 +3418,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KassaWalletData"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_payments_api_kassa_wallets__wallet_id__payments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wallet_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KassaPayment"][];
                 };
             };
             /** @description Validation Error */
@@ -3583,6 +3778,101 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WalletSettingsData"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    wallet_lookup_api_bar_wallet_lookup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WalletQuery"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BarWallet"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recent_payments_api_bar_payments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BarPayment"][];
+                };
+            };
+        };
+    };
+    refund_api_payments__entry_id__refund_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A replay of the stored refund */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookedEntry"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookedEntry"];
                 };
             };
             /** @description Validation Error */

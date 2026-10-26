@@ -103,11 +103,24 @@ async def player_wallet(engine: AsyncEngine, wallet: WalletRow) -> PlayerWallet:
         return await _player(conn, wallet)
 
 
+class BalanceNegative(AppError):
+    """A player cannot delete a wallet in debt; only admin can write a debt off (B-06 SD8)."""
+
+    status_code = 409
+    code = "balance_negative"
+
+
 async def delete_own_wallet(engine: AsyncEngine, wallet_id: int, *, now_ms: int) -> None:
     """The player deletes their wallet (SD15). Gone meanwhile is `no_wallet`, as any
-    player route answers a deleted wallet's cookie (AC13)."""
+    player route answers a deleted wallet's cookie (AC13). A balance below zero is
+    `BalanceNegative`, nothing written (B-06 SD8, AC26): the wallet is locked first,
+    so a payment committing meanwhile is seen."""
     try:
         async with engine.begin() as conn:
+            if await wallets.lock_wallet(conn, wallet_id) is None:
+                raise WalletNotFound(f"no wallet {wallet_id}")
+            if await wallets.balance(conn, wallet_id) < 0:
+                raise BalanceNegative("this wallet is in debt; top it up at the kassa first")
             await wallets.delete_wallet(conn, wallet_id, now_ms=now_ms)
     except WalletNotFound:
         raise NoWallet("there is no wallet on this phone") from None
@@ -164,6 +177,108 @@ async def lookup(
             None if last is None else last.created_at,
             last if recent else None,
         )
+
+
+# --- the bar (B-06 SD9, SD13) ------------------------------------------------------
+
+# SD9: a bar key may refund its own payments for this long after booking them.
+BAR_REFUND_WINDOW_MS: Final = 10 * 60 * 1000
+
+
+async def bar_lookup(
+    engine: AsyncEngine, *, qr_token: str | None, short_code: str | None, now_ms: int
+) -> PlayerWallet:
+    """The wallet behind a scanned token or typed code, as the bar may see it: its name
+    and balance (SD13); `WalletNotFound` otherwise."""
+    found = await lookup(engine, qr_token=qr_token, short_code=short_code, now_ms=now_ms)
+    return found.player
+
+
+async def recent_payments(
+    engine: AsyncEngine, *, actor_key_id: int, now_ms: int
+) -> list[wallets.PaymentRow]:
+    """The payments `actor_key_id` booked in the last `BAR_REFUND_WINDOW_MS` on the app
+    clock, newest first (SD9, AC20). The server decides the window, never the phone."""
+    async with engine.connect() as conn:
+        return await wallets.payments(
+            conn, actor_key_id=actor_key_id, since=wallets.at(now_ms - BAR_REFUND_WINDOW_MS)
+        )
+
+
+class PaymentNotFound(AppError):
+    """No payment has this id. Any other entry kind answers the same (PD9)."""
+
+    status_code = 404
+    code = "payment_not_found"
+
+
+class RefundNotAllowed(AppError):
+    """A bar key refunds only its own payments, within `BAR_REFUND_WINDOW_MS` (SD9)."""
+
+    status_code = 403
+    code = "refund_not_allowed"
+
+
+class AlreadyRefunded(AppError):
+    status_code = 409
+    code = "already_refunded"
+
+
+async def refund(
+    engine: AsyncEngine,
+    *,
+    entry_id: int,
+    idempotency_key: str,
+    actor: Actor,
+    role: str,
+    now_ms: int,
+) -> Booked:
+    """One `refund` of the payment's whole amount, naming it, with the payment's run
+    (SD9; AC21, AC22). The money only: the order and the revenue stay.
+
+    In PD9's order: the key; not a payment, 404; a bar key on another key's payment
+    or past its window, 403; the wallet locked, deleted 409; already refunded 409.
+    The wallet is locked before the refund is looked for, so two refunds at once
+    serialise and the second sees the first.
+    """
+
+    async def same(_: AsyncConnection, stored: EntryRow) -> bool:
+        return stored.kind == "refund" and stored.refunds_entry_id == entry_id
+
+    async def book(conn: AsyncConnection) -> EntryRow:
+        payment = await wallets.get_entry(conn, entry_id)
+        if payment is None or payment.kind != "payment":
+            raise PaymentNotFound(f"no payment {entry_id}")
+        if role == "bar" and (
+            payment.actor_key_id != actor.key_id
+            or payment.created_at < wallets.at(now_ms - BAR_REFUND_WINDOW_MS)
+        ):
+            raise RefundNotAllowed("the bar refunds its own payments for 10 minutes")
+        if await wallets.lock_wallet(conn, payment.wallet_id) is None:
+            raise wallets.WalletDeleted("this wallet is deleted")
+        if await wallets.refund_of(conn, entry_id) is not None:
+            raise AlreadyRefunded("this payment is already refunded")
+        return await wallets.insert_entry(
+            conn,
+            wallet_id=payment.wallet_id,
+            kind="refund",
+            amount_cents=-payment.amount_cents,
+            now_ms=now_ms,
+            run_id=payment.run_id,
+            refunds_entry_id=entry_id,
+            actor_key_id=actor.key_id,
+            actor_label=actor.label,
+            idempotency_key=idempotency_key,
+        )
+
+    return await _book_once(engine, idempotency_key, same, book)
+
+
+async def wallet_payments(engine: AsyncEngine, wallet_id: int) -> list[wallets.PaymentRow]:
+    """A live wallet's payments at any age, newest first (SD9, AC23); `WalletNotFound`."""
+    async with engine.connect() as conn:
+        await wallets.get(conn, wallet_id)
+        return await wallets.payments(conn, wallet_id=wallet_id)
 
 
 async def topups(engine: AsyncEngine, wallet_id: int) -> list[tuple[EntryRow, bool]]:
@@ -311,7 +426,8 @@ async def move(
     now_ms: int,
 ) -> Booked:
     """Move the whole balance and the name of `from_wallet_id` onto `wallet_id`, in one
-    transaction (SD11; AC26, AC27).
+    transaction (SD11; AC26, AC27). A debt moves too (B-06 SD8, AC28): only a zero
+    balance or the same wallet is `nothing_to_move`.
 
     Both wallets are locked in id order. The order inside is fixed (plan T8): the
     out and in entries, then the old wallet deleted, freeing its name, then the new
@@ -333,7 +449,7 @@ async def move(
         if target is None or source is None:
             raise WalletNotFound("one of the two wallets is deleted")
         amount = await wallets.balance(conn, from_wallet_id)
-        if amount <= 0:
+        if amount == 0:
             raise wallets.NothingToMove(f"{source.name} has no balance to move")
         run_id = await wallets.live_run_id(conn)
         out = await wallets.insert_entry(
@@ -381,7 +497,8 @@ class Overview:
     """Admin's Wallets section, one `REPEATABLE READ` snapshot so the totals and the list
     agree, as `app.db.analytics.run_detail` reads."""
 
-    outstanding_cents: int
+    positive_balance_cents: int
+    negative_balance_cents: int
     per_run: list[wallets.RunTopups]
     wallets: list[wallets.ListedWallet]
 
@@ -390,8 +507,10 @@ async def overview(engine: AsyncEngine) -> Overview:
     async with engine.connect() as conn:
         await conn.execution_options(isolation_level="REPEATABLE READ", postgresql_readonly=True)
         async with conn.begin():
+            positive, negative = await wallets.balance_totals(conn)
             return Overview(
-                await wallets.outstanding_cents(conn),
+                positive,
+                negative,
                 await wallets.topups_per_run(conn),
                 await wallets.list_wallets(conn),
             )

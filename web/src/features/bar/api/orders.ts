@@ -34,6 +34,9 @@ export const Receipt = z.strictObject({
     )
     .min(1),
   total_cents: NonNegative,
+  // B-06 SD16: the wallet that paid, `null` unpaid; absent on a receipt stored before B-06
+  // (PD6), which replays byte for byte.
+  wallet: z.strictObject({ name: z.string(), balance_after_cents: Int }).nullable().optional(),
 })
 
 /** A 409 `price_changed`'s extra fields (`HttpError.details`): the live version and prices. */
@@ -45,6 +48,9 @@ export const PriceChangedBody = z.object({
 export type Receipt = z.infer<typeof Receipt>
 export type PriceChangedBody = z.infer<typeof PriceChangedBody>
 
+/** A wallet exactly as scanned or typed (B-06 SD13); the server resolves it. */
+export type WalletQuery = { readonly qr_token: string } | { readonly short_code: string }
+
 export interface OrderBody {
   readonly quote_version: number
   readonly lines: readonly {
@@ -52,6 +58,8 @@ export interface OrderBody {
     readonly qty: number
     readonly unit_price_cents: number
   }[]
+  /** The paying wallet; absent for an order without one (B-06 SD5). */
+  readonly wallet?: WalletQuery
 }
 
 export type OrderOutcome =

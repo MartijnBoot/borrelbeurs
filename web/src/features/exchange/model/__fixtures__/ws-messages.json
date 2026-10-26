@@ -251,7 +251,9 @@
         "run_id": 1,
         "tick_interval_ms": 1000,
         "candle_interval_ms": 60000,
-        "quote_grace_versions": 2
+        "quote_grace_versions": 2,
+        "wallet_required": false,
+        "credit_limit_cents": 0
       },
       "drinks": [
         {
@@ -408,6 +410,8 @@
         "tick_interval_ms": 1000,
         "candle_interval_ms": 60000,
         "quote_grace_versions": 2,
+        "wallet_required": false,
+        "credit_limit_cents": 0,
         "name": "Borrel"
       },
       "drinks": [

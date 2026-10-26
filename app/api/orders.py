@@ -6,6 +6,8 @@ and each `drink_id` once -- and everything that needs the live market is
 `place_order`'s, under the holder's lock (T18). A process that is shutting
 down refuses new orders with 503 `shutting_down` (SD10; `refuse_while_draining`).
 
+B-06 (SD13): the body may name the paying `wallet` exactly as scanned or typed.
+
 The body is the receipt's bytes exactly: 201 the first time, 200 on a replay,
 byte-identical (plan PD7).
 """
@@ -19,8 +21,9 @@ from fastapi.responses import Response
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 from app.api.deps import Principal, clock_of, refuse_while_draining, require_role
+from app.api.wallet_query import WalletQuery
 from app.runtime.grace import QuotedLine
-from app.runtime.orders import OrderRequest, Receipt, place_order
+from app.runtime.orders import OrderRequest, Receipt, ScannedWallet, place_order
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -46,6 +49,7 @@ class OrderBody(BaseModel):
 
     quote_version: Annotated[int, Field(ge=0)]
     lines: Annotated[list[OrderLine], Field(min_length=1), AfterValidator(_one_line_per_drink)]
+    wallet: WalletQuery | None = None
 
 
 @router.post(
@@ -72,8 +76,14 @@ async def post_order(
                 QuotedLine(drink_id=ln.drink_id, qty=ln.qty, unit_price_cents=ln.unit_price_cents)
                 for ln in body.lines
             ),
+            wallet=(
+                None
+                if body.wallet is None
+                else ScannedWallet(qr_token=body.wallet.qr_token, short_code=body.wallet.short_code)
+            ),
         ),
         actor_key_id=principal.key_id,
+        actor_label=principal.label,
         clock=clock_of(request),
     )
     return Response(

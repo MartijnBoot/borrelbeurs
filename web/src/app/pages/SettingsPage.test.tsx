@@ -127,7 +127,14 @@ const DRINK = {
 
 const CONFIG = {
   revision: 3,
-  run: { run_id: 7, name: 'Vrijmibo', status: 'live', candle_interval_s: 60 },
+  run: {
+    run_id: 7,
+    name: 'Vrijmibo',
+    status: 'live',
+    candle_interval_s: 60,
+    wallet_required: true,
+    credit_limit_cents: 0,
+  },
   params: {
     step_quant: 0.1,
     eta: 0.8,
@@ -175,7 +182,12 @@ const SERVED: Readonly<Record<string, unknown>> = {
   '/api/keys': [KEY],
   '/api/analytics/runs': [],
   '/api/profiles': [],
-  '/api/admin/wallets': { outstanding_cents: 0, per_borrel: [], wallets: [] },
+  '/api/admin/wallets': {
+    positive_balance_cents: 0,
+    negative_balance_cents: 0,
+    per_borrel: [],
+    wallets: [],
+  },
   '/api/admin/wallet-settings': { signup_code: null, unfunded_days: 30, inactive_months: 12 },
 }
 
@@ -202,7 +214,7 @@ async function openWithLiveRun() {
 }
 
 describe('SettingsPage: the explanations (B-01)', () => {
-  it('every (i) names one of E1-E20, E33 or E34-E39 (AC10)', async () => {
+  it('every (i) names one of E1-E20, E33, E34-E39 or E40-E41 (AC10)', async () => {
     await openWithLiveRun()
     const names = info(document.body).map((b) => b.getAttribute('aria-label')!.slice(8))
     expect(names.length).toBeGreaterThan(0)
@@ -210,7 +222,7 @@ describe('SettingsPage: the explanations (B-01)', () => {
   })
 
   it.each([
-    ['Globale instellingen', 10 + 6],
+    ['Globale instellingen', 12 + 6],
     ['Vraag/Aanbod', 6],
     ['Min/Max/Startprijs', 3 * 2],
     ['Drankjes beheren', 8 + 1 * 2],

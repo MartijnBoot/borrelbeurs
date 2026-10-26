@@ -7,6 +7,9 @@ const REFUSALS: Readonly<Record<string, string>> = {
   insufficient_balance: 'Te weinig saldo om terug te draaien.',
   wallet_deleted: 'Deze wallet bestaat niet meer.',
   nothing_to_move: 'Er is niets over te zetten.',
+  // B-06 PD18: refunding a payment.
+  already_refunded: 'Deze betaling is al teruggeboekt.',
+  refund_not_allowed: 'Terugboeken kan hier alleen binnen 10 minuten na de betaling.',
 }
 
 export const NETWORK = 'Verbindingsfout. Probeer opnieuw.'

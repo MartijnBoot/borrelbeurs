@@ -30,12 +30,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.core.errors import AppError
-from app.db.models import Run, Wallet, WalletEntry, WalletSettings
+from app.db.models import Drink, OrderLine, Run, Wallet, WalletEntry, WalletSettings
 from app.db.products import name_key
 from app.db.runs import current_run
 from app.runtime import wallet_codes
 
-EntryKind = Literal["topup", "reversal", "move_out", "move_in", "closing"]
+EntryKind = Literal["topup", "reversal", "move_out", "move_in", "closing", "payment", "refund"]
 
 CODE_ATTEMPTS: Final = 5
 DEFAULT_UNFUNDED_DAYS: Final = 30
@@ -117,6 +117,8 @@ class EntryRow:
     actor_label: str | None
     idempotency_key: str | None
     created_at: datetime
+    order_id: int | None
+    refunds_entry_id: int | None
 
 
 @dataclass(frozen=True)
@@ -146,6 +148,8 @@ _ENTRY = (
     WalletEntry.actor_label,
     WalletEntry.idempotency_key,
     WalletEntry.created_at,
+    WalletEntry.order_id,
+    WalletEntry.refunds_entry_id,
 )
 
 
@@ -166,6 +170,8 @@ def _entry(row: Any) -> EntryRow:  # a `Row` of `_ENTRY`
         row.actor_label,
         row.idempotency_key,
         row.created_at,
+        row.order_id,
+        row.refunds_entry_id,
     )
 
 
@@ -314,6 +320,30 @@ async def lock_wallet(conn: AsyncConnection, wallet_id: int) -> WalletRow | None
     return None if row.deleted_at is not None else _wallet(row)
 
 
+async def _lock_live(conn: AsyncConnection, where: ColumnElement[bool]) -> WalletRow | None:
+    row = (
+        await conn.execute(
+            select(*_WALLET).where(Wallet.deleted_at.is_(None), where).with_for_update()
+        )
+    ).one_or_none()
+    return None if row is None else _wallet(row)
+
+
+async def lock_wallet_by_qr_token(conn: AsyncConnection, qr_token: str) -> WalletRow | None:
+    """Lock the live wallet holding `qr_token` `FOR UPDATE`, or `None` (B-06 PD5).
+
+    The credential is the `WHERE`, so under READ COMMITTED a "Nieuwe code" or a
+    delete that commits while this waits leaves no row: the order is 404, never
+    charged to a wallet that was re-coded since the scan (AC12).
+    """
+    return await _lock_live(conn, Wallet.qr_token == qr_token)
+
+
+async def lock_wallet_by_short_code(conn: AsyncConnection, short_code: str) -> WalletRow | None:
+    """As `lock_wallet_by_qr_token`, for `short_code` in its stored form."""
+    return await _lock_live(conn, Wallet.short_code == short_code)
+
+
 async def lock_wallets(
     conn: AsyncConnection, first: int, second: int
 ) -> tuple[WalletRow | None, WalletRow | None]:
@@ -352,6 +382,8 @@ async def insert_entry(
     actor_key_id: int | None = None,
     actor_label: str | None = None,
     idempotency_key: str | None = None,
+    order_id: int | None = None,
+    refunds_entry_id: int | None = None,
 ) -> EntryRow:
     row = (
         await conn.execute(
@@ -366,6 +398,8 @@ async def insert_entry(
                 actor_key_id=actor_key_id,
                 actor_label=actor_label,
                 idempotency_key=idempotency_key,
+                order_id=order_id,
+                refunds_entry_id=refunds_entry_id,
                 created_at=at(now_ms),
             )
             .returning(*_ENTRY)
@@ -384,6 +418,14 @@ async def get_entry(conn: AsyncConnection, entry_id: int) -> EntryRow | None:
 async def find_entry_by_key(conn: AsyncConnection, idempotency_key: str) -> EntryRow | None:
     row = (
         await conn.execute(select(*_ENTRY).where(WalletEntry.idempotency_key == idempotency_key))
+    ).one_or_none()
+    return None if row is None else _entry(row)
+
+
+async def refund_of(conn: AsyncConnection, entry_id: int) -> EntryRow | None:
+    """The `refund` naming payment `entry_id`, or `None` (B-06 SD9)."""
+    row = (
+        await conn.execute(select(*_ENTRY).where(WalletEntry.refunds_entry_id == entry_id))
     ).one_or_none()
     return None if row is None else _entry(row)
 
@@ -409,6 +451,9 @@ async def delete_wallet(
 ) -> None:
     """Delete a live wallet (SD15): a `closing` entry for any balance left, then blank it.
 
+    A balance below zero is written off by a positive closing entry (B-06 SD8), so
+    admin's delete and the clean-up never refuse a wallet in debt.
+
     The closing entry carries the live run, as any entry does (PD10), unless
     `with_run` is false: the clean-up's carries none, so its one long transaction
     holds no lock on the run's row that a config write would wait for (/review
@@ -419,7 +464,7 @@ async def delete_wallet(
     if await lock_wallet(conn, wallet_id) is None:
         raise WalletNotFound(f"no wallet {wallet_id}")
     left = await balance(conn, wallet_id)
-    if left > 0:
+    if left != 0:
         await insert_entry(
             conn,
             wallet_id=wallet_id,
@@ -559,6 +604,69 @@ async def topups(conn: AsyncConnection, wallet_id: int) -> list[tuple[EntryRow, 
 
 
 @dataclass(frozen=True)
+class PaymentRow:
+    """A `payment` entry as the bar and the kassa list it (B-06 SD9, SD10, PD9).
+
+    `wallet_name` is `None` once the wallet is deleted (B-05 SD15); `lines` are the
+    order's `(drink name, qty)` by `drink_id`, or `None` once the order is gone
+    with its run (Phase 7 SD3, AC24).
+    """
+
+    entry: EntryRow
+    refunded: bool
+    wallet_name: str | None
+    lines: list[tuple[str, int]] | None
+
+
+async def payments(
+    conn: AsyncConnection,
+    *,
+    wallet_id: int | None = None,
+    actor_key_id: int | None = None,
+    since: datetime | None = None,
+) -> list[PaymentRow]:
+    """`payment` entries, newest first, filtered by wallet, booking key and time."""
+    refund = WalletEntry.__table__.alias("refund")
+    statement = (
+        select(
+            *_ENTRY,
+            refund.c.entry_id.is_not(None).label("refunded"),
+            Wallet.name.label("wallet_name"),
+        )
+        .join(Wallet, Wallet.wallet_id == WalletEntry.wallet_id)
+        .outerjoin(refund, refund.c.refunds_entry_id == WalletEntry.entry_id)
+        .where(WalletEntry.kind == "payment")
+        .order_by(WalletEntry.created_at.desc(), WalletEntry.entry_id.desc())
+    )
+    if wallet_id is not None:
+        statement = statement.where(WalletEntry.wallet_id == wallet_id)
+    if actor_key_id is not None:
+        statement = statement.where(WalletEntry.actor_key_id == actor_key_id)
+    if since is not None:
+        statement = statement.where(WalletEntry.created_at >= since)
+    rows = (await conn.execute(statement)).all()
+    order_ids = [int(row.order_id) for row in rows if row.order_id is not None]
+    lines: dict[int, list[tuple[str, int]]] = {}
+    if order_ids:
+        for line in await conn.execute(
+            select(OrderLine.order_id, Drink.name, OrderLine.qty)
+            .join(Drink, Drink.drink_id == OrderLine.drink_id)
+            .where(OrderLine.order_id.in_(order_ids))
+            .order_by(OrderLine.order_id, OrderLine.drink_id)
+        ):
+            lines.setdefault(int(line.order_id), []).append((line.name, int(line.qty)))
+    return [
+        PaymentRow(
+            _entry(row),
+            bool(row.refunded),
+            row.wallet_name,
+            None if row.order_id is None else lines.get(int(row.order_id), []),
+        )
+        for row in rows
+    ]
+
+
+@dataclass(frozen=True)
 class SearchRow:
     """A wallet as the move search lists it (SD11, PD17)."""
 
@@ -610,12 +718,14 @@ class ListedWallet:
 
 @dataclass(frozen=True)
 class RunTopups:
-    """One borrel's top-ups net of their reversals (SD12, SD16). `run_id` `None` is the
+    """One borrel's top-ups net of their reversals (SD12, SD16), and its wallet payments
+    net of their refunds as a positive amount (B-06 SD20, PD10). `run_id` `None` is the
     entries with no run: none was live, or the run was deleted (PD2)."""
 
     run_id: int | None
     name: str | None
     net_topup_cents: int
+    net_payment_cents: int = 0
 
 
 async def list_wallets(conn: AsyncConnection) -> list[ListedWallet]:
@@ -635,34 +745,49 @@ async def list_wallets(conn: AsyncConnection) -> list[ListedWallet]:
     return [ListedWallet(_wallet(row), int(row.balance), row.active) for row in ordered]
 
 
-async def outstanding_cents(conn: AsyncConnection) -> int:
-    """The sum of every live wallet's balance (SD16). A deleted wallet's ledger sums to 0."""
-    result = await conn.execute(
-        select(func.coalesce(func.sum(WalletEntry.amount_cents), 0))
+async def balance_totals(conn: AsyncConnection) -> tuple[int, int]:
+    """The sums of the live wallets' positive and negative balances (B-06 SD20, PD10):
+    what the association still owes in drinks, and what players owe. Never netted."""
+    balances = (
+        select(func.sum(WalletEntry.amount_cents).label("balance"))
         .join(Wallet, Wallet.wallet_id == WalletEntry.wallet_id)
         .where(Wallet.deleted_at.is_(None))
+        .group_by(WalletEntry.wallet_id)
+        .subquery()
     )
-    return int(result.scalar_one())
+    row = (
+        await conn.execute(
+            select(
+                func.coalesce(func.sum(balances.c.balance).filter(balances.c.balance > 0), 0),
+                func.coalesce(func.sum(balances.c.balance).filter(balances.c.balance < 0), 0),
+            )
+        )
+    ).one()
+    return int(row[0]), int(row[1])
 
 
 async def topups_per_run(conn: AsyncConnection) -> list[RunTopups]:
-    """Top-ups net of reversals per run, newest borrel first (PD18); the entries without a
-    run last, only when they do not sum to zero (PD2 reading A).
+    """Top-ups net of reversals and payments net of refunds per run, newest borrel first
+    (PD18; B-06 PD10); the entries without a run last, only when either sum is not
+    zero (PD2 reading A).
 
-    A reversal carries its top-up's run (SD12), so a run's sum is already net. A closing
-    or move entry is no top-up and counts nowhere, so deleting a wallet changes no row
-    (AC32).
+    A reversal carries its top-up's run (SD12) and a refund its payment's (B-06 SD9), so
+    a run's sums are already net. A closing or move entry counts nowhere, so deleting a
+    wallet changes no row (AC32).
     """
+    topups = WalletEntry.kind.in_(("topup", "reversal"))
+    payments = WalletEntry.kind.in_(("payment", "refund"))
     rows = (
         await conn.execute(
             select(
                 WalletEntry.run_id,
                 Run.name,
                 Run.started_at,
-                func.sum(WalletEntry.amount_cents).label("net"),
+                func.coalesce(func.sum(WalletEntry.amount_cents).filter(topups), 0).label("net"),
+                func.coalesce(func.sum(WalletEntry.amount_cents).filter(payments), 0).label("paid"),
             )
             .outerjoin(Run, Run.run_id == WalletEntry.run_id)
-            .where(WalletEntry.kind.in_(("topup", "reversal")))
+            .where(or_(topups, payments))
             .group_by(WalletEntry.run_id, Run.name, Run.started_at)
         )
     ).all()
@@ -671,8 +796,8 @@ async def topups_per_run(conn: AsyncConnection) -> list[RunTopups]:
         key=lambda row: (row.started_at, row.run_id),
         reverse=True,
     )
-    totals = [RunTopups(int(row.run_id), row.name, int(row.net)) for row in runs]
-    unrun = [int(row.net) for row in rows if row.run_id is None]
-    if unrun and unrun[0]:
-        totals.append(RunTopups(None, None, unrun[0]))
+    totals = [RunTopups(int(row.run_id), row.name, int(row.net), -int(row.paid)) for row in runs]
+    unrun = [(int(row.net), -int(row.paid)) for row in rows if row.run_id is None]
+    if unrun and any(unrun[0]):
+        totals.append(RunTopups(None, None, *unrun[0]))
     return totals

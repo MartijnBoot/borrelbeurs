@@ -138,7 +138,7 @@ def test_the_list_is_by_case_folded_name_with_balance_and_last_activity(
     assert [w["last_activity_at"] for w in listed] == [_iso(T0 + 2_000), _iso(T0 + 9_000), _iso(T0)]
 
 
-def test_the_outstanding_total_is_every_live_wallets_balance(
+def test_the_credit_total_is_every_live_wallets_positive_balance(
     admin: TestClient, settings: Settings, api_env: str
 ) -> None:
     """AC34: a deleted wallet's ledger sums to zero, so it adds nothing."""
@@ -150,8 +150,83 @@ def test_the_outstanding_total_is_every_live_wallets_balance(
 
     body = _overview(admin)
 
-    assert body["outstanding_cents"] == 4000
+    assert (body["positive_balance_cents"], body["negative_balance_cents"]) == (4000, 0)
     assert [w["name"] for w in body["wallets"]] == ["Jan", "Piet"]
+
+
+def test_tegoed_and_rood_are_the_positive_and_negative_balances(
+    admin: TestClient, settings: Settings, api_env: str
+) -> None:
+    """B-06 AC30, SD20, PD10: never netted against each other."""
+    for name, amount in (("Jan", 4000), ("Piet", 1000), ("Klaas", -350)):
+        wallet = _wallet(settings, api_env, name)
+        if amount > 0:
+            _entry(settings, api_env, wallet.wallet_id, amount)
+        else:
+            _entry(settings, api_env, wallet.wallet_id, amount, kind="payment")
+
+    body = _overview(admin)
+
+    assert (body["positive_balance_cents"], body["negative_balance_cents"]) == (5000, -350)
+    assert [w["balance_cents"] for w in body["wallets"]] == [4000, -350, 1000]
+
+
+def test_per_borrel_payments_are_net_of_refunds(
+    admin: TestClient, settings: Settings, api_env: str
+) -> None:
+    """B-06 AC30, PD10: a refund carries its payment's run, so a borrel's sum is net."""
+    run = _run(settings, api_env, "Borrel", T0)
+    jan = _wallet(settings, api_env, "Jan")
+    _entry(settings, api_env, jan.wallet_id, 5000, run_id=run)
+    paid = _entry(settings, api_env, jan.wallet_id, -840, kind="payment", run_id=run)
+    _db(
+        settings,
+        api_env,
+        lambda conn: wallets.insert_entry(
+            conn,
+            wallet_id=jan.wallet_id,
+            kind="refund",
+            amount_cents=840,
+            now_ms=T0,
+            run_id=run,
+            refunds_entry_id=paid,
+        ),
+    )
+
+    assert _overview(admin)["per_borrel"] == [
+        {"run_id": run, "name": "Borrel", "net_topup_cents": 5000, "net_payment_cents": 0}
+    ]
+
+    _entry(settings, api_env, jan.wallet_id, -300, kind="payment", run_id=run)
+
+    assert _overview(admin)["per_borrel"][0]["net_payment_cents"] == 300
+
+
+def test_a_borrel_with_payments_and_no_top_ups_has_a_row(
+    admin: TestClient, settings: Settings, api_env: str
+) -> None:
+    """PD10."""
+    run = _run(settings, api_env, "Borrel", T0)
+    jan = _wallet(settings, api_env, "Jan")
+    _entry(settings, api_env, jan.wallet_id, 5000)
+    _entry(settings, api_env, jan.wallet_id, -260, kind="payment", run_id=run)
+
+    assert _overview(admin)["per_borrel"] == [
+        {"run_id": run, "name": "Borrel", "net_topup_cents": 0, "net_payment_cents": 260},
+        {"run_id": None, "name": None, "net_topup_cents": 5000, "net_payment_cents": 0},
+    ]
+
+
+def test_a_payment_without_a_run_is_on_the_no_run_row(
+    admin: TestClient, settings: Settings, api_env: str
+) -> None:
+    """PD10, B-05 PD2 A: the row shows when either sum is non-zero."""
+    jan = _wallet(settings, api_env, "Jan")
+    _entry(settings, api_env, jan.wallet_id, -260, kind="payment")
+
+    assert _overview(admin)["per_borrel"] == [
+        {"run_id": None, "name": None, "net_topup_cents": 0, "net_payment_cents": 260}
+    ]
 
 
 def test_the_per_borrel_totals_are_net_of_reversals_newest_first(
@@ -169,8 +244,13 @@ def test_the_per_borrel_totals_are_net_of_reversals_newest_first(
     _entry(settings, api_env, jan.wallet_id, 5000, run_id=newer)
 
     assert _overview(admin)["per_borrel"] == [
-        {"run_id": newer, "name": "Novemberborrel", "net_topup_cents": 5000},
-        {"run_id": older, "name": "Oktoberborrel", "net_topup_cents": 1000},
+        {
+            "run_id": newer,
+            "name": "Novemberborrel",
+            "net_topup_cents": 5000,
+            "net_payment_cents": 0,
+        },
+        {"run_id": older, "name": "Oktoberborrel", "net_topup_cents": 1000, "net_payment_cents": 0},
     ]
 
 
@@ -187,6 +267,7 @@ def test_top_ups_without_a_run_are_a_last_row_only_when_they_sum_to_something(
         "run_id": None,
         "name": None,
         "net_topup_cents": 1500,
+        "net_payment_cents": 0,
     }
 
     _entry(settings, api_env, jan.wallet_id, -1500, kind="reversal", reverses=loose)
@@ -204,12 +285,17 @@ def test_moves_and_closings_are_no_top_ups(
     _entry(settings, api_env, jan.wallet_id, -500, kind="closing", run_id=run)
 
     assert _overview(admin)["per_borrel"] == [
-        {"run_id": run, "name": "Borrel", "net_topup_cents": 3000}
+        {"run_id": run, "name": "Borrel", "net_topup_cents": 3000, "net_payment_cents": 0}
     ]
 
 
 def test_an_empty_section_is_all_zero(admin: TestClient) -> None:
-    assert _overview(admin) == {"outstanding_cents": 0, "per_borrel": [], "wallets": []}
+    assert _overview(admin) == {
+        "positive_balance_cents": 0,
+        "negative_balance_cents": 0,
+        "per_borrel": [],
+        "wallets": [],
+    }
 
 
 # --- delete (SD15) -------------------------------------------------------------------
@@ -240,6 +326,26 @@ def test_an_admin_delete_is_a_players_delete_with_the_key_on_the_closing_entry(
     assert _wallet(settings, api_env, "jan").name == "jan"
 
 
+def test_an_admin_delete_of_a_wallet_in_debt_writes_the_debt_off(
+    live_run: int, admin: TestClient, settings: Settings, api_env: str
+) -> None:
+    """B-06 AC27, SD8: at -350 a 204 and a closing of +350 with the live run and label."""
+    jan = _wallet(settings, api_env, "Jan")
+    _entry(settings, api_env, jan.wallet_id, 500, run_id=live_run)
+    _entry(settings, api_env, jan.wallet_id, -850, kind="payment", run_id=live_run)
+
+    response = admin.delete(f"/api/admin/wallets/{jan.wallet_id}")
+
+    assert response.status_code == 204
+    assert _sql(
+        settings,
+        api_env,
+        "SELECT kind, amount_cents, run_id, actor_label FROM wallet_entry WHERE kind = 'closing'",
+    ) == [("closing", 350, live_run, "Bestuur")]
+    assert _sql(settings, api_env, "SELECT sum(amount_cents) FROM wallet_entry") == [(0,)]
+    assert _sql(settings, api_env, "SELECT name FROM wallet") == [(None,)]
+
+
 def test_deleting_an_unknown_or_deleted_wallet_is_404(
     admin: TestClient, settings: Settings, api_env: str
 ) -> None:
@@ -263,7 +369,9 @@ def test_a_borrels_top_up_total_is_the_same_after_any_delete(
     for amount, wallet in enumerate(funded.values(), start=1):
         _entry(settings, api_env, wallet.wallet_id, 1000 * amount, run_id=live_run)
     before = _overview(admin)["per_borrel"]
-    assert before == [{"run_id": live_run, "name": "Borrel", "net_topup_cents": 6000}]
+    assert before == [
+        {"run_id": live_run, "name": "Borrel", "net_topup_cents": 6000, "net_payment_cents": 0}
+    ]
 
     admin.cookies.set("bb_wallet", "cookie-Speler")
     assert admin.delete("/api/wallet").status_code == 204
@@ -277,7 +385,7 @@ def test_a_borrels_top_up_total_is_the_same_after_any_delete(
     )
     after = _overview(admin)
     assert after["per_borrel"] == before
-    assert (after["outstanding_cents"], after["wallets"]) == (0, [])
+    assert (after["positive_balance_cents"], after["wallets"]) == (0, [])
 
 
 # --- settings (SD6, SD15, PD12) ------------------------------------------------------

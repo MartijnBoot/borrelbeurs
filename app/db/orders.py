@@ -13,6 +13,14 @@ surfaces as the database's `IntegrityError`; `app/runtime/orders.py` replays it.
 Phase 3 (SD20) adds the acting key and the receipt. The receipt needs the
 `order_id`, so it is written by an UPDATE of the order row once the id is known,
 still inside the same transaction: an order is never stored without its receipt.
+
+B-06 (SD14, SD15, PD5) adds the wallet payment to the same transaction. Before any
+write, the scanned wallet's row is locked `FOR UPDATE` by its credential (with a
+2 s `lock_timeout`, so a wallet held elsewhere is a 503 the bar retries, not a
+market lock held until the step timeout) and its balance checked against the
+run's limit. A refusal raises before anything is written. Then the `payment`
+entry is one more `INSERT`, naming the order: an order is never stored without
+its payment, nor a payment without its order (AC34).
 """
 
 from __future__ import annotations
@@ -21,11 +29,12 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import BigInteger, func, insert, select, type_coerce, update
+from sqlalchemy import BigInteger, func, insert, select, text, type_coerce, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from app.db import models
+from app.db import models, wallets
 from app.db.engine_state import compare_and_set, insert_tick
+from app.runtime.wallet_codes import normalise_short_code
 from exchange import EngineState, MarketSpec
 
 
@@ -38,9 +47,30 @@ class OrderLineInput:
 
 
 @dataclass(frozen=True)
+class PaymentInput:
+    """A wallet paying for the order (B-06 SD13, PD5): exactly one credential as scanned,
+    the live run's "Rood staan tot", and the acting key's label for the entry."""
+
+    qr_token: str | None
+    short_code: str | None
+    credit_limit_cents: int
+    actor_label: str | None
+
+
+@dataclass(frozen=True)
+class WalletPaid:
+    """The wallet that paid, and its balance after the payment (SD16)."""
+
+    wallet_id: int
+    name: str
+    balance_after_cents: int
+
+
+@dataclass(frozen=True)
 class OrderWritten:
     order_id: int
     version: int
+    paid: WalletPaid | None = None
 
 
 @dataclass(frozen=True)
@@ -50,6 +80,8 @@ class StoredOrder:
     version: int
     actor_key_id: int | None
     response: Mapping[str, Any] | None
+    # The wallet whose `payment` names this order, or `None` (B-06 PD7).
+    payment_wallet_id: int | None = None
 
 
 async def write_order(
@@ -64,9 +96,15 @@ async def write_order(
     lines: Sequence[OrderLineInput],
     wall_ts_ms: int,
     actor_key_id: int | None = None,
-    response: Callable[[int], Mapping[str, Any]] | None = None,
+    response: Callable[[int, WalletPaid | None], Mapping[str, Any]] | None = None,
+    payment: PaymentInput | None = None,
 ) -> OrderWritten:
-    """Store the order, its lines, `state` and its tick in one transaction, or nothing."""
+    """Store the order, its lines, `state` and its tick in one transaction, or nothing.
+
+    With `payment`, the wallet pays the lines' total in that same transaction, or
+    `WalletNotFound` / `InsufficientBalance` is raised before any write (SD15).
+    `response` gets the order's id and the wallet that paid.
+    """
     unknown = sorted({line.drink_id for line in lines} - set(drink_ids))
     if unknown:
         raise ValueError(
@@ -76,7 +114,9 @@ async def write_order(
     if not lines:
         raise ValueError("an order needs at least one line")
 
+    total_cents = sum(line.qty * line.unit_price_cents for line in lines)
     async with engine.begin() as conn:
+        paid = None if payment is None else await _check_payment(conn, payment, total_cents)
         await compare_and_set(
             conn,
             run_id=run_id,
@@ -120,11 +160,24 @@ async def write_order(
                 ]
             )
         )
+        if paid is not None:
+            assert payment is not None
+            await wallets.insert_entry(
+                conn,
+                wallet_id=paid.wallet_id,
+                kind="payment",
+                amount_cents=-total_cents,
+                now_ms=wall_ts_ms,
+                run_id=run_id,
+                actor_key_id=actor_key_id,
+                actor_label=payment.actor_label,
+                order_id=order_id,
+            )
         if response is not None:
             await conn.execute(
                 update(models.Order)
                 .where(models.Order.order_id == order_id)
-                .values(response=dict(response(order_id)))
+                .values(response=dict(response(order_id, paid)))
             )
         await insert_tick(
             conn,
@@ -135,17 +188,48 @@ async def write_order(
             source="order",
             wall_ts_ms=wall_ts_ms,
         )
-    return OrderWritten(order_id=order_id, version=state.version)
+    return OrderWritten(order_id=order_id, version=state.version, paid=paid)
+
+
+async def _check_payment(
+    conn: AsyncConnection, payment: PaymentInput, total_cents: int
+) -> WalletPaid:
+    """Lock the scanned wallet and check `total_cents` against balance + limit (SD15)."""
+    await conn.execute(text("SET LOCAL lock_timeout = '2s'"))
+    wallet = None
+    if payment.qr_token is not None:
+        wallet = await wallets.lock_wallet_by_qr_token(conn, payment.qr_token)
+    elif payment.short_code is not None:
+        code = normalise_short_code(payment.short_code)
+        if code is not None:
+            wallet = await wallets.lock_wallet_by_short_code(conn, code)
+    if wallet is None:
+        raise wallets.WalletNotFound("no wallet has this code")
+    balance = await wallets.balance(conn, wallet.wallet_id)
+    if total_cents > balance + payment.credit_limit_cents:
+        raise wallets.InsufficientBalance(
+            "the balance is too low for this order",
+            extra={"balance_cents": balance, "credit_limit_cents": payment.credit_limit_cents},
+        )
+    return WalletPaid(wallet.wallet_id, wallet.name, balance - total_cents)
 
 
 async def find_order_by_key(conn: AsyncConnection, idempotency_key: str) -> StoredOrder | None:
-    """The order stored under `idempotency_key`, with its receipt, or `None`."""
+    """The order stored under `idempotency_key`, with its receipt and paying wallet, or `None`."""
     order = models.Order
+    entry = models.WalletEntry
     row = (
         await conn.execute(
             select(
-                order.order_id, order.run_id, order.version, order.actor_key_id, order.response
-            ).where(order.idempotency_key == idempotency_key)
+                order.order_id,
+                order.run_id,
+                order.version,
+                order.actor_key_id,
+                order.response,
+                entry.wallet_id,
+            )
+            .outerjoin(entry, entry.order_id == order.order_id)
+            .where(order.idempotency_key == idempotency_key)
         )
     ).one_or_none()
     if row is None:
@@ -156,6 +240,7 @@ async def find_order_by_key(conn: AsyncConnection, idempotency_key: str) -> Stor
         version=int(row.version),
         actor_key_id=None if row.actor_key_id is None else int(row.actor_key_id),
         response=row.response,
+        payment_wallet_id=None if row.wallet_id is None else int(row.wallet_id),
     )
 
 

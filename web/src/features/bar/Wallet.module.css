@@ -1,0 +1,50 @@
+/* B-06 SD4, SD12: the wallet picker and the held wallet, above the drinks; theme tokens only. */
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.find {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.find input {
+  font-size: 20px;
+  letter-spacing: 0.1em;
+  font-family: ui-monospace, monospace;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.error {
+  margin: 0;
+  color: var(--danger);
+}
+
+.held {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+}
+
+.name {
+  font-size: 2rem;
+  line-height: 1.1;
+}
+
+.balance {
+  font-size: 1.1rem;
+  color: var(--muted);
+}

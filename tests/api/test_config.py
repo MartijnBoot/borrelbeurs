@@ -7,6 +7,9 @@ interval's 422). SD8's "a-b" ranges include both ends (the user, 2026-10-08).
 B-03 T1 (AC1-AC4): the six noise params are writable within SD3's ranges and in
 the document; the legacy `bm_sigma`, `tick_interval_ms`, `quote_grace_versions`
 are still 422.
+
+B-06 T2 (AC1, AC2): "Wallet verplicht" and "Rood staan tot" are top-level run
+fields, stored on a draft or live run, 422 off their rules, and broadcast live.
 """
 
 from __future__ import annotations
@@ -116,6 +119,8 @@ def test_get_config_is_the_documented_shape(draft: int, client: TestClient, logi
         "name": "Concept",
         "status": "draft",
         "candle_interval_s": 60,
+        "wallet_required": True,
+        "credit_limit_cents": 0,
     }
     assert set(body["params"]) == {
         "step_quant",
@@ -517,6 +522,106 @@ def test_a_live_patch_of_the_six_is_stored_and_in_the_document(
     assert response.json() == {"revision": before["revision"] + 1}
     after = admin.get(f"/api/runs/{live_run}/config").json()
     assert after["params"] == {**before["params"], **noise}
+
+
+def test_a_draft_patch_of_the_switch_and_the_limit_is_stored(
+    draft: int, client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """B-06 AC2 (draft half): both stored, in the document and in the revision (PD6)."""
+    admin = login("admin", label="Bestuur")
+
+    first = admin.patch(f"/api/runs/{draft}/config", json={"wallet_required": False})
+    second = admin.patch(f"/api/runs/{draft}/config", json={"credit_limit_cents": 250})
+
+    assert (first.status_code, second.status_code) == (200, 200), second.text
+    assert (first.json(), second.json()) == ({"revision": 2}, {"revision": 3})
+    after = admin.get(f"/api/runs/{draft}/config").json()
+    assert (after["run"]["wallet_required"], after["run"]["credit_limit_cents"]) == (False, 250)
+    assert (
+        _scalar(
+            settings,
+            api_env,
+            "SELECT wallet_required::text || ':' || credit_limit_cents FROM run WHERE run_id = :r",
+            r=draft,
+        )
+        == "false:250"
+    )
+    _, stored = _stored_revision(settings, api_env, draft, 3)
+    assert stored == after
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"credit_limit_cents": -50},
+        {"credit_limit_cents": 25},
+        {"credit_limit_cents": 5050},
+        {"credit_limit_cents": "250"},
+        {"credit_limit_cents": 2.5},
+        {"credit_limit_cents": None},
+        {"wallet_required": "true"},
+        {"wallet_required": 1},
+        {"wallet_required": None},
+    ],
+    ids=[
+        "limit--50",
+        "limit-25",
+        "limit-5050",
+        "limit-str",
+        "limit-float",
+        "limit-null",
+        "switch-str",
+        "switch-int",
+        "switch-null",
+    ],
+)
+def test_the_switch_and_the_limit_off_their_rules_are_422_and_store_nothing(
+    draft: int, client: TestClient, login: Login, settings: Settings, api_env: str, body: Any
+) -> None:
+    """B-06 AC2: €0,00 to €50,00 on the €0,50 grid; a strict boolean; never null."""
+    admin = login("admin")
+
+    response = admin.patch(f"/api/runs/{draft}/config", json=body)
+
+    assert response.status_code == 422, response.text
+    assert next(iter(body)) in _fault_fields(response)
+    assert _revisions(settings, api_env, draft) == 1
+    run = admin.get(f"/api/runs/{draft}/config").json()["run"]
+    assert (run["wallet_required"], run["credit_limit_cents"]) == (True, 0)
+
+
+@pytest.mark.parametrize(
+    ("body", "field", "value"),
+    [
+        ({"wallet_required": True}, "wallet_required", True),
+        ({"credit_limit_cents": 250}, "credit_limit_cents", 250),
+    ],
+    ids=["switch", "limit"],
+)
+def test_a_live_patch_of_the_switch_or_the_limit_is_one_config_frame(
+    live_run: int, live_client: TestClient, login: Login, body: Any, field: str, value: Any
+) -> None:
+    """B-06 AC2 (live half), SD17, PD4: one transition, and the frame's `run` carries it."""
+    admin = login("admin")
+    before = admin.get(f"/api/runs/{live_run}/config").json()
+    version = admin.get("/api/state").json()["version"]
+
+    with admin.websocket_connect("wss://testserver/ws") as ws:
+        assert json.loads(ws.receive_text())["type"] == "hello"
+        ws.send_text(json.dumps({"type": "hello", "boot_id": "elsewhere", "last_seq": 0}))
+        snapshot = json.loads(ws.receive_text())
+        assert snapshot["type"] == "snapshot"
+        response = admin.patch(f"/api/runs/{live_run}/config", json=body)
+        frame = json.loads(ws.receive_text())
+        while frame["type"] != "config":
+            frame = json.loads(ws.receive_text())
+
+    assert snapshot["data"]["run"][field] == before["run"][field]
+    assert response.status_code == 200, response.text
+    assert response.json() == {"revision": before["revision"] + 1}
+    assert frame["version"] == version + 1
+    assert frame["data"]["run"][field] == value
+    assert admin.get(f"/api/runs/{live_run}/config").json()["run"][field] == value
 
 
 def test_an_ended_run_is_409_run_ended(
