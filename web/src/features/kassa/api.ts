@@ -29,6 +29,17 @@ export const Topup: z.ZodType<Schemas['TopupData']> = z.object({
 })
 export type Topup = z.infer<typeof Topup>
 
+/** B-06 SD9: a payment at the bar; `lines` is null once the order went with its run. */
+export const Payment: z.ZodType<Schemas['KassaPayment']> = z.object({
+  entry_id: z.number().int(),
+  amount_cents: z.number().int(),
+  created_at: z.string(),
+  lines: z.array(z.object({ name: z.string(), qty: z.number().int() })).nullable(),
+  refunded: z.boolean(),
+  actor_label: z.string().nullable(),
+})
+export type Payment = z.infer<typeof Payment>
+
 const BookedEntry: z.ZodType<Schemas['BookedEntry']> = z.object({
   entry_id: z.number().int(),
   wallet_id: z.number().int(),
@@ -68,6 +79,19 @@ const NewCode: z.ZodType<Schemas['NewCode']> = z.object({
   qr_token: z.string(),
   short_code: z.string(),
 })
+
+/** B-06 SD9, AC23: the wallet's payments, newest first, at any age. */
+export function payments(walletId: number): Promise<Payment[]> {
+  return request('GET', `/api/kassa/wallets/${walletId}/payments`, { schema: z.array(Payment) })
+}
+
+/** B-06 SD9: 409 `already_refunded` or `wallet_deleted` when refused. */
+export async function refund(entryId: number, key: string): Promise<void> {
+  await request('POST', `/api/payments/${entryId}/refund`, {
+    headers: { 'Idempotency-Key': key },
+    schema: BookedEntry,
+  })
+}
 
 /** SD12: 409 `already_reversed`, `insufficient_balance` or `wallet_deleted` when refused. */
 export async function reverse(entryId: number, key: string): Promise<void> {

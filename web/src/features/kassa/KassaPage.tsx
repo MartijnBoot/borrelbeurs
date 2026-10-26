@@ -1,7 +1,8 @@
 /**
  * The kassa page (`/kassa`, B-05 SD22): find a wallet by its typed short code,
  * or by its QR code where the browser allows a camera (SD17), then top it up
- * and see its top-ups. The code goes to the server exactly as
+ * and see its top-ups and its payments at the bar, which it may refund (B-06
+ * SD9, AC23). The code goes to the server exactly as
  * typed; the server reads its spelling (AC14). An unknown code is "Onbekende
  * wallet".
  *
@@ -21,10 +22,20 @@ import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Field } from '../../components/ui/Field'
 import { formatBalance } from '../../lib/format'
-import { type KassaWallet, lookup, newCode, type Topup, topups, type WalletQuery } from './api'
+import {
+  type KassaWallet,
+  lookup,
+  newCode,
+  type Payment,
+  payments,
+  type Topup,
+  topups,
+  type WalletQuery,
+} from './api'
 import { refusalText } from './errors'
 import styles from './KassaPage.module.css'
 import { MoveDialog } from './MoveDialog'
+import { PaymentList } from './PaymentList'
 import { TopupList } from './TopupList'
 import { TopUpPanel } from './TopUpPanel'
 
@@ -32,6 +43,7 @@ interface Found {
   query: WalletQuery
   wallet: KassaWallet
   topups: Topup[]
+  payments: Payment[]
 }
 
 export function KassaPage() {
@@ -52,8 +64,8 @@ export function KassaPage() {
     setError(null)
     try {
       const wallet = await lookup(query)
-      const list = await topups(wallet.wallet_id)
-      if (asked === latest.current) setFound({ query, wallet, topups: list })
+      const [list, paid] = await Promise.all([topups(wallet.wallet_id), payments(wallet.wallet_id)])
+      if (asked === latest.current) setFound({ query, wallet, topups: list, payments: paid })
     } catch (failure) {
       if (asked !== latest.current) return
       setFound(null)
@@ -145,6 +157,11 @@ export function KassaPage() {
             refresh={() => refresh(found.query)}
           />
           <TopupList topups={found.topups} onReversed={() => void open(found.query)} />
+          <PaymentList
+            walletName={found.wallet.name}
+            payments={found.payments}
+            onRefunded={() => void open(found.query)}
+          />
           <div className={styles.actions}>
             <Button onClick={() => setMoving(true)}>Saldo overzetten van…</Button>
             <Button onClick={() => setRenewing(true)}>Nieuwe code</Button>
