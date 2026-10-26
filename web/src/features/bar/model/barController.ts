@@ -12,8 +12,9 @@
  *   displayed quote, a stale latest one (AC8), an open conflict (AC14), an
  *   empty basket, or a basket whose order is still open.
  * - While the basket's order is open (sending, retrying, a conflict, unknown)
- *   the basket is shown but locked. Accepted, it clears; refused, cancelled,
- *   failed or dismissed, it stays, unlocked (AC11, AC12, AC18).
+ *   the basket is shown but locked. Accepted, or dismissed while unknown (it may
+ *   have been booked), it clears; refused, cancelled or failed, it stays, unlocked
+ *   (AC11, AC12, AC18).
  *
  * Components call only this, through `useBarController`; the property test
  * drives the same object. `view` is a new frozen object on every change, so
@@ -89,7 +90,8 @@ export function createBarController<Id>(deps: BarControllerDeps<Id>): BarControl
     if (open !== null) {
       const entry = intents.entries.find((e) => e.id === open)
       if (entry === undefined || SETTLED.has(entry.state)) {
-        if (entry?.state === 'accepted') basket = EMPTY
+        // A dismissed order may have been booked: a second checkout could pay twice.
+        if (entry?.state === 'accepted' || entry?.state === 'dismissed') basket = EMPTY
         open = null
       }
     }

@@ -271,6 +271,21 @@ describe('the bar controller', () => {
     expect(controller.view.basketLocked).toBe(false)
   })
 
+  it('clears the basket when an unknown order is dismissed: it may have been booked', async () => {
+    buy(1)
+    for (const delay of [0, 1000, 2000, 4000]) {
+      await vi.advanceTimersByTimeAsync(delay)
+      posts[posts.length - 1].reject(new TypeError('Failed to fetch'))
+      await vi.advanceTimersByTimeAsync(0)
+    }
+    expect(controller.view.entries[0].state).toBe('unknown')
+    expect(controller.view.basketLocked).toBe(true)
+    controller.dismiss(controller.view.entries[0].id)
+    expect(controller.view.basket).toEqual([])
+    expect(controller.view.basketLocked).toBe(false)
+    expect(controller.checkout()).toBeNull()
+  })
+
   it('keeps the basket on a refusal, unlocked (B-06 SD15)', async () => {
     buy(1)
     posts[0].reject(new HttpError(409, 'wallet_required', 'scan one'))
