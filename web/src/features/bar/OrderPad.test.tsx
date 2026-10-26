@@ -474,6 +474,18 @@ describe('the held wallet (B-06 T13)', () => {
     expect(screen.queryByText(exactly(paid))).toBeNull()
   })
 
+  it('"Andere wallet" lets go of the wallet only, "Annuleren" of both (T14, AC19)', () => {
+    hold()
+    fireEvent.click(bier())
+    fireEvent.click(screen.getByRole('button', { name: 'Andere wallet' }))
+    expect(held()).toBeNull()
+    expect(basketLines()).toEqual([`1× Bier — ${formatEuro(250)}`])
+    hold()
+    fireEvent.click(within(held()!).getByRole('button', { name: 'Annuleren' }))
+    expect(held()).toBeNull()
+    expect(basketLines()).toEqual([])
+  })
+
   it('while the order is open the held wallet cannot be replaced (PD12)', () => {
     hold()
     fireEvent.click(bier())

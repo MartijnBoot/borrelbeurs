@@ -20,6 +20,10 @@
  *   Refused, cancelled or failed, both stay, unlocked (AC11, AC12, AC18), but a
  *   `wallet_not_found` lets go of the wallet (AC12) and an
  *   `insufficient_balance` takes the server's balance for it (SD18).
+ * - Letting go (B-06 SD6, PD15): "Andere wallet" (`otherWallet`) drops the
+ *   wallet, "Annuleren" (`abandon`) both. While a wallet or a non-empty basket
+ *   is held and no order of the basket is open, `WALLET_IDLE_MS` with no tap
+ *   (`touch`, from the page's pointer and key downs) clears both.
  *
  * Components call only this, through `useBarController`; the property test
  * drives the same object. `view` is a new frozen object on every change, so
@@ -28,6 +32,7 @@
 import type { DrinkId, ExchangeState, Quote } from '../../exchange'
 import type { OrderBody, OrderOutcome, WalletQuery } from '../api/orders'
 import { add, EMPTY, remove, type Basket } from './basket'
+import { WALLET_IDLE_MS } from './constants'
 import { createHoldBuffer, isStale, type PressId } from './holdBuffer'
 import { createOrderIntents, type Conflict, type OrderEntry, type Refusal } from './orderIntents'
 
@@ -79,6 +84,12 @@ export interface BarController {
   clear(): void
   /** Hold a scanned wallet in place of any held one; refused while the basket is locked. */
   hold(wallet: HeldWallet): void
+  /** "Andere wallet": let go of the wallet, keep the basket; refused while locked. */
+  otherWallet(): void
+  /** "Annuleren": let go of the wallet and the basket; refused while locked. */
+  abandon(): void
+  /** A tap anywhere on the page: the idle wait starts again (PD15). */
+  touch(): void
   /** "Afrekenen": the new entry's id, or `null` when it is refused. */
   checkout(): number | null
   refresh(): void
@@ -96,10 +107,31 @@ export function createBarController<Id>(deps: BarControllerDeps<Id>): BarControl
   let wallet: HeldWallet | null = null
   /** The id of the basket's order while it is open, else `null`. */
   let open: number | null = null
+  let idle: Id | null = null
 
   function changed() {
     view = null
     for (const listener of listeners) listener()
+  }
+
+  /** (Re)start the idle wait while something is held and no order of it is open (PD15). */
+  function arm() {
+    if (idle !== null) deps.clearTimeout(idle)
+    idle = null
+    if (open !== null || (wallet === null && basket.length === 0)) return
+    idle = deps.setTimeout(() => {
+      idle = null
+      letGo(true)
+    }, WALLET_IDLE_MS)
+  }
+
+  /** Drop the wallet, and the basket too when `all`; nothing while the basket is locked. */
+  function letGo(all: boolean) {
+    if (open !== null) return
+    wallet = null
+    if (all) basket = EMPTY
+    arm()
+    changed()
   }
 
   /** The intents changed: let go of the basket's order once it has settled. */
@@ -112,6 +144,7 @@ export function createBarController<Id>(deps: BarControllerDeps<Id>): BarControl
         if (entry?.state === 'accepted') wallet = null
         if (entry?.refusal != null) wallet = refused(wallet, entry.refusal)
         open = null
+        arm()
       }
     }
     changed()
@@ -130,6 +163,7 @@ export function createBarController<Id>(deps: BarControllerDeps<Id>): BarControl
   function editBasket(next: Basket) {
     if (open !== null || next === basket) return
     basket = next
+    arm()
     changed()
   }
 
@@ -186,8 +220,12 @@ export function createBarController<Id>(deps: BarControllerDeps<Id>): BarControl
     hold(next) {
       if (open !== null) return
       wallet = Object.freeze({ ...next })
+      arm()
       changed()
     },
+    otherWallet: () => letGo(false),
+    abandon: () => letGo(true),
+    touch: () => arm(),
     checkout() {
       const displayed = hold.displayed
       if (displayed === null || isStale(hold.latest, deps.now())) return null
@@ -195,6 +233,7 @@ export function createBarController<Id>(deps: BarControllerDeps<Id>): BarControl
       const id = intents.create(displayed, basket, wallet?.query ?? null)
       if (id !== null) {
         open = id
+        arm()
         changed()
       }
       return id
@@ -205,6 +244,7 @@ export function createBarController<Id>(deps: BarControllerDeps<Id>): BarControl
     retry: (id) => intents.retry(id),
     dismiss: (id) => intents.dismiss(id),
     dispose() {
+      if (idle !== null) deps.clearTimeout(idle)
       unsubscribe()
       hold.dispose()
       intents.dispose()

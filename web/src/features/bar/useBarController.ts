@@ -28,6 +28,9 @@ export interface BarActions {
   remove(drinkId: DrinkId): void
   clear(): void
   hold(wallet: HeldWallet): void
+  otherWallet(): void
+  abandon(): void
+  touch(): void
   checkout(): void
   refresh(): void
   confirm(): void
@@ -58,6 +61,9 @@ function createSlot() {
     remove: (drinkId) => controller?.remove(drinkId),
     clear: () => controller?.clear(),
     hold: (wallet) => controller?.hold(wallet),
+    otherWallet: () => controller?.otherWallet(),
+    abandon: () => controller?.abandon(),
+    touch: () => controller?.touch(),
     checkout: () => void controller?.checkout(),
     refresh: () => controller?.refresh(),
     confirm: () => controller?.confirm(),

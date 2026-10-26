@@ -4,6 +4,9 @@
  * "Financieel overzicht" card (panel and revenue chart), stacked at
  * ≤1000 px.
  *
+ * Any pointer or key down inside the live page counts as a tap, restarting the
+ * wait after which a held wallet and the basket are let go (B-06 SD6, PD15).
+ *
  * With no live run it shows only "Geen actieve borrel" (SD14): no pad, no
  * panel and no controller. The same page shows the cards once a snapshot
  * arrives, without a reload (AC27).
@@ -34,7 +37,11 @@ export function BarPage() {
 function LiveBar() {
   const { view, actions } = useBarController()
   return (
-    <div className={styles.cards}>
+    <div
+      className={styles.cards}
+      onPointerDownCapture={actions.touch}
+      onKeyDownCapture={actions.touch}
+    >
       <section className={styles.card}>
         <h2 className={styles.cardTitle}>Bestellingen</h2>
         <OrderPad view={view} actions={actions} />

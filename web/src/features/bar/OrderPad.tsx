@@ -43,7 +43,16 @@ export interface OrderPadProps {
   view: BarView
   actions: Pick<
     BarActions,
-    'press' | 'release' | 'add' | 'remove' | 'clear' | 'hold' | 'checkout' | 'refresh'
+    | 'press'
+    | 'release'
+    | 'add'
+    | 'remove'
+    | 'clear'
+    | 'hold'
+    | 'otherWallet'
+    | 'abandon'
+    | 'checkout'
+    | 'refresh'
   >
 }
 
@@ -98,7 +107,12 @@ export function OrderPad({ view, actions }: OrderPadProps) {
       {wallet === null ? (
         <WalletPicker disabled={basketLocked} onFound={actions.hold} />
       ) : (
-        <HeldWallet wallet={wallet} />
+        <HeldWallet
+          wallet={wallet}
+          locked={basketLocked}
+          onOther={actions.otherWallet}
+          onCancel={actions.abandon}
+        />
       )}
       <div className={styles.grid} role="group" aria-label="Drankjes">
         {drinks.map(({ drink_id, name }) => {

@@ -13,7 +13,7 @@ import {
 } from '../../exchange'
 import type { OrderBody, OrderOutcome } from '../api/orders'
 import { createBarController, type BarController } from './barController'
-import { HOLD_MS, STALE_MS } from './constants'
+import { HOLD_MS, STALE_MS, WALLET_IDLE_MS } from './constants'
 
 const THEME = {
   preset: 'blauw' as const,
@@ -115,6 +115,78 @@ const buy = (drinkId: number) => {
   controller.add(drinkId)
   return controller.checkout()
 }
+
+describe('letting go (B-06 T14: SD6, AC19, PD15)', () => {
+  const JAN = { query: { qr_token: 'tok-jan' }, name: 'Jan', balance_cents: 1500 }
+  const holding = () => [controller.view.wallet?.name ?? null, controller.view.basket.length]
+
+  it('60 s with no tap clears the wallet and the basket; 59 999 ms keeps both', () => {
+    expect(WALLET_IDLE_MS).toBe(60_000)
+    controller.hold(JAN)
+    controller.add(1)
+    vi.advanceTimersByTime(59_999)
+    expect(holding()).toEqual(['Jan', 1])
+    vi.advanceTimersByTime(1)
+    expect(holding()).toEqual([null, 0])
+  })
+
+  it('a basket alone is let go too', () => {
+    controller.add(1)
+    vi.advanceTimersByTime(60_000)
+    expect(holding()).toEqual([null, 0])
+  })
+
+  it('a tap at 30 s restarts the 60 s', () => {
+    controller.hold(JAN)
+    vi.advanceTimersByTime(30_000)
+    controller.touch()
+    vi.advanceTimersByTime(59_999)
+    expect(holding()).toEqual(['Jan', 0])
+    vi.advanceTimersByTime(1)
+    expect(holding()).toEqual([null, 0])
+  })
+
+  it("never clears while the basket's order is open, and restarts once it settles", async () => {
+    controller.hold(JAN)
+    buy(1)
+    vi.advanceTimersByTime(120_000)
+    expect(holding()).toEqual(['Jan', 1])
+    posts[0].reject(new HttpError(404, 'other', 'no'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(controller.view.basketLocked).toBe(false)
+    vi.advanceTimersByTime(59_999)
+    expect(holding()).toEqual(['Jan', 1])
+    vi.advanceTimersByTime(1)
+    expect(holding()).toEqual([null, 0])
+  })
+
+  it('"Andere wallet" lets go of the wallet and keeps the basket', () => {
+    controller.hold(JAN)
+    controller.add(1)
+    controller.otherWallet()
+    expect(holding()).toEqual([null, 1])
+  })
+
+  it('"Annuleren" lets go of both', () => {
+    controller.hold(JAN)
+    controller.add(1)
+    controller.abandon()
+    expect(holding()).toEqual([null, 0])
+  })
+
+  it('neither works while the order is open (PD12)', () => {
+    controller.hold(JAN)
+    buy(1)
+    controller.otherWallet()
+    controller.abandon()
+    expect(holding()).toEqual(['Jan', 1])
+  })
+
+  it('nothing held arms no timer', () => {
+    controller.touch()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+})
 
 describe('the bar controller', () => {
   it('offers each new store quote to the hold buffer', () => {
