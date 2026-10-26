@@ -2,10 +2,12 @@
 // OrderPad (Phase 5 T10) over a real controller and the real store, on fake
 // timers that include performance.now: SD1, SD4, SD5, SD11, PD10.
 // B-06 T12: the basket and "Afrekenen" (SD4, SD5, SD17; AC2, AC5, AC14, AC15, AC17).
+// B-06 T13: the held wallet and paying (SD4-SD7, SD18; AC5, AC11-AC14, AC18, AC25).
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { useSyncExternalStore } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { formatEuro } from '../../lib/format'
+import { formatBalance, formatEuro } from '../../lib/format'
+import { HttpError } from '../../lib/http'
 import {
   applyMessage,
   applyPolledState,
@@ -15,9 +17,10 @@ import {
   type SnapshotData,
 } from '../exchange'
 import type { OrderBody, OrderOutcome } from './api/orders'
-import { createBarController, type BarController } from './model/barController'
+import { createBarController, type BarController, type HeldWallet } from './model/barController'
 import { AGE_SHOW_MS, STALE_MS } from './model/constants'
 import { OrderPad } from './OrderPad'
+import { PendingOrders } from './PendingOrders'
 
 const THEME = {
   preset: 'blauw' as const,
@@ -93,11 +96,17 @@ function config(run: Partial<typeof RUN>, colaActive = true) {
 
 let controller: BarController
 let posts: OrderBody[]
+let keys: string[]
 let answer: (body: OrderBody) => Promise<OrderOutcome>
 
 function Harness() {
   const view = useSyncExternalStore(controller.subscribe, () => controller.view)
-  return <OrderPad view={view} actions={controller} />
+  return (
+    <>
+      <OrderPad view={view} actions={controller} />
+      <PendingOrders view={view} actions={controller} />
+    </>
+  )
 }
 
 function makeController() {
@@ -106,8 +115,9 @@ function makeController() {
     now: () => performance.now(),
     setTimeout: (fn, ms) => setTimeout(fn, ms),
     clearTimeout: (id) => clearTimeout(id),
-    post: ({ body }) => {
+    post: ({ key, body }) => {
       posts.push(body)
+      keys.push(key)
       return answer(body)
     },
     newKey: () => crypto.randomUUID(),
@@ -137,6 +147,7 @@ beforeEach(() => {
   seq = 1
   exchangeStore.setState(initialState, true)
   posts = []
+  keys = []
   answer = () => new Promise<OrderOutcome>(() => {})
   controller = makeController()
   const hello = {
@@ -161,7 +172,7 @@ afterEach(() => {
 const drinkButtons = () =>
   within(screen.getByRole('group', { name: 'Drankjes' })).getAllByRole('button')
 const bier = () => drinkButtons()[0]
-const checkout = () => screen.getByRole('button', { name: /^Afrekenen|^Scan eerst/ })
+const checkout = () => screen.getByRole('button', { name: /^Afrekenen|^Scan eerst|^Saldo/ })
 const basketLines = () =>
   screen.queryByRole('list', { name: 'Mandje' }) === null
     ? []
@@ -334,6 +345,141 @@ describe('OrderPad', () => {
     await act(() => vi.advanceTimersByTimeAsync(0))
     expect(drinkButtons().every((b) => (b as HTMLButtonElement).disabled)).toBe(true)
     expect((checkout() as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('the held wallet (B-06 T13)', () => {
+  const JAN: HeldWallet = { query: { short_code: 'K7MQ-X2P9' }, name: 'Jan', balance_cents: 1500 }
+  const hold = (wallet: HeldWallet = JAN) => act(() => controller.hold(wallet))
+  const held = () => screen.queryByRole('region', { name: 'Wallet' })
+  const settle = () => act(() => vi.advanceTimersByTimeAsync(0))
+  /** A leaf whose text is `text` exactly: no-break spaces kept (the default matcher folds them). */
+  const exactly = (text: string) => (_: string, el: Element | null) =>
+    el?.children.length === 0 && el.textContent === text
+
+  it('shows the name large and the balance, in place of the picker (AC4, SD13)', () => {
+    expect(screen.getByLabelText('Code typen')).toBeTruthy()
+    hold()
+    expect(held()?.querySelector('strong')?.textContent).toBe('Jan')
+    expect(held()?.textContent).toContain(`saldo ${formatEuro(1500)}`)
+    expect(screen.queryByLabelText('Code typen')).toBeNull()
+  })
+
+  it('a negative balance shows with a minus (AC25)', () => {
+    hold({ ...JAN, balance_cents: -90 })
+    expect(held()?.textContent).toContain('saldo −€\u00a00,90')
+  })
+
+  it('"Afrekenen €T" posts the basket with the wallet as scanned (AC5)', () => {
+    hold()
+    fireEvent.click(bier())
+    expect(checkout().textContent).toBe(`Afrekenen ${formatEuro(250)}`)
+    fireEvent.click(checkout())
+    expect(posts).toEqual([
+      {
+        quote_version: 5,
+        lines: [{ drink_id: 1, qty: 1, unit_price_cents: 250 }],
+        wallet: { short_code: 'K7MQ-X2P9' },
+      },
+    ])
+  })
+
+  it('with the switch on, a held wallet enables "Afrekenen" (AC14)', () => {
+    config({ wallet_required: true })
+    fireEvent.click(bier())
+    expect(checkout().textContent).toBe('Scan eerst een wallet')
+    hold()
+    expect(checkout().textContent).toBe(`Afrekenen ${formatEuro(250)}`)
+    expect((checkout() as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('a 409 confirm carries the same wallet and a new key (AC11)', async () => {
+    answer = (body) =>
+      body.quote_version === 5
+        ? Promise.resolve<OrderOutcome>({
+            kind: 'price_changed',
+            body: { version: 6, prices: [{ drink_id: 1, price_cents: 260 }] },
+          })
+        : new Promise<OrderOutcome>(() => {})
+    hold()
+    fireEvent.click(bier())
+    fireEvent.click(checkout())
+    await settle()
+    act(() => controller.confirm())
+    expect(posts[1]).toEqual({
+      quote_version: 6,
+      lines: [{ drink_id: 1, qty: 1, unit_price_cents: 260 }],
+      wallet: { short_code: 'K7MQ-X2P9' },
+    })
+    expect(keys[1]).not.toBe(keys[0])
+  })
+
+  it('a 404 says "Onbekende wallet", clears the wallet and keeps the basket (AC12)', async () => {
+    answer = () => Promise.reject(new HttpError(404, 'wallet_not_found', 'no'))
+    hold()
+    fireEvent.click(bier())
+    fireEvent.click(checkout())
+    await settle()
+    expect(screen.getByText('Onbekende wallet')).toBeTruthy()
+    expect(held()).toBeNull()
+    expect(screen.getByLabelText('Code typen')).toBeTruthy()
+    expect(basketLines()).toEqual([`1× Bier — ${formatEuro(250)}`])
+  })
+
+  it('a total over balance + limit disables "Afrekenen" with the shortfall (AC18)', () => {
+    hold({ ...JAN, balance_cents: 100 })
+    fireEvent.click(bier())
+    expect(checkout().textContent).toBe(`Saldo ${formatEuro(100)} — nog ${formatEuro(150)} tekort`)
+    expect((checkout() as HTMLButtonElement).disabled).toBe(true)
+    config({ credit_limit_cents: 150 })
+    expect(checkout().textContent).toBe(`Afrekenen ${formatEuro(250)}`)
+    expect((checkout() as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it("a 409 insufficient_balance shows the server's shortfall and updates the balance (SD18)", async () => {
+    answer = () =>
+      Promise.reject(
+        new HttpError(409, 'insufficient_balance', 'no', {
+          balance_cents: 100,
+          credit_limit_cents: 0,
+        }),
+      )
+    hold()
+    fireEvent.click(bier())
+    fireEvent.click(checkout())
+    await settle()
+    const shortfall = `Saldo ${formatEuro(100)} — nog ${formatEuro(150)} tekort`
+    expect(screen.getAllByText(exactly(shortfall))).toHaveLength(2) // the answer, and the button
+    expect(held()?.textContent).toContain(`saldo ${formatEuro(100)}`)
+    expect(basketLines()).toEqual([`1× Bier — ${formatEuro(250)}`])
+  })
+
+  it('a paid order says so from the receipt, clears both, and the text goes after 3 s (AC13)', async () => {
+    answer = (body) => {
+      const paid = receipt(body)
+      if (paid.kind !== 'accepted') throw new Error('a receipt')
+      const wallet = { name: 'Jan', balance_after_cents: -90 }
+      return Promise.resolve<OrderOutcome>({ ...paid, receipt: { ...paid.receipt, wallet } })
+    }
+    config({ credit_limit_cents: 250 })
+    hold({ ...JAN, balance_cents: 160 })
+    fireEvent.click(bier())
+    fireEvent.click(checkout())
+    await settle()
+    const paid = `Betaald ${formatEuro(250)} — Jan, saldo ${formatBalance(-90)}`
+    expect(screen.getByText(exactly(paid))).toBeTruthy()
+    expect(held()).toBeNull()
+    expect(basketLines()).toEqual([])
+    advance(3000)
+    expect(screen.queryByText(exactly(paid))).toBeNull()
+  })
+
+  it('while the order is open the held wallet cannot be replaced (PD12)', () => {
+    hold()
+    fireEvent.click(bier())
+    fireEvent.click(checkout())
+    hold({ ...JAN, name: 'Piet' })
+    expect(held()?.querySelector('strong')?.textContent).toBe('Jan')
   })
 })
 

@@ -11,10 +11,14 @@
  * controller's `Quote` -- and the basket's total is computed from that same
  * quote (`model/basket.ts`).
  *
- * "Wallet verplicht" (B-06 SD1, SD17) is read from the store's `run`, which a
- * `config` message updates live: on, the button stays disabled with "Scan
- * eerst een wallet"; off, it reads "Afrekenen zonder wallet €T". The server
- * judges the switch as it stands when the order arrives.
+ * Above the drinks, the wallet (B-06 SD4, SD13): the picker, or the held
+ * wallet's name and balance. With one held the button reads "Afrekenen €T",
+ * unless the total exceeds balance + "Rood staan tot", when it is disabled with
+ * "Saldo €B — nog €X tekort" (SD18). With none, "Wallet verplicht" (SD1, SD17),
+ * read from the store's `run` that a `config` message updates live, decides:
+ * on, the button stays disabled with "Scan eerst een wallet"; off, it reads
+ * "Afrekenen zonder wallet €T". The server judges both again when the order
+ * arrives (SD15).
  *
  * Above `AGE_SHOW_MS` the age line and "Ververs" show (AC7); when the latest
  * quote is stale every button is disabled (AC8), as it is while a conflict is
@@ -25,18 +29,21 @@ import type { KeyboardEvent, PointerEvent } from 'react'
 import { Button } from '../../components/ui/Button'
 import { formatEuro } from '../../lib/format'
 import { selectActiveDrinks, selectDrinks, useExchange } from '../exchange'
-import { lineCents, totalCents } from './model/basket'
+import { HeldWallet } from './HeldWallet'
+import { lineCents, shortfallCents, totalCents } from './model/basket'
 import { ageMs, isStale, showAge } from './model/holdBuffer'
 import type { BarView } from './model/barController'
 import type { BarActions } from './useBarController'
 import { useNow } from './useNow'
+import { WalletPicker } from './WalletPicker'
+import { shortfallText } from './walletText'
 import styles from './OrderPad.module.css'
 
 export interface OrderPadProps {
   view: BarView
   actions: Pick<
     BarActions,
-    'press' | 'release' | 'add' | 'remove' | 'clear' | 'checkout' | 'refresh'
+    'press' | 'release' | 'add' | 'remove' | 'clear' | 'hold' | 'checkout' | 'refresh'
   >
 }
 
@@ -48,8 +55,9 @@ export function OrderPad({ view, actions }: OrderPadProps) {
   const drinks = useExchange(selectActiveDrinks)
   const allDrinks = useExchange(selectDrinks)
   const walletRequired = useExchange((s) => s.run?.wallet_required === true)
+  const limit = useExchange((s) => s.run?.credit_limit_cents ?? 0)
   const now = useNow()
-  const { displayed, latest, entries, headConflict, basket, basketLocked } = view
+  const { displayed, latest, entries, headConflict, basket, basketLocked, wallet } = view
   const stale = isStale(latest, now)
   const disabled = stale || headConflict !== null
   const total = totalCents(basket, displayed)
@@ -69,14 +77,29 @@ export function OrderPad({ view, actions }: OrderPadProps) {
     },
   }
 
-  const checkoutLabel = walletRequired
-    ? 'Scan eerst een wallet'
-    : `Afrekenen zonder wallet ${total === null ? '—' : formatEuro(total)}`
+  const totalText = total === null ? '—' : formatEuro(total)
+  const shortfall =
+    wallet === null || total === null ? 0 : shortfallCents(total, wallet.balance_cents, limit)
+  let checkoutLabel = `Afrekenen zonder wallet ${totalText}`
+  if (wallet !== null) {
+    checkoutLabel =
+      shortfall > 0 ? shortfallText(wallet.balance_cents, shortfall) : `Afrekenen ${totalText}`
+  } else if (walletRequired) checkoutLabel = 'Scan eerst een wallet'
   const cannotCheckout =
-    disabled || basketLocked || walletRequired || basket.length === 0 || total === null
+    disabled ||
+    basketLocked ||
+    (wallet === null && walletRequired) ||
+    shortfall > 0 ||
+    basket.length === 0 ||
+    total === null
 
   return (
     <div className={styles.pad} data-quote-version={displayed?.version}>
+      {wallet === null ? (
+        <WalletPicker disabled={basketLocked} onFound={actions.hold} />
+      ) : (
+        <HeldWallet wallet={wallet} />
+      )}
       <div className={styles.grid} role="group" aria-label="Drankjes">
         {drinks.map(({ drink_id, name }) => {
           const price = displayed?.prices[drink_id]

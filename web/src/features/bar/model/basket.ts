@@ -66,6 +66,13 @@ export function shortfallCents(total: number, balanceCents: number, limitCents: 
   return Math.max(0, total - (balanceCents + limitCents))
 }
 
+/** An order body's total: what the bar asked the wallet to pay (B-06 SD18). */
+export function bodyCents(
+  lines: readonly { readonly qty: number; readonly unit_price_cents: number }[],
+): number {
+  return lines.reduce((sum, l) => sum + l.qty * l.unit_price_cents, 0)
+}
+
 /** "2× Bier, 1× Wijn", in the basket's order. */
 export function linesText(basket: Basket, nameOf: (drinkId: DrinkId) => string): string {
   return basket.map((l) => `${l.qty}× ${nameOf(l.drinkId)}`).join(', ')

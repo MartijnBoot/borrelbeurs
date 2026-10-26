@@ -11,20 +11,33 @@
  *   hands that `Quote` and the basket to the intents. It is refused with no
  *   displayed quote, a stale latest one (AC8), an open conflict (AC14), an
  *   empty basket, or a basket whose order is still open.
+ * - B-06 (SD4, SD13): `hold` keeps the scanned wallet -- the query that found it,
+ *   its name and balance -- and `checkout` hands that query to the intent, so
+ *   the order and its confirmation carry the wallet as scanned (AC5, AC11).
  * - While the basket's order is open (sending, retrying, a conflict, unknown)
- *   the basket is shown but locked. Accepted, or dismissed while unknown (it may
- *   have been booked), it clears; refused, cancelled or failed, it stays, unlocked
- *   (AC11, AC12, AC18).
+ *   the basket and the wallet are shown but locked. Accepted, both clear (SD6);
+ *   dismissed while unknown (it may have been booked), the basket clears.
+ *   Refused, cancelled or failed, both stay, unlocked (AC11, AC12, AC18), but a
+ *   `wallet_not_found` lets go of the wallet (AC12) and an
+ *   `insufficient_balance` takes the server's balance for it (SD18).
  *
  * Components call only this, through `useBarController`; the property test
  * drives the same object. `view` is a new frozen object on every change, so
  * it serves `useSyncExternalStore` directly.
  */
 import type { DrinkId, ExchangeState, Quote } from '../../exchange'
-import type { OrderBody, OrderOutcome } from '../api/orders'
+import type { OrderBody, OrderOutcome, WalletQuery } from '../api/orders'
 import { add, EMPTY, remove, type Basket } from './basket'
 import { createHoldBuffer, isStale, type PressId } from './holdBuffer'
-import { createOrderIntents, type Conflict, type OrderEntry } from './orderIntents'
+import { createOrderIntents, type Conflict, type OrderEntry, type Refusal } from './orderIntents'
+
+/** A scanned wallet as the bar holds it (B-06 SD13): only its name and balance are shown. */
+export interface HeldWallet {
+  /** Exactly as scanned or typed; the order carries it, the server resolves it. */
+  readonly query: WalletQuery
+  readonly name: string
+  readonly balance_cents: number
+}
 
 export interface BarView {
   readonly displayed: Quote | null
@@ -32,8 +45,9 @@ export interface BarView {
   readonly entries: readonly OrderEntry[]
   readonly headConflict: Conflict | null
   readonly basket: Basket
-  /** The basket's order is open: the basket is shown, never edited (PD12). */
+  /** The basket's order is open: the basket and the wallet are shown, never edited (PD12). */
   readonly basketLocked: boolean
+  readonly wallet: HeldWallet | null
 }
 
 /** An entry in one of these states has settled; its basket is free again. */
@@ -63,6 +77,8 @@ export interface BarController {
   remove(drinkId: DrinkId): void
   /** "Leegmaken". */
   clear(): void
+  /** Hold a scanned wallet in place of any held one; refused while the basket is locked. */
+  hold(wallet: HeldWallet): void
   /** "Afrekenen": the new entry's id, or `null` when it is refused. */
   checkout(): number | null
   refresh(): void
@@ -77,6 +93,7 @@ export function createBarController<Id>(deps: BarControllerDeps<Id>): BarControl
   const listeners = new Set<() => void>()
   let view: BarView | null = null
   let basket: Basket = EMPTY
+  let wallet: HeldWallet | null = null
   /** The id of the basket's order while it is open, else `null`. */
   let open: number | null = null
 
@@ -92,10 +109,22 @@ export function createBarController<Id>(deps: BarControllerDeps<Id>): BarControl
       if (entry === undefined || SETTLED.has(entry.state)) {
         // A dismissed order may have been booked: a second checkout could pay twice.
         if (entry?.state === 'accepted' || entry?.state === 'dismissed') basket = EMPTY
+        if (entry?.state === 'accepted') wallet = null
+        if (entry?.refusal != null) wallet = refused(wallet, entry.refusal)
         open = null
       }
     }
     changed()
+  }
+
+  /** The held wallet after a wallet refusal (B-06 SD15, SD18; AC12). */
+  function refused(held: HeldWallet | null, refusal: Refusal): HeldWallet | null {
+    if (refusal.code === 'wallet_not_found') return null
+    const balance = refusal.details.balance_cents
+    if (held === null || refusal.code !== 'insufficient_balance' || typeof balance !== 'number') {
+      return held
+    }
+    return Object.freeze({ ...held, balance_cents: balance })
   }
 
   function editBasket(next: Basket) {
@@ -141,6 +170,7 @@ export function createBarController<Id>(deps: BarControllerDeps<Id>): BarControl
         headConflict: intents.headConflict,
         basket,
         basketLocked: open !== null,
+        wallet,
       })
       return view
     },
@@ -153,11 +183,16 @@ export function createBarController<Id>(deps: BarControllerDeps<Id>): BarControl
     add: (drinkId) => editBasket(add(basket, drinkId)),
     remove: (drinkId) => editBasket(remove(basket, drinkId)),
     clear: () => editBasket(EMPTY),
+    hold(next) {
+      if (open !== null) return
+      wallet = Object.freeze({ ...next })
+      changed()
+    },
     checkout() {
       const displayed = hold.displayed
       if (displayed === null || isStale(hold.latest, deps.now())) return null
       if (intents.headConflict !== null || open !== null) return null
-      const id = intents.create(displayed, basket, null)
+      const id = intents.create(displayed, basket, wallet?.query ?? null)
       if (id !== null) {
         open = id
         changed()

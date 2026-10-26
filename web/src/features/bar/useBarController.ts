@@ -13,7 +13,12 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { newIdempotencyKey } from '../../lib/idempotencyKey'
 import { exchangeStore, type DrinkId } from '../exchange'
 import { postOrder } from './api/orders'
-import { createBarController, type BarController, type BarView } from './model/barController'
+import {
+  createBarController,
+  type BarController,
+  type BarView,
+  type HeldWallet,
+} from './model/barController'
 import type { PressId } from './model/holdBuffer'
 
 export interface BarActions {
@@ -22,6 +27,7 @@ export interface BarActions {
   add(drinkId: DrinkId): void
   remove(drinkId: DrinkId): void
   clear(): void
+  hold(wallet: HeldWallet): void
   checkout(): void
   refresh(): void
   confirm(): void
@@ -37,6 +43,7 @@ const EMPTY_VIEW: BarView = Object.freeze({
   headConflict: null,
   basket: [],
   basketLocked: false,
+  wallet: null,
 })
 
 function createSlot() {
@@ -50,6 +57,7 @@ function createSlot() {
     add: (drinkId) => controller?.add(drinkId),
     remove: (drinkId) => controller?.remove(drinkId),
     clear: () => controller?.clear(),
+    hold: (wallet) => controller?.hold(wallet),
     checkout: () => void controller?.checkout(),
     refresh: () => controller?.refresh(),
     confirm: () => controller?.confirm(),
