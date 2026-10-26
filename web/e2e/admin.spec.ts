@@ -136,7 +136,10 @@ test('an admin builds a borrel from nothing, and every screen follows live', asy
 
   // 4. A preset, then a custom theme.
   const colours = section(page, 'Kleurenschema')
-  await colours.getByRole('button', { name: 'Rood', exact: true }).click()
+  const rood = colours.getByRole('button', { name: 'Rood', exact: true })
+  await rood.click()
+  // The preset's PUT must land before the custom one, or it can overwrite it.
+  await expect(rood).toHaveAttribute('aria-pressed', 'true')
   await colours.getByLabel('--bg', { exact: true }).fill(CUSTOM_BG)
   await colours.getByRole('button', { name: 'Opslaan', exact: true }).click()
   await expect
