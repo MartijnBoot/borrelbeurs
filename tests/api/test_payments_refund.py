@@ -251,7 +251,7 @@ def test_kassa_and_admin_refund_an_old_bar_payment(
     jan = _wallet(settings, api_env)
     payment, total = _pay(login("bar", "Bar 1"), "k-pay-old-0001", jan)
     advance(3_600_000)
-    crew = login(role, f"Crew {role}")  # type: ignore[arg-type]
+    crew = login(role, f"Crew {role}")
 
     response = _refund(crew, payment)
 
