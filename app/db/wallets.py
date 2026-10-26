@@ -422,6 +422,14 @@ async def find_entry_by_key(conn: AsyncConnection, idempotency_key: str) -> Entr
     return None if row is None else _entry(row)
 
 
+async def refund_of(conn: AsyncConnection, entry_id: int) -> EntryRow | None:
+    """The `refund` naming payment `entry_id`, or `None` (B-06 SD9)."""
+    row = (
+        await conn.execute(select(*_ENTRY).where(WalletEntry.refunds_entry_id == entry_id))
+    ).one_or_none()
+    return None if row is None else _entry(row)
+
+
 async def reversal_of(conn: AsyncConnection, entry_id: int) -> EntryRow | None:
     row = (
         await conn.execute(select(*_ENTRY).where(WalletEntry.reverses_entry_id == entry_id))

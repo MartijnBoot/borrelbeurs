@@ -708,6 +708,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/kassa/wallets/{wallet_id}/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Payments
+         * @description B-06 SD9, AC23: the wallet's payments at any age, newest first.
+         */
+        get: operations["list_payments_api_kassa_wallets__wallet_id__payments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/kassa/wallets/{wallet_id}/topups": {
         parameters: {
             query?: never;
@@ -877,6 +897,23 @@ export interface paths {
         get: operations["recent_payments_api_bar_payments_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/payments/{entry_id}/refund": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Refund */
+        post: operations["refund_api_payments__entry_id__refund_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1360,6 +1397,27 @@ export interface components {
         JumpResult: {
             /** Version */
             version: number;
+        };
+        /**
+         * KassaPayment
+         * @description A payment as the kassa lists it: who booked it (B-06 PD9).
+         */
+        KassaPayment: {
+            /** Entry Id */
+            entry_id: number;
+            /** Amount Cents */
+            amount_cents: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Lines */
+            lines: components["schemas"]["PaymentLine"][] | null;
+            /** Refunded */
+            refunded: boolean;
+            /** Actor Label */
+            actor_label: string | null;
         };
         /** KassaWalletData */
         KassaWalletData: {
@@ -3365,6 +3423,37 @@ export interface operations {
             };
         };
     };
+    list_payments_api_kassa_wallets__wallet_id__payments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                wallet_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KassaPayment"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_topups_api_kassa_wallets__wallet_id__topups_get: {
         parameters: {
             query?: never;
@@ -3743,6 +3832,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BarPayment"][];
+                };
+            };
+        };
+    };
+    refund_api_payments__entry_id__refund_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A replay of the stored refund */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookedEntry"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BookedEntry"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

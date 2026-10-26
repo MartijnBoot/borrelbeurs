@@ -21,6 +21,7 @@ from pydantic import (
     field_validator,
 )
 
+from app.api.bar import PaymentData, payment_data
 from app.api.deps import Principal, clock_of, db_engine, refuse_while_draining, require_role
 from app.api.orders import IDEMPOTENCY_KEY_PATTERN
 from app.api.wallet_query import WalletQuery
@@ -104,7 +105,7 @@ def _actor(principal: Principal) -> actions.Actor:
     return actions.Actor(key_id=principal.key_id, label=principal.label)
 
 
-def _booked(booked: actions.Booked, response: Response) -> BookedEntry:
+def booked_entry(booked: actions.Booked, response: Response) -> BookedEntry:
     if booked.replay:
         response.status_code = 200
     entry = booked.entry
@@ -136,6 +137,21 @@ async def lookup(body: WalletQuery, request: Request, _: Kassa) -> KassaWalletDa
         if recent is None
         else RecentTopup(at=recent.created_at, amount_cents=recent.amount_cents),
     )
+
+
+class KassaPayment(PaymentData):
+    """A payment as the kassa lists it: who booked it (B-06 PD9)."""
+
+    actor_label: str | None
+
+
+@router.get("/wallets/{wallet_id}/payments")
+async def list_payments(wallet_id: int, request: Request, _: Kassa) -> list[KassaPayment]:
+    """B-06 SD9, AC23: the wallet's payments at any age, newest first."""
+    return [
+        KassaPayment(**dict(payment_data(row)), actor_label=row.entry.actor_label)
+        for row in await actions.wallet_payments(db_engine(request), wallet_id)
+    ]
 
 
 @router.get("/wallets/{wallet_id}/topups")
@@ -174,7 +190,7 @@ async def top_up(
         actor=_actor(principal),
         now_ms=clock_of(request).wall_ms(),
     )
-    return _booked(booked, response)
+    return booked_entry(booked, response)
 
 
 @router.post(
@@ -197,7 +213,7 @@ async def reverse(
         actor=_actor(principal),
         now_ms=clock_of(request).wall_ms(),
     )
-    return _booked(booked, response)
+    return booked_entry(booked, response)
 
 
 @router.get("/wallets")
@@ -243,7 +259,7 @@ async def move(
         actor=_actor(principal),
         now_ms=clock_of(request).wall_ms(),
     )
-    return _booked(booked, response)
+    return booked_entry(booked, response)
 
 
 @router.post("/wallets/{wallet_id}/new-code")

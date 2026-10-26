@@ -27,6 +27,8 @@ WRITERS: Final = frozenset({"bar", "admin"})
 ADMIN: Final = frozenset({"admin"})
 # B-05 SD7.
 KASSA: Final = frozenset({"kassa", "admin"})
+# B-06 SD9: the bar within its limits, the kassa and admin at any age.
+REFUNDERS: Final = frozenset({"bar", "kassa", "admin"})
 
 # SD1, verbatim. (method, path) -> roles allowed.
 SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
@@ -99,6 +101,8 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     # B-06 SD9, SD13 (PD9).
     ("POST", "/api/bar/wallet-lookup"): WRITERS,
     ("GET", "/api/bar/payments"): WRITERS,
+    ("POST", "/api/payments/{entry_id}/refund"): REFUNDERS,
+    ("GET", "/api/kassa/wallets/{wallet_id}/payments"): KASSA,
 }
 
 # B-05 SD8: the player's own routes. A player is not a role: these carry

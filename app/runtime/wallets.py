@@ -205,6 +205,82 @@ async def recent_payments(
         )
 
 
+class PaymentNotFound(AppError):
+    """No payment has this id. Any other entry kind answers the same (PD9)."""
+
+    status_code = 404
+    code = "payment_not_found"
+
+
+class RefundNotAllowed(AppError):
+    """A bar key refunds only its own payments, within `BAR_REFUND_WINDOW_MS` (SD9)."""
+
+    status_code = 403
+    code = "refund_not_allowed"
+
+
+class AlreadyRefunded(AppError):
+    status_code = 409
+    code = "already_refunded"
+
+
+async def refund(
+    engine: AsyncEngine,
+    *,
+    entry_id: int,
+    idempotency_key: str,
+    actor: Actor,
+    role: str,
+    now_ms: int,
+) -> Booked:
+    """One `refund` of the payment's whole amount, naming it, with the payment's run
+    (SD9; AC21, AC22). The money only: the order and the revenue stay.
+
+    In PD9's order: the key; not a payment, 404; a bar key on another key's payment
+    or past its window, 403; the wallet locked, deleted 409; already refunded 409.
+    The wallet is locked before the refund is looked for, so two refunds at once
+    serialise and the second sees the first.
+    """
+
+    async def same(_: AsyncConnection, stored: EntryRow) -> bool:
+        return stored.kind == "refund" and stored.refunds_entry_id == entry_id
+
+    async def book(conn: AsyncConnection) -> EntryRow:
+        payment = await wallets.get_entry(conn, entry_id)
+        if payment is None or payment.kind != "payment":
+            raise PaymentNotFound(f"no payment {entry_id}")
+        if role == "bar" and (
+            payment.actor_key_id != actor.key_id
+            or payment.created_at < wallets.at(now_ms - BAR_REFUND_WINDOW_MS)
+        ):
+            raise RefundNotAllowed("the bar refunds its own payments for 10 minutes")
+        if await wallets.lock_wallet(conn, payment.wallet_id) is None:
+            raise wallets.WalletDeleted("this wallet is deleted")
+        if await wallets.refund_of(conn, entry_id) is not None:
+            raise AlreadyRefunded("this payment is already refunded")
+        return await wallets.insert_entry(
+            conn,
+            wallet_id=payment.wallet_id,
+            kind="refund",
+            amount_cents=-payment.amount_cents,
+            now_ms=now_ms,
+            run_id=payment.run_id,
+            refunds_entry_id=entry_id,
+            actor_key_id=actor.key_id,
+            actor_label=actor.label,
+            idempotency_key=idempotency_key,
+        )
+
+    return await _book_once(engine, idempotency_key, same, book)
+
+
+async def wallet_payments(engine: AsyncEngine, wallet_id: int) -> list[wallets.PaymentRow]:
+    """A live wallet's payments at any age, newest first (SD9, AC23); `WalletNotFound`."""
+    async with engine.connect() as conn:
+        await wallets.get(conn, wallet_id)
+        return await wallets.payments(conn, wallet_id=wallet_id)
+
+
 async def topups(engine: AsyncEngine, wallet_id: int) -> list[tuple[EntryRow, bool]]:
     async with engine.connect() as conn:
         await wallets.get(conn, wallet_id)
