@@ -371,13 +371,16 @@ def test_no_cell_names_p0_and_text_is_never_a_formula(
 
 
 def test_wallets_leave_the_workbook_unchanged(settings: Settings, database_url: str) -> None:
-    """B-05 AC35: no sheet, column or value from a wallet, its entries or its settings."""
+    """B-05 AC35: no sheet, column or value from a wallet, its entries or its settings.
+
+    B-06 T18 (AC36): nor from a payment naming an order, or its refund."""
 
     async def body(engine: AsyncEngine, heavy: AsyncEngine) -> tuple[ExportSnapshot, ...]:
         async with engine.begin() as conn:
             run_id = await _run(conn)
             bier = await _drink(conn, run_id, "Bier", 0)
-            await _order(conn, run_id, 1, T0 + 1_000, [(bier, 2, 233, 250)])
+            paid = await _order(conn, run_id, 1, T0 + 1_000, [(bier, 2, 233, 250)])
+            kept = await _order(conn, run_id, 2, T0 + 2_000, [(bier, 1, 240, 250)])
         without = await _snapshot(heavy, run_id)
         async with engine.begin() as conn:
             jan = await wallets.create_wallet(conn, name="Jan", cookie_hash="h-jan", now_ms=T0)
@@ -405,6 +408,33 @@ def test_wallets_leave_the_workbook_unchanged(settings: Settings, database_url: 
                 amount_cents=2000,
                 now_ms=T0,
                 run_id=run_id,
+            )
+            payment = await wallets.insert_entry(
+                conn,
+                wallet_id=jan.wallet_id,
+                kind="payment",
+                amount_cents=-466,
+                now_ms=T0 + 1_000,
+                run_id=run_id,
+                order_id=paid,
+            )
+            await wallets.insert_entry(
+                conn,
+                wallet_id=jan.wallet_id,
+                kind="refund",
+                amount_cents=466,
+                now_ms=T0 + 1_500,
+                run_id=run_id,
+                refunds_entry_id=payment.entry_id,
+            )
+            await wallets.insert_entry(
+                conn,
+                wallet_id=jan.wallet_id,
+                kind="payment",
+                amount_cents=-240,
+                now_ms=T0 + 2_000,
+                run_id=run_id,
+                order_id=kept,
             )
             await wallets.put_settings(conn, wallets.WalletSettingsRow("Borrel", 7, 3))
         return without, await _snapshot(heavy, run_id)
