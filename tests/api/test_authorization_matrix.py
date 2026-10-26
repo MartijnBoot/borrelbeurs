@@ -96,6 +96,9 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     ("DELETE", "/api/admin/wallets/{wallet_id}"): ADMIN,
     ("GET", "/api/admin/wallet-settings"): ADMIN,
     ("PUT", "/api/admin/wallet-settings"): ADMIN,
+    # B-06 SD9, SD13 (PD9).
+    ("POST", "/api/bar/wallet-lookup"): WRITERS,
+    ("GET", "/api/bar/payments"): WRITERS,
 }
 
 # B-05 SD8: the player's own routes. A player is not a role: these carry

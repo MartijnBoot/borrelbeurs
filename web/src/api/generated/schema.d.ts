@@ -849,6 +849,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/bar/wallet-lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Wallet Lookup */
+        post: operations["wallet_lookup_api_bar_wallet_lookup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/bar/payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recent Payments */
+        get: operations["recent_payments_api_bar_payments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/theme.css": {
         parameters: {
             query?: never;
@@ -971,6 +1005,34 @@ export interface components {
             l: number;
             /** C */
             c: number;
+        };
+        /**
+         * BarPayment
+         * @description `name` is the wallet's, `null` once it is deleted (B-05 SD15).
+         */
+        BarPayment: {
+            /** Entry Id */
+            entry_id: number;
+            /** Amount Cents */
+            amount_cents: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Lines */
+            lines: components["schemas"]["PaymentLine"][] | null;
+            /** Refunded */
+            refunded: boolean;
+            /** Name */
+            name: string | null;
+        };
+        /** BarWallet */
+        BarWallet: {
+            /** Name */
+            name: string;
+            /** Balance Cents */
+            balance_cents: number;
         };
         /** BookedEntry */
         BookedEntry: {
@@ -1560,6 +1622,13 @@ export interface components {
             flow_beta?: number | null;
             /** Y Clip */
             y_clip?: number | null;
+        };
+        /** PaymentLine */
+        PaymentLine: {
+            /** Name */
+            name: string;
+            /** Qty */
+            qty: number;
         };
         /** PriceCurveData */
         PriceCurveData: {
@@ -3621,6 +3690,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    wallet_lookup_api_bar_wallet_lookup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WalletQuery"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BarWallet"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recent_payments_api_bar_payments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BarPayment"][];
                 };
             };
         };

@@ -30,7 +30,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.core.errors import AppError
-from app.db.models import Run, Wallet, WalletEntry, WalletSettings
+from app.db.models import Drink, OrderLine, Run, Wallet, WalletEntry, WalletSettings
 from app.db.products import name_key
 from app.db.runs import current_run
 from app.runtime import wallet_codes
@@ -593,6 +593,69 @@ async def topups(conn: AsyncConnection, wallet_id: int) -> list[tuple[EntryRow, 
         .order_by(WalletEntry.created_at.desc(), WalletEntry.entry_id.desc())
     )
     return [(_entry(row), bool(row.reversed)) for row in rows]
+
+
+@dataclass(frozen=True)
+class PaymentRow:
+    """A `payment` entry as the bar and the kassa list it (B-06 SD9, SD10, PD9).
+
+    `wallet_name` is `None` once the wallet is deleted (B-05 SD15); `lines` are the
+    order's `(drink name, qty)` by `drink_id`, or `None` once the order is gone
+    with its run (Phase 7 SD3, AC24).
+    """
+
+    entry: EntryRow
+    refunded: bool
+    wallet_name: str | None
+    lines: list[tuple[str, int]] | None
+
+
+async def payments(
+    conn: AsyncConnection,
+    *,
+    wallet_id: int | None = None,
+    actor_key_id: int | None = None,
+    since: datetime | None = None,
+) -> list[PaymentRow]:
+    """`payment` entries, newest first, filtered by wallet, booking key and time."""
+    refund = WalletEntry.__table__.alias("refund")
+    statement = (
+        select(
+            *_ENTRY,
+            refund.c.entry_id.is_not(None).label("refunded"),
+            Wallet.name.label("wallet_name"),
+        )
+        .join(Wallet, Wallet.wallet_id == WalletEntry.wallet_id)
+        .outerjoin(refund, refund.c.refunds_entry_id == WalletEntry.entry_id)
+        .where(WalletEntry.kind == "payment")
+        .order_by(WalletEntry.created_at.desc(), WalletEntry.entry_id.desc())
+    )
+    if wallet_id is not None:
+        statement = statement.where(WalletEntry.wallet_id == wallet_id)
+    if actor_key_id is not None:
+        statement = statement.where(WalletEntry.actor_key_id == actor_key_id)
+    if since is not None:
+        statement = statement.where(WalletEntry.created_at >= since)
+    rows = (await conn.execute(statement)).all()
+    order_ids = [int(row.order_id) for row in rows if row.order_id is not None]
+    lines: dict[int, list[tuple[str, int]]] = {}
+    if order_ids:
+        for line in await conn.execute(
+            select(OrderLine.order_id, Drink.name, OrderLine.qty)
+            .join(Drink, Drink.drink_id == OrderLine.drink_id)
+            .where(OrderLine.order_id.in_(order_ids))
+            .order_by(OrderLine.order_id, OrderLine.drink_id)
+        ):
+            lines.setdefault(int(line.order_id), []).append((line.name, int(line.qty)))
+    return [
+        PaymentRow(
+            _entry(row),
+            bool(row.refunded),
+            row.wallet_name,
+            None if row.order_id is None else lines.get(int(row.order_id), []),
+        )
+        for row in rows
+    ]
 
 
 @dataclass(frozen=True)

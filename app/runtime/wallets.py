@@ -179,6 +179,32 @@ async def lookup(
         )
 
 
+# --- the bar (B-06 SD9, SD13) ------------------------------------------------------
+
+# SD9: a bar key may refund its own payments for this long after booking them.
+BAR_REFUND_WINDOW_MS: Final = 10 * 60 * 1000
+
+
+async def bar_lookup(
+    engine: AsyncEngine, *, qr_token: str | None, short_code: str | None, now_ms: int
+) -> PlayerWallet:
+    """The wallet behind a scanned token or typed code, as the bar may see it: its name
+    and balance (SD13); `WalletNotFound` otherwise."""
+    found = await lookup(engine, qr_token=qr_token, short_code=short_code, now_ms=now_ms)
+    return found.player
+
+
+async def recent_payments(
+    engine: AsyncEngine, *, actor_key_id: int, now_ms: int
+) -> list[wallets.PaymentRow]:
+    """The payments `actor_key_id` booked in the last `BAR_REFUND_WINDOW_MS` on the app
+    clock, newest first (SD9, AC20). The server decides the window, never the phone."""
+    async with engine.connect() as conn:
+        return await wallets.payments(
+            conn, actor_key_id=actor_key_id, since=wallets.at(now_ms - BAR_REFUND_WINDOW_MS)
+        )
+
+
 async def topups(engine: AsyncEngine, wallet_id: int) -> list[tuple[EntryRow, bool]]:
     async with engine.connect() as conn:
         await wallets.get(conn, wallet_id)
