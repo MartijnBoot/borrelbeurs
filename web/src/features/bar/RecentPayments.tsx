@@ -44,7 +44,14 @@ function linesOf(payment: BarPayment): string {
   return payment.lines.map((line) => `${line.qty}× ${line.name}`).join(', ')
 }
 
-export function RecentPayments({ lastPaid }: { lastPaid: number }) {
+export function RecentPayments({
+  lastPaid,
+  onRefunded,
+}: {
+  lastPaid: number
+  /** A refund was booked: the page looks the held wallet's balance up again (AC18). */
+  onRefunded?: () => void
+}) {
   const [payments, setPayments] = useState<BarPayment[] | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
   const [confirming, setConfirming] = useState<BarPayment | null>(null)
@@ -83,6 +90,7 @@ export function RecentPayments({ lastPaid }: { lastPaid: number }) {
     setFailed(null)
     try {
       await refund(intent.payment.entry_id, intent.key)
+      onRefunded?.()
       await load()
     } catch (failure) {
       const text = (failure instanceof HttpError && REFUSALS[failure.code]) || NETWORK

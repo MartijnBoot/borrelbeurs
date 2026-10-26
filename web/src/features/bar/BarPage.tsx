@@ -13,6 +13,7 @@
  */
 import { PixelIcon } from '../../components/ui/PixelIcon'
 import { selectEmpty, useExchange } from '../exchange'
+import { lookupWallet } from './api/wallets'
 import { FinancialPanel } from './FinancialPanel'
 import { OrderConflict } from './OrderConflict'
 import { OrderPad } from './OrderPad'
@@ -42,6 +43,15 @@ function LiveBar() {
     0,
     ...view.entries.filter((e) => e.receipt?.wallet != null).map((e) => e.id),
   )
+  // AC18: a refund may be of the held wallet; its balance on screen is then out of date.
+  const held = view.wallet?.query
+  const refreshHeldBalance = () => {
+    if (held === undefined) return
+    lookupWallet(held).then(
+      (found) => actions.updateBalance(held, found.balance_cents),
+      () => {}, // the server judges the order again (SD15), so a missed refresh costs nothing
+    )
+  }
   return (
     <div
       className={styles.cards}
@@ -52,7 +62,7 @@ function LiveBar() {
         <h2 className={styles.cardTitle}>Bestellingen</h2>
         <OrderPad view={view} actions={actions} />
         <PendingOrders view={view} actions={actions} />
-        <RecentPayments lastPaid={lastPaid} />
+        <RecentPayments lastPaid={lastPaid} onRefunded={refreshHeldBalance} />
         <OrderConflict view={view} actions={actions} />
       </section>
       <section className={styles.card}>

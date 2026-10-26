@@ -186,6 +186,28 @@ describe('letting go (B-06 T14: SD6, AC19, PD15)', () => {
     controller.touch()
     expect(vi.getTimerCount()).toBe(0)
   })
+
+  it("a refund's fresh balance replaces the held one, for the wallet as scanned (AC18)", () => {
+    controller.hold(JAN)
+    controller.updateBalance(JAN.query, 2340)
+    expect(controller.view.wallet).toEqual({ ...JAN, balance_cents: 2340 })
+  })
+
+  it('a fresh balance for a wallet no longer held changes nothing', () => {
+    controller.updateBalance(JAN.query, 2340)
+    expect(controller.view.wallet).toBeNull()
+    controller.hold(JAN)
+    controller.updateBalance({ qr_token: 'tok-piet' }, 99)
+    expect(controller.view.wallet?.balance_cents).toBe(1500)
+  })
+
+  it('a fresh balance restarts no idle wait', () => {
+    controller.hold(JAN)
+    vi.advanceTimersByTime(30_000)
+    controller.updateBalance(JAN.query, 2340)
+    vi.advanceTimersByTime(30_000)
+    expect(holding()).toEqual([null, 0])
+  })
 })
 
 describe('the bar controller', () => {

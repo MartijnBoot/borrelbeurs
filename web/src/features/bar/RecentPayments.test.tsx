@@ -132,6 +132,19 @@ describe('RecentPayments', () => {
     expect(rows()[0].textContent).toContain('teruggeboekt')
   })
 
+  it('tells the page once a refund is booked, not when it is refused (AC18)', async () => {
+    const onRefunded = vi.fn()
+    render(<RecentPayments lastPaid={0} onRefunded={onRefunded} />)
+    await settle()
+    refundAnswer = async () => json(409, { error: { code: 'already_refunded', message: 'no' } })
+    await refundFirst()
+    expect(onRefunded).not.toHaveBeenCalled()
+    refundAnswer = async () =>
+      json(201, { entry_id: 42, wallet_id: 7, amount_cents: 840, created_at: AT })
+    await refundFirst()
+    expect(onRefunded).toHaveBeenCalledTimes(1)
+  })
+
   it('cancel sends nothing', async () => {
     await open()
     fireEvent.click(within(rows()[0]).getByRole('button', { name: 'Terugboeken' }))

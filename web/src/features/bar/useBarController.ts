@@ -12,7 +12,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { newIdempotencyKey } from '../../lib/idempotencyKey'
 import { exchangeStore, type DrinkId } from '../exchange'
-import { postOrder } from './api/orders'
+import { postOrder, type WalletQuery } from './api/orders'
 import {
   createBarController,
   type BarController,
@@ -28,6 +28,7 @@ export interface BarActions {
   remove(drinkId: DrinkId): void
   clear(): void
   hold(wallet: HeldWallet): void
+  updateBalance(query: WalletQuery, balanceCents: number): void
   otherWallet(): void
   abandon(): void
   touch(): void
@@ -61,6 +62,7 @@ function createSlot() {
     remove: (drinkId) => controller?.remove(drinkId),
     clear: () => controller?.clear(),
     hold: (wallet) => controller?.hold(wallet),
+    updateBalance: (query, balanceCents) => controller?.updateBalance(query, balanceCents),
     otherWallet: () => controller?.otherWallet(),
     abandon: () => controller?.abandon(),
     touch: () => controller?.touch(),

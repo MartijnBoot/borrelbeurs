@@ -84,6 +84,11 @@ export interface BarController {
   clear(): void
   /** Hold a scanned wallet in place of any held one; refused while the basket is locked. */
   hold(wallet: HeldWallet): void
+  /**
+   * A fresh balance for the held wallet, looked up after a refund (AC18). Ignored once that
+   * wallet is no longer the held one; it is no tap, so the idle wait does not restart.
+   */
+  updateBalance(query: WalletQuery, balanceCents: number): void
   /** "Andere wallet": let go of the wallet, keep the basket; refused while locked. */
   otherWallet(): void
   /** "Annuleren": let go of the wallet and the basket; refused while locked. */
@@ -221,6 +226,11 @@ export function createBarController<Id>(deps: BarControllerDeps<Id>): BarControl
       if (open !== null) return
       wallet = Object.freeze({ ...next })
       arm()
+      changed()
+    },
+    updateBalance(query, balanceCents) {
+      if (wallet === null || JSON.stringify(wallet.query) !== JSON.stringify(query)) return
+      wallet = Object.freeze({ ...wallet, balance_cents: balanceCents })
       changed()
     },
     otherWallet: () => letGo(false),
