@@ -17,6 +17,7 @@ import { FinancialPanel } from './FinancialPanel'
 import { OrderConflict } from './OrderConflict'
 import { OrderPad } from './OrderPad'
 import { PendingOrders } from './PendingOrders'
+import { RecentPayments } from './RecentPayments'
 import { RevenueChart } from './RevenueChart'
 import { useBarController } from './useBarController'
 import styles from './BarPage.module.css'
@@ -36,6 +37,11 @@ export function BarPage() {
 
 function LiveBar() {
   const { view, actions } = useBarController()
+  // B-06 PD16: the newest accepted wallet order, so the payments list fetches after one.
+  const lastPaid = Math.max(
+    0,
+    ...view.entries.filter((e) => e.receipt?.wallet != null).map((e) => e.id),
+  )
   return (
     <div
       className={styles.cards}
@@ -46,6 +52,7 @@ function LiveBar() {
         <h2 className={styles.cardTitle}>Bestellingen</h2>
         <OrderPad view={view} actions={actions} />
         <PendingOrders view={view} actions={actions} />
+        <RecentPayments lastPaid={lastPaid} />
         <OrderConflict view={view} actions={actions} />
       </section>
       <section className={styles.card}>

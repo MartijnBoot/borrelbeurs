@@ -17,3 +17,5 @@ export const AGE_SHOW_MS = 8000
 export const STALE_MS = 15000
 /** B-06 SD6, PD15: with no tap on the page this long, a held wallet and the basket clear. */
 export const WALLET_IDLE_MS = 60_000
+/** B-06 PD16: the recent payments are fetched again this often while the page is open. */
+export const PAYMENTS_REFRESH_MS = 30_000
