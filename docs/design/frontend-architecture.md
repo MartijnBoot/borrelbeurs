@@ -15,7 +15,8 @@ lightweight-charts v5, Zod — plus bundled `@fontsource` files.
 
 *Amended by B-05 (SD18):* **seven**, with `uqr` (the player page's QR code, drawn as SVG
 `<rect>`s from its matrix, never as markup) and `jsqr` (the kassa camera's decoder, imported
-on first use, so only the kassa page loads it). Both are pure JavaScript with no runtime
+on first use, so only the kassa page loads it; *amended by B-06 (SD12):* the bar page
+too, through the shared `components/scanner/`). Both are pure JavaScript with no runtime
 dependency, bundled, with no request leaving the origin (ADR 0006). The owner approved them
 at exact versions (B-05 plan, § Dependency approval).
 
@@ -43,6 +44,8 @@ web/src/
     player/  kassa/  wallets/   B-05: /speler, /kassa, and the Wallets section on /settings
   components/ui/  Button, Field, NumberField, Select, Switch, Marquee, NavMenu,
                   MobileSectionNav, ConfirmDialog, Toast, StatusDot
+  components/scanner/  Scanner, camera, decodeQr: the camera, shared by kassa and bar
+                  (B-06 SD12); the boundaries rule forbids one feature importing another
   lib/            http, ws transport, format (ONE euro formatter), useElementSize
   api/generated/  openapi-typescript output, committed
   styles/         tokens.css, base.css, keyframes.css
@@ -168,17 +171,31 @@ the displayed quote follows every new quote. A press (pointer down, or Enter/Spa
 hold, which ends `HOLD_MS` (2 s) after the last release and never more than `HOLD_MAX_MS`
 (10 s) after it began; then the latest quote is displayed. Above `AGE_SHOW_MS` (8 s) the pad
 shows the displayed quote's age and a "Ververs" button; when the **latest** quote is older
-than `STALE_MS` (15 s) the pad is disabled. The four are client constants in one module
-(`features/bar/model/constants.ts`), not run settings.
+than `STALE_MS` (15 s) the pad is disabled. These are client constants in one module
+(`features/bar/model/constants.ts`), not run settings, with B-06's `WALLET_IDLE_MS` (60 s)
+and `PAYMENTS_REFRESH_MS` (30 s) beside them.
 
 Force-promote the held quote on order success, on 409, on **every snapshot** (reconnect,
 resync, a new `boot_id`, the offline poll), and on manual refresh; a running hold keeps its
 timers.
 
 **One path from tap to request.** `features/bar/model/barController.ts` joins the store, the
-hold buffer and the order intents, and its `tap` reads the displayed `Quote` once and builds
-the request body from it. Components call only the controller; the money property test
-drives the same object.
+hold buffer and the order intents. Components call only the controller; the money property
+test drives the same object.
+
+**The basket and the held wallet (B-06 SD4-SD7, PD12).** A drink tap adds one to the basket
+(`features/bar/model/basket.ts`, pure) and sends nothing; "Afrekenen" is the one tap that
+creates an order intent: `checkout` reads the displayed `Quote` once and builds every line's
+price from it, and the basket's total on screen comes from that same `Quote`. A scanned or
+typed wallet is held as the query that found it, its name and its balance; the order and its
+409 confirmation carry that query as scanned, and the server resolves it inside the order's
+transaction. The button reads "Afrekenen €T", or is disabled with the shortfall over balance +
+"Rood staan tot", or with "Scan eerst een wallet" while "Wallet verplicht" (from the store's
+`run`, updated live by `config`) is on and none is held. While the basket's order is open
+(sending, retrying, a conflict, unknown) the basket and the wallet are shown but locked.
+Accepted, both clear; `wallet_not_found` lets go of the wallet and keeps the basket; refused,
+cancelled or failed, both stay. "Andere wallet" drops the wallet, "Annuleren" both, and 60 s
+with no pointer or key down on the page drops both, never while an order is open.
 
 Optimistic update is **UI only**: a local `pendingOrders` list gives instant feedback. Revenue
 is never computed locally; the server is authoritative. See
