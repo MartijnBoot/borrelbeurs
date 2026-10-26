@@ -192,7 +192,7 @@ def test_deleting_a_run_keeps_its_payments_and_refunds_without_order_or_run(
                 await wallets.insert_entry(
                     conn, wallet_id=jan.wallet_id, kind="topup", amount_cents=5000, now_ms=T0
                 )
-                order_ids = list(
+                order_ids: list[int] = list(
                     (
                         await conn.execute(
                             text('SELECT order_id FROM "order" WHERE run_id = :r ORDER BY 1'),
