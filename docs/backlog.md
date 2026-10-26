@@ -220,7 +220,8 @@ display/bar/admin keys, new tables and a migration, a new top-up page. Not the e
 
 ### B-06 — Pay at the bar by scanning a player's wallet
 
-- **Status:** specced → `docs/specs/phase-b-06-wallet-payments.md`
+- **Status:** built → `docs/plans/phase-b-06-wallet-payments.md` (spec:
+  `docs/specs/phase-b-06-wallet-payments.md`)
 - **Added:** 2026-10-18
 - **Size:** M (a few tasks) — a guess: the server already accepts multi-line orders
 

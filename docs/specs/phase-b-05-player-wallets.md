@@ -70,6 +70,10 @@ interview and approved as a whole. The planner must not reopen any of them.
   wallet, chosen by the player, and nothing else that identifies a person. Orders stay anonymous.
   ADR 0001 §4 is amended to say so (SD26).
 
+  > **Amended by B-06** ([phase-b-06-wallet-payments.md](phase-b-06-wallet-payments.md)). A payment names the order it paid, so an order paid
+  > from a wallet is linked to the wallet's name while the wallet exists; an order without a
+  > wallet stays anonymous. ADR 0001 has a second addendum (B-06 SD10).
+
 **Sign-up**
 
 - **SD6 — Open sign-up behind the deployment's sign-up code, rate-limited (Q9).**
@@ -100,6 +104,10 @@ interview and approved as a whole. The planner must not reopen any of them.
 - **SD9 — An append-only ledger in integer cents (Q5).** A wallet's balance is the sum of its
   entries. Every entry records its kind, amount, time, the live run at that moment (or none,
   SD13), and for crew actions the acting key and its label. A balance never goes below zero.
+
+  > **Amended by B-06** ([phase-b-06-wallet-payments.md](phase-b-06-wallet-payments.md)). A payment at the bar may take a balance down to minus
+  > the run's "Rood staan tot"; a kassa write still never takes it below zero. Two kinds join
+  > the ledger, `payment` and `refund` (B-06 SD2, SD8, SD9).
 - **SD10 — A top-up is €10 to €100 in €5 steps, confirmed with the name (Q6, Q5, Q15).**
   - Amounts: €10, €15, €20, … €100. The kassa page starts at €10 with `[−]` / `[+]` in €5 steps.
     Anything else is 422.
@@ -150,6 +158,9 @@ interview and approved as a whole. The planner must not reopen any of them.
     **paying** is B-06's question, and B-06 may change the scheme without changing the scanner
     or the ledger.
 
+    > **Amended by B-06** ([phase-b-06-wallet-payments.md](phase-b-06-wallet-payments.md)). B-06 pays with the same token and short code,
+    > unchanged: no rotating code, no PIN, no confirm step (B-06 SD11).
+
 **Retention and the admin's view**
 
 - **SD15 — Three ways a wallet goes (Q10, SD21).**
@@ -169,6 +180,10 @@ interview and approved as a whole. The planner must not reopen any of them.
   ledger sums to zero, and removes its name, token, short code and cookie credential. The ledger
   entries and an anonymous wallet row remain, so a borrel's top-up totals never change after the
   fact.
+
+  > **Amended by B-06** ([phase-b-06-wallet-payments.md](phase-b-06-wallet-payments.md)). A player cannot delete a wallet in debt (409
+  > `balance_negative`, "Eerst aanvullen bij de kassa"). Admin and the clean-up can, and the
+  > closing entry then writes the debt off (B-06 SD8).
 - **SD16 — A "Wallets" section on `/settings`, admin only (Q14).** After "Toegangssleutels",
   with a new pixel icon (SD25). It holds:
   - the sign-up code, which can be changed or cleared;
@@ -176,6 +191,10 @@ interview and approved as a whole. The planner must not reopen any of them.
   - **totals**: the outstanding balance across all wallets (what the association still owes in
     drinks), and top-ups per borrel (net of reversals, from each entry's run, newest borrel
     first);
+
+    > **Amended by B-06** ([phase-b-06-wallet-payments.md](phase-b-06-wallet-payments.md)). "Tegoed" (the sum of positive balances) and "Rood"
+    > (the sum of negative ones) replace the one outstanding total, and each borrel shows its
+    > wallet payments net of refunds beside its top-ups (B-06 SD20).
   - **the list** of wallets: name, balance and last activity, sorted by case-folded name, with
     "Verwijderen" behind a confirm ("Wallet 'Jan' verwijderen? Het saldo van €35,00 vervalt.").
 
@@ -226,6 +245,9 @@ interview and approved as a whole. The planner must not reopen any of them.
 
   An unknown token or code is "Onbekende wallet". Admin's home (`/`) gets a "Kassa" tile, and the
   connection panel counts kassa connections.
+
+  > **Amended by B-06** ([phase-b-06-wallet-payments.md](phase-b-06-wallet-payments.md)). A found wallet also lists its payments at the bar,
+  > newest first at any age, each with "Terugboeken" (B-06 SD9).
 - **SD23 — Draining, standby, restart and concurrency.**
   - While draining, every wallet write is refused 503 `shutting_down` (Phase 6 SD24,
     `app/api/deps.py:116-124`), sign-up and self-delete included. In standby every wallet route
@@ -236,6 +258,10 @@ interview and approved as a whole. The planner must not reopen any of them.
     both wallets in wallet-id order.
   - A restart leaves the old state or the new one, never half.
   - No wallet work runs inside the market's state lock (route invariant, Phase 3).
+
+    > **Amended by B-06** ([phase-b-06-wallet-payments.md](phase-b-06-wallet-payments.md)). A wallet order's payment is written in the order's
+    > own short transaction, inside the state lock: the wallet row is locked `FOR UPDATE` with a
+    > 2 s lock timeout before any write. Every other wallet action stays outside it (B-06 SD14).
 - **SD24 — D-49 is filed, not fixed.** The bar page makes its idempotency keys with
   `crypto.randomUUID()` (`web/src/features/bar/useBarController.ts:76`), which browsers only
   provide in a secure context. The venue serves plain HTTP (Phase 8 SD1), so an order tap there

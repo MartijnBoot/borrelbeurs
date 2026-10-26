@@ -105,6 +105,10 @@ human may overrule any at spec approval.
   SD22 formatter). A tap posts `{quote_version, lines: [{drink_id, qty: 1, unit_price_cents}]}`
   from the displayed `Quote` at the instant of the tap. There is no cart, no quantity
   selector and no multi-line order, although the server accepts them.
+
+  > **Amended by B-06** ([phase-b-06-wallet-payments.md](phase-b-06-wallet-payments.md)). A drink tap adds one to a basket and sends nothing;
+  > "Afrekenen" posts the basket as one order of several lines, every price from the displayed
+  > `Quote` at that tap (B-06 SD4, SD5).
 - **SD6 — Taps are independent and concurrent.** Each tap captures its own quote and its own
   idempotency key, and may be in flight alongside others. The server serialises them (Phase 3
   AC8). The client does not queue or debounce: two taps are two orders, because "+1 Bier"
@@ -113,6 +117,11 @@ human may overrule any at spec approval.
   pattern). It is created when the tap creates the order intent, never at send time. Every
   retry of that intent sends the same key **and a byte-identical body**. A confirmation after
   a 409 is a new intent with a new key (ADR 0008).
+
+  > **Amended by B-06** ([phase-b-06-wallet-payments.md](phase-b-06-wallet-payments.md); D-49). The key is 16 random bytes from
+  > `crypto.getRandomValues` as 32 hex characters (`lib/idempotencyKey.ts`), never
+  > `crypto.randomUUID()`, which a browser offers only in a secure context, so the bar books
+  > over plain HTTP at the venue.
 - **SD8 — Retry policy.** The request times out after 8 s (`AbortSignal.timeout`).
   - On a network error, a timeout or a 503 (`persistence_unavailable`, `shutting_down`), the
     client retries automatically after 1 s, 2 s and 4 s, with the same key and body.
@@ -225,8 +234,10 @@ human may overrule any at spec approval.
 
 ## Out of scope
 
-- Carts, quantities other than 1, multi-line orders from the UI (SD5).
-- Voids, refunds, undoing a mis-tap, or any correction of a committed order.
+- Carts, quantities other than 1, multi-line orders from the UI (SD5). *Amended by B-06: the
+  bar has a basket (B-06 SD4).*
+- Voids, refunds, undoing a mis-tap, or any correction of a committed order. *Amended by B-06:
+  a wallet payment can be refunded, the money only; the order stays as booked (B-06 SD9).*
 - Persisting pending intents across reload (SD12).
 - Revenue at bar price, `bar_price_*` aggregates, the sales count, the xlsx download (Phase 7;
   D-20).
