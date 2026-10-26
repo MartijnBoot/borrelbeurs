@@ -52,7 +52,7 @@ test('a preset picked on /settings re-themes /koers within 2 s, without navigati
   display.on('framenavigated', (frame) => {
     if (frame === display.mainFrame()) navigations += 1
   })
-  await admin.getByRole('button', { name: 'Rood' }).click()
+  await admin.getByRole('button', { name: 'Rood', exact: true }).click()
 
   await expect.poll(() => bodyBackground(display), { timeout: PROPAGATION_MS }).toBe(BG.rood)
   expect(navigations).toBe(0)
