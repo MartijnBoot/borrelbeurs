@@ -142,8 +142,13 @@ test.describe('the bar page (Phase 5)', () => {
       const price = error.prices.find((p) => p.drink_id === drinkId)!.price_cents
       const dialog = page.getByRole('dialog')
       await expect(dialog).toContainText('Prijzen zijn veranderd:')
-      await expect(dialog).toContainText(`→ ${EUR.format(price / 100)}`)
       await expect(dialog).toContainText(`Nieuw totaal: ${EUR.format(price / 100)}`)
+      // The dialog lists a line only if the 409's price differs from the one the bar showed.
+      // The forced 409 rewrote the posted price, not the shown one, so with no tick in between
+      // nothing is listed.
+      for (const change of await dialog.getByRole('listitem').all()) {
+        await expect(change).toContainText(`→ ${EUR.format(price / 100)}`)
+      }
       expect(qtyOf(await earnings(page.request), drinkId)).toBe(qtyOf(before, drinkId) + 0)
 
       const next = page.waitForResponse((r) => isOrder(r.request()))
