@@ -6,6 +6,10 @@
    A match whose body is the same -- the receipt's `quote_version` and the set
    of `(drink_id, qty, unit_price_cents)` (plan PD6) -- replays the stored
    receipt and changes nothing; any difference is 422 `idempotency_key_reused`.
+   B-06 (SD16, PD7): so is a body that names a wallet where none paid, names
+   none where one did, or names a live wallet other than the one that paid. A
+   credential that resolves to nothing now (re-coded or deleted since) is a
+   genuine retry and gets the stored receipt: a replay writes nothing.
 2. **Domain checks (SD17).** `quote_version` ahead of the current version, a
    drink that is not a drink of the live run, or a drink named twice, is 422
    `invalid_request`. A drink removed from the live run (Phase 6 SD13) is 422
@@ -51,8 +55,10 @@ from typing import Annotated
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.core.errors import AppError
+from app.db import wallets
 from app.db.codec import tick_prices
 from app.db.mapping import cents_from_quantised
 from app.db.orders import (
@@ -76,6 +82,7 @@ from app.runtime.holder import (
     Outcome,
     PersistenceUnavailable,
 )
+from app.runtime.wallet_codes import normalise_short_code
 from exchange import advance
 
 _UNIQUE_KEY = "order_idempotency_key_key"
@@ -180,7 +187,18 @@ def _signature(
     return frozenset((line.drink_id, line.qty, line.unit_price_cents) for line in lines)
 
 
-def _replay(stored: StoredOrder, request: OrderRequest) -> PlacedOrder:
+async def _resolve(conn: AsyncConnection, wallet: ScannedWallet) -> int | None:
+    """The live wallet `wallet` names now, unlocked, or `None` (B-06 PD7)."""
+    found = None
+    if wallet.qr_token is not None:
+        found = await wallets.get_by_qr_token(conn, wallet.qr_token)
+    elif wallet.short_code is not None:
+        code = normalise_short_code(wallet.short_code)
+        found = None if code is None else await wallets.get_by_short_code(conn, code)
+    return None if found is None else found.wallet_id
+
+
+async def _replay(conn: AsyncConnection, stored: StoredOrder, request: OrderRequest) -> PlacedOrder:
     """The stored receipt if `request` is the same order (PD6), else `IdempotencyKeyReused`."""
     reused = IdempotencyKeyReused("this Idempotency-Key was already used for a different order")
     if stored.response is None:
@@ -193,6 +211,12 @@ def _replay(stored: StoredOrder, request: OrderRequest) -> PlacedOrder:
         request.lines
     ):
         raise reused
+    if (request.wallet is None) != (stored.payment_wallet_id is None):
+        raise reused
+    if request.wallet is not None:
+        now = await _resolve(conn, request.wallet)
+        if now is not None and now != stored.payment_wallet_id:
+            raise reused
     return PlacedOrder(receipt=receipt, body=receipt.body(), replay=True)
 
 
@@ -215,8 +239,8 @@ async def place_order(
         assert view.run_id is not None and view.spec is not None and view.state is not None
         async with engine.connect() as conn:
             stored = await find_order_by_key(conn, request.idempotency_key)
-        if stored is not None:
-            return Outcome(result=_replay(stored, request), view=view)
+            if stored is not None:
+                return Outcome(result=await _replay(conn, stored, request), view=view)
 
         state, spec, drink_ids = view.state, view.spec, view.drink_ids
         if request.quote_version > state.version:
@@ -326,9 +350,9 @@ async def place_order(
                 raise
             async with engine.connect() as conn:
                 winner = await find_order_by_key(conn, request.idempotency_key)
-            if winner is None:
-                raise
-            return Outcome(result=_replay(winner, request), view=view)
+                if winner is None:
+                    raise
+                return Outcome(result=await _replay(conn, winner, request), view=view)
 
         receipt = receipt_for(written.order_id, written.paid)
         entry = TickEntry(
@@ -371,8 +395,8 @@ async def place_order(
         try:
             async with engine.connect() as conn:
                 stored = await find_order_by_key(conn, request.idempotency_key)
+                if stored is None:
+                    raise
+                return await _replay(conn, stored, request)
         except (SQLAlchemyError, OSError) as error:
             raise PersistenceUnavailable("the database did not answer the replay") from error
-        if stored is None:
-            raise
-        return _replay(stored, request)

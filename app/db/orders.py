@@ -80,6 +80,8 @@ class StoredOrder:
     version: int
     actor_key_id: int | None
     response: Mapping[str, Any] | None
+    # The wallet whose `payment` names this order, or `None` (B-06 PD7).
+    payment_wallet_id: int | None = None
 
 
 async def write_order(
@@ -213,13 +215,21 @@ async def _check_payment(
 
 
 async def find_order_by_key(conn: AsyncConnection, idempotency_key: str) -> StoredOrder | None:
-    """The order stored under `idempotency_key`, with its receipt, or `None`."""
+    """The order stored under `idempotency_key`, with its receipt and paying wallet, or `None`."""
     order = models.Order
+    entry = models.WalletEntry
     row = (
         await conn.execute(
             select(
-                order.order_id, order.run_id, order.version, order.actor_key_id, order.response
-            ).where(order.idempotency_key == idempotency_key)
+                order.order_id,
+                order.run_id,
+                order.version,
+                order.actor_key_id,
+                order.response,
+                entry.wallet_id,
+            )
+            .outerjoin(entry, entry.order_id == order.order_id)
+            .where(order.idempotency_key == idempotency_key)
         )
     ).one_or_none()
     if row is None:
@@ -230,6 +240,7 @@ async def find_order_by_key(conn: AsyncConnection, idempotency_key: str) -> Stor
         version=int(row.version),
         actor_key_id=None if row.actor_key_id is None else int(row.actor_key_id),
         response=row.response,
+        payment_wallet_id=None if row.wallet_id is None else int(row.wallet_id),
     )
 
 

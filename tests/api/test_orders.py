@@ -588,3 +588,146 @@ def test_a_body_naming_both_a_token_and_a_code_is_422(
 
     assert response.status_code == 422
     assert _counts(settings, api_env) == (0, 0)
+
+
+# --- B-06 T5: replaying a wallet order (SD16; AC10, AC34; PD6, PD7) -------------------
+
+
+def _paid_order(
+    login: Login, settings: Settings, api_env: str, key: str = "k-replay-0001"
+) -> tuple[TestClient, WalletRow, dict[str, Any], Any]:
+    """Jan, funded with 1500 at the kassa, pays one drink under `key`."""
+    jan = _new_wallet(settings, api_env)
+    _funded(login, jan)
+    bar = login("bar", "Bar 1")
+    live = _live(bar)
+    bier = next(iter(live))
+    body = {
+        "quote_version": _version(bar),
+        "lines": [{"drink_id": bier, "qty": 2, "unit_price_cents": live[bier]}],
+        "wallet": {"short_code": jan.short_code},
+    }
+    first = bar.post("/api/orders", json=body, headers={"Idempotency-Key": key})
+    assert first.status_code == 201, first.text
+    return bar, jan, body, first
+
+
+def _payments(settings: Settings, url: str) -> int:
+    ((count,),) = _sql(settings, url, "SELECT count(*) FROM wallet_entry WHERE kind = 'payment'")
+    return int(count)
+
+
+def test_a_paid_order_resent_replays_its_bytes_even_after_the_balance_moved(
+    live_client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """AC10, SD16: 200, byte-identical, `balance_after_cents` as it was; no new entry."""
+    bar, jan, body, first = _paid_order(login, settings, api_env)
+    kassa = login("kassa", "Kassa 1")
+    topped = kassa.post(
+        f"/api/kassa/wallets/{jan.wallet_id}/topups",
+        json={"amount_cents": 1000},
+        headers={"Idempotency-Key": "k-fund-again-01"},
+    )
+    assert topped.status_code == 201, topped.text
+    bar = login("bar", "Bar 1")
+
+    again = bar.post("/api/orders", json=body, headers={"Idempotency-Key": "k-replay-0001"})
+
+    assert again.status_code == 200, again.text
+    assert again.content == first.content
+    assert (
+        again.json()["wallet"]["balance_after_cents"]
+        == first.json()["wallet"]["balance_after_cents"]
+    )
+    assert _payments(settings, api_env) == 1
+
+
+@pytest.mark.parametrize("change", ["another-wallet", "no-wallet"])
+def test_a_paid_orders_key_with_another_or_no_wallet_is_422(
+    live_client: TestClient, login: Login, settings: Settings, api_env: str, change: str
+) -> None:
+    """AC10, PD7: the body must name the wallet that paid."""
+    bar, _, body, _ = _paid_order(login, settings, api_env)
+    piet = _new_wallet(settings, api_env, "Piet")
+    changed = dict(body)
+    if change == "another-wallet":
+        changed["wallet"] = {"qr_token": piet.qr_token}
+    else:
+        del changed["wallet"]
+
+    response = bar.post("/api/orders", json=changed, headers={"Idempotency-Key": "k-replay-0001"})
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "idempotency_key_reused"
+    assert _payments(settings, api_env) == 1
+
+
+def test_a_key_first_used_without_a_wallet_resent_with_one_is_422(
+    live_client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """AC10, PD7."""
+    jan = _new_wallet(settings, api_env)
+    _funded(login, jan)
+    bar = login("bar", "Bar 1")
+    live = _live(bar)
+    bier = next(iter(live))
+    body: dict[str, Any] = {
+        "quote_version": _version(bar),
+        "lines": [{"drink_id": bier, "qty": 1, "unit_price_cents": live[bier]}],
+    }
+    assert bar.post("/api/orders", json=body, headers={"Idempotency-Key": "k-unpaid-01"}).is_success
+
+    response = bar.post(
+        "/api/orders",
+        json={**body, "wallet": {"qr_token": jan.qr_token}},
+        headers={"Idempotency-Key": "k-unpaid-01"},
+    )
+
+    assert response.status_code == 422, response.text
+    assert _payments(settings, api_env) == 0
+
+
+@pytest.mark.parametrize("since", ["new-code", "deleted"])
+def test_a_genuine_retry_after_the_code_stopped_working_gets_the_receipt(
+    live_client: TestClient, login: Login, settings: Settings, api_env: str, since: str
+) -> None:
+    """PD7: a replay writes nothing, so a retry whose credential no longer resolves is the
+    stored receipt, not a refusal."""
+    bar, jan, body, first = _paid_order(login, settings, api_env)
+    if since == "new-code":
+        _db(settings, api_env, lambda conn: wallets.replace_codes(conn, jan.wallet_id))
+    else:
+        _db(settings, api_env, lambda conn: wallets.delete_wallet(conn, jan.wallet_id, now_ms=0))
+
+    again = bar.post("/api/orders", json=body, headers={"Idempotency-Key": "k-replay-0001"})
+
+    assert again.status_code == 200, again.text
+    assert again.content == first.content
+    assert _payments(settings, api_env) == 1
+
+
+def test_a_receipt_stored_before_b06_replays_without_a_wallet_key(
+    live_client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """PD6: a receipt with no `wallet` key is dumped as it was first sent."""
+    bar = login("bar", "Bar 1")
+    live = _live(bar)
+    bier = next(iter(live))
+    body = {
+        "quote_version": _version(bar),
+        "lines": [{"drink_id": bier, "qty": 1, "unit_price_cents": live[bier]}],
+    }
+    first = bar.post("/api/orders", json=body, headers={"Idempotency-Key": "k-old-receipt"})
+    assert first.status_code == 201
+    _sql(
+        settings,
+        api_env,
+        """UPDATE "order" SET response = response - 'wallet' """
+        "WHERE idempotency_key = 'k-old-receipt' RETURNING 1",
+    )
+
+    again = bar.post("/api/orders", json=body, headers={"Idempotency-Key": "k-old-receipt"})
+
+    assert again.status_code == 200, again.text
+    assert b'"wallet"' not in again.content
+    assert again.json() == {k: v for k, v in first.json().items() if k != "wallet"}
