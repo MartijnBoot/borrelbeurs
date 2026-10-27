@@ -247,6 +247,9 @@ launch() {
     # Only stage 2's children are covered by the holder; stage 3 and any
     # targeted run take the lock themselves.
     export BB_GATE_LOCK_HELD=1
+    # Scratch databases are released, not dropped, while other steps write: a drop
+    # waits on a checkpoint for up to half a minute. Stage 3's sweep removes them.
+    export BB_GATE_DEFER_DROPS=1
     started=$SECONDS
     printf '  start  %s\n' "$name"
     if "$@" >"$log" 2>&1; then

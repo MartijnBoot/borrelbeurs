@@ -54,6 +54,7 @@ from tests.support import pg_gate
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRATCH_PREFIX = "bb_test_"
+DEFER_DROPS_ENV = "BB_GATE_DEFER_DROPS"
 
 RunAlembic = Callable[..., subprocess.CompletedProcess[str]]
 
@@ -78,8 +79,16 @@ async def _admin(base_url: str, *statements: str) -> list[str]:
 
 
 def _drop(base_url: str, database: str) -> None:
-    """Drop `database`, then give up its ownership, so a sweeper never sees it unowned."""
-    asyncio.run(_admin(base_url, f'DROP DATABASE IF EXISTS "{database}" WITH (FORCE)'))
+    """Drop `database`, then give up its ownership, so a sweeper never sees it unowned.
+
+    Under the gate (`BB_GATE_DEFER_DROPS`, set by `check.sh` for stage 2 only) the
+    drop is left to the sweep that stage 3 starts with: `DROP DATABASE` forces a
+    checkpoint, which takes 3-35 s while other workers write, and each of e2e's
+    eight server stops waited for one (B-11 T10). The database is released, so the
+    sweep finds an owner-less one and drops it when the server is quiet.
+    """
+    if not os.environ.get(DEFER_DROPS_ENV):
+        asyncio.run(_admin(base_url, f'DROP DATABASE IF EXISTS "{database}" WITH (FORCE)'))
     pg_gate.release(database)
 
 

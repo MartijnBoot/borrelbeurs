@@ -234,3 +234,18 @@ def test_a_port_claimed_by_one_run_is_refused_to_another(url: str, children: lis
         assert probe.stdout.strip() == "False", probe.stderr
     finally:
         pg_gate.release_port(port)
+
+
+def test_a_deferred_drop_is_released_and_the_next_sweep_removes_it(
+    url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Under the gate a drop is left to the sweep (T10): the database stays, unowned."""
+    from tests.integration.conftest import DEFER_DROPS_ENV, _drop
+
+    database = _name()
+    _own_and_create(url, database)
+    monkeypatch.setenv(DEFER_DROPS_ENV, "1")
+    _drop(url, database)
+    assert _exists(url, database)
+    assert pg_gate.sweep(url, (PREFIX,)) == [database]
+    assert not _exists(url, database)
