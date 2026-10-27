@@ -225,7 +225,10 @@ printf '\n=== stage 2: unit, web, database tests, e2e -- side by side ===\n'
 printf 'scripts/check.sh: taking the shared run lock\n'
 coproc HOLDER { exec uv run python -m tests.support.pg_gate hold shared; }
 held_line=""
-if ! read -r -t 900 -u "${HOLDER[0]}" held_line || [ "$held_line" != "held" ]; then
+read -r -t 900 -u "${HOLDER[0]}" held_line || true
+held_line="${held_line%$''}" # Windows Python ends its lines with 
+
+if [ "$held_line" != "held" ]; then
   printf '\nscripts/check.sh: FAILED to take the shared run lock (is the database up?)\n' >&2
   release_holder
   exit 1
