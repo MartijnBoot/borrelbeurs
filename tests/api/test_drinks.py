@@ -490,3 +490,189 @@ def test_other_roles_may_not_remove(
     draft: int, client: TestClient, login: Login, role: str
 ) -> None:
     assert login(role).delete(f"/api/runs/{draft}/drinks/1").status_code == 403
+
+
+# --- B-07 T2: bounds on the Prijsstap grid -----------------------------------
+
+
+def _step(admin: TestClient, run_id: int, step_quant: float) -> None:
+    response = admin.patch(
+        f"/api/runs/{run_id}/config", json={"params": {"step_quant": step_quant}}
+    )
+    assert response.status_code == 200, response.text
+
+
+def _grid_faults(response: Any) -> list[tuple[str, str]]:
+    return [(f["loc"][-1], f["msg"]) for f in response.json()["error"]["faults"]]
+
+
+TEN = "Moet een veelvoud van de Prijsstap (0,10) zijn: 1,20 of 1,30."
+QUARTER = "Moet een veelvoud van de Prijsstap (0,25) zijn: 1,50 of 1,75."
+
+
+@pytest.mark.parametrize(
+    ("step", "change", "field", "msg"),
+    [
+        (0.1, {"p_min_cents": 124}, "p_min_cents", TEN),
+        (0.1, {"p_max_cents": 124, "p_min_cents": 0, "p0_cents": 100}, "p_max_cents", TEN),
+        (0.25, {"p_min_cents": 160}, "p_min_cents", QUARTER),
+    ],
+)
+def test_an_off_grid_bound_on_add_is_422_with_its_neighbours_and_adds_nothing(
+    draft: int,
+    client: TestClient,
+    login: Login,
+    settings: Settings,
+    api_env: str,
+    step: float,
+    change: dict[str, Any],
+    field: str,
+    msg: str,
+) -> None:
+    """B-07 AC1, on an add."""
+    admin = login("admin")
+    _step(admin, draft, step)
+    revisions = _revisions(settings, api_env, draft)
+
+    response = admin.post(f"/api/runs/{draft}/drinks", json={**BIER, **change})
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] == "invalid_request"
+    assert _grid_faults(response) == [(field, msg)]
+    assert admin.get(f"/api/runs/{draft}/config").json()["drinks"] == []
+    assert _revisions(settings, api_env, draft) == revisions
+
+
+@pytest.mark.parametrize(
+    ("step", "bounds"),
+    [(0.1, (120, 500)), (0.1, (0, 500)), (0.25, (150, 500)), (0.25, (175, 500))],
+)
+def test_an_on_grid_bound_on_add_is_stored(
+    draft: int, client: TestClient, login: Login, step: float, bounds: tuple[int, int]
+) -> None:
+    """B-07 AC1, the accepted values."""
+    admin = login("admin")
+    _step(admin, draft, step)
+    body = {**BIER, "p_min_cents": bounds[0], "p_max_cents": bounds[1]}
+
+    response = admin.post(f"/api/runs/{draft}/drinks", json=body)
+
+    assert response.status_code == 201, response.text
+    (stored,) = admin.get(f"/api/runs/{draft}/config").json()["drinks"]
+    assert (stored["p_min_cents"], stored["p_max_cents"]) == bounds
+
+
+@pytest.mark.parametrize(
+    ("step", "body", "field", "msg"),
+    [
+        (0.1, {"p_min_cents": 124}, "p_min_cents", TEN),
+        (0.25, {"p_max_cents": 160, "p_min_cents": 0, "p0_cents": 100}, "p_max_cents", QUARTER),
+    ],
+)
+def test_an_off_grid_bound_on_edit_is_422_and_stores_nothing(
+    draft: int,
+    client: TestClient,
+    login: Login,
+    settings: Settings,
+    api_env: str,
+    step: float,
+    body: dict[str, Any],
+    field: str,
+    msg: str,
+) -> None:
+    """B-07 AC1, on an edit."""
+    admin = login("admin")
+    _step(admin, draft, step)
+    bier = _bier(admin, draft)
+    before = _drink(admin, draft, bier)
+    revisions = _revisions(settings, api_env, draft)
+
+    response = admin.patch(f"/api/runs/{draft}/drinks/{bier}", json=body)
+
+    assert response.status_code == 422, response.text
+    assert _grid_faults(response) == [(field, msg)]
+    assert _drink(admin, draft, bier) == before
+    assert _revisions(settings, api_env, draft) == revisions
+
+
+@pytest.mark.parametrize(
+    ("step", "body"),
+    [
+        (0.1, {"p_min_cents": 120}),
+        (0.1, {"p_min_cents": 0}),
+        (0.25, {"p_max_cents": 175, "p_min_cents": 0, "p0_cents": 100}),
+    ],
+)
+def test_an_on_grid_bound_on_edit_is_stored(
+    draft: int, client: TestClient, login: Login, step: float, body: dict[str, Any]
+) -> None:
+    """B-07 AC1, the accepted values on an edit."""
+    admin = login("admin")
+    _step(admin, draft, step)
+    bier = _bier(admin, draft)
+
+    response = admin.patch(f"/api/runs/{draft}/drinks/{bier}", json=body)
+
+    assert response.status_code == 200, response.text
+    assert {k: _drink(admin, draft, bier)[k] for k in body} == body
+
+
+@pytest.mark.parametrize(
+    "body", [{"p0_cents": 300}, {"p_max_cents": 450}, {"name": "Pils", "a": 2.0}]
+)
+def test_an_edit_without_the_stored_off_grid_bound_keeps_it(
+    draft: int, client: TestClient, login: Login, settings: Settings, api_env: str, body: Any
+) -> None:
+    """B-07 AC2, SD6: only a bound present in the request is checked."""
+    admin = login("admin")
+    bier = _bier(admin, draft)
+    _sql(settings, api_env, "UPDATE drink SET p_min_cents = 124 WHERE drink_id = :d", d=bier)
+
+    response = admin.patch(f"/api/runs/{draft}/drinks/{bier}", json=body)
+
+    assert response.status_code == 200, response.text
+    after = _drink(admin, draft, bier)
+    assert after["p_min_cents"] == 124
+    assert {k: after[k] for k in body} == body
+
+
+def test_an_off_grid_startprijs_between_on_grid_bounds_is_accepted(
+    draft: int, client: TestClient, login: Login
+) -> None:
+    """B-07 AC3, SD2: on an add and on an edit."""
+    admin = login("admin")
+
+    added = admin.post(f"/api/runs/{draft}/drinks", json={**BIER, "p0_cents": 263})
+    assert added.status_code == 201, added.text
+    drink_id = added.json()["drink_id"]
+    edited = admin.patch(f"/api/runs/{draft}/drinks/{drink_id}", json={"p0_cents": 277})
+
+    assert edited.status_code == 200, edited.text
+    assert _drink(admin, draft, drink_id)["p0_cents"] == 277
+
+
+def test_a_live_off_grid_add_or_edit_takes_no_transition(
+    live_run: int, live_client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """B-07 AC1 on the live run: refused inside the step, so the version stays."""
+    admin = login("admin")
+    version = admin.get("/api/state").json()["version"]
+    revisions = _revisions(settings, api_env, live_run)
+    bier = admin.get(f"/api/runs/{live_run}/config").json()["drinks"][0]
+
+    added = admin.post(
+        f"/api/runs/{live_run}/drinks", json={**BIER, "name": "Cola", "p_min_cents": 124}
+    )
+    edited = admin.patch(
+        f"/api/runs/{live_run}/drinks/{bier['drink_id']}", json={"p_max_cents": 455}
+    )
+
+    assert added.status_code == 422, added.text
+    assert _grid_faults(added) == [("p_min_cents", TEN)]
+    assert edited.status_code == 422, edited.text
+    assert _grid_faults(edited) == [
+        ("p_max_cents", "Moet een veelvoud van de Prijsstap (0,10) zijn: 4,50 of 4,60.")
+    ]
+    assert admin.get("/api/state").json()["version"] == version
+    assert _revisions(settings, api_env, live_run) == revisions
+    assert _drink(admin, live_run, bier["drink_id"]) == bier

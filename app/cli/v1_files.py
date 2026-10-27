@@ -15,6 +15,11 @@ here, so the import (SD15) either has a complete, valid plan or writes nothing:
   sidecar.
 - **News levels are lowercased** and anything but the four levels is rejected
   (SD13, PD13).
+- **Bounds land on the Prijsstap grid** (B-07 SD7; its plan PD7). `step_quant`
+  must be above 0, finite and whole cents, else a `ValueError` naming it. Each
+  bound off that grid moves inward (`app.runtime.price_grid.move_inward`), and
+  the plan carries the moves for `import_v1` to report. A drink left with no
+  room between its bounds is a `ValueError` naming it.
 
 This is the one module outside `tests/` that reads a file (AC18): the
 repositories and rehydrate never do.
@@ -23,6 +28,7 @@ repositories and rehydrate never do.
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal
@@ -31,6 +37,8 @@ from typing import Any, Literal, cast, get_args
 
 from pydantic import BaseModel, ConfigDict, TypeAdapter, field_validator, model_validator
 
+from app.runtime.config_patch import _whole_cents
+from app.runtime.price_grid import BoundMove, BoundsCollision, move_inward, step_cents
 from exchange import Params
 
 NewsLevel = Literal["info", "success", "warning", "danger"]
@@ -139,11 +147,15 @@ class ImportedNews:
 
 @dataclass(frozen=True)
 class ImportPlan:
-    """Everything the import writes, validated: drinks in slot order, params, news."""
+    """Everything the import writes, validated: drinks in slot order, params, news.
+
+    `moves` are the bounds moved onto the Prijsstap grid (B-07 SD7), in slot order.
+    """
 
     drinks: tuple[ImportedDrink, ...]
     params: Params
     news: tuple[ImportedNews, ...]
+    moves: tuple[BoundMove, ...]
 
 
 def resolve_bar_prices(config: V1Config, sidecar: Mapping[str, float] | None) -> dict[str, int]:
@@ -163,11 +175,23 @@ def resolve_bar_prices(config: V1Config, sidecar: Mapping[str, float] | None) ->
     return prices
 
 
+def _checked_step(step_quant: float) -> int:
+    """The Prijsstap in cents, or a `ValueError` naming `step_quant` (PD7)."""
+    if not (math.isfinite(step_quant) and step_quant > 0):
+        raise ValueError(f"params.step_quant = {step_quant!r} must be above 0 and finite")
+    try:
+        _whole_cents(step_quant)
+    except ValueError as error:
+        raise ValueError(f"params.step_quant = {step_quant!r} {error}") from None
+    return step_cents(step_quant)
+
+
 def build_plan(config_data: Any, *, news: Any = None, sidecar: Any = None) -> ImportPlan:
     """Validate already-decoded file contents into an `ImportPlan`.
 
-    Raises `ValueError` (a pydantic `ValidationError`, `InexactCents` or
-    `UnknownDrinkName`) naming what is wrong; nothing is half-built.
+    Raises `ValueError` (a pydantic `ValidationError`, `InexactCents`,
+    `UnknownDrinkName`, a bad `step_quant` or a drink with no room on its grid)
+    naming what is wrong; nothing is half-built.
     """
     config = V1Config.model_validate(config_data)
     items = _NEWS.validate_python(news) if news is not None else []
@@ -190,9 +214,16 @@ def build_plan(config_data: Any, *, news: Any = None, sidecar: Any = None) -> Im
                 bar_price_cents=bar_prices[name],
             )
         )
+    params = Params.from_dict(config.params)
+    step = _checked_step(params.step_quant)
+    try:
+        drinks, moves = move_inward(drinks, step, loc=("params", "step_quant"))
+    except BoundsCollision as error:
+        raise ValueError(str(error)) from None
     return ImportPlan(
         drinks=tuple(drinks),
-        params=Params.from_dict(config.params),
+        params=params,
+        moves=tuple(moves),
         news=tuple(ImportedNews(ts_ms=i.ts_ms, level=i.level, text=i.text) for i in items),
     )
 

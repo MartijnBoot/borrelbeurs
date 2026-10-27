@@ -3,9 +3,9 @@
     "id": "E1",
     "name": "Prijsstap (€)",
     "paragraphs": [
-      "De prijs op het bord en aan de bar is altijd een veelvoud van dit bedrag. De grafieken lopen per cent en kunnen tussen de stappen door bewegen. Ook de Doelprijs van een sprong wordt hierop afgerond.",
+      "De prijs op het bord en aan de bar is altijd een veelvoud van dit bedrag. De grafieken lopen per cent en kunnen tussen de stappen door bewegen. Ook de Doelprijs van een sprong wordt hierop afgerond. Minimumprijs en Maximumprijs zijn ook een veelvoud van de Prijsstap: verander je de stap, dan schuiven ze mee naar binnen, de Minimumprijs omhoog en de Maximumprijs omlaag.",
       "Hoger: grotere stappen, en een prijs blijft vaker even staan. Lager: fijnere bewegingen.",
-      "Eerste borrel: 0,10. Toegestaan: meer dan 0 en hoogstens 5, in hele centen.",
+      "Eerste borrel: 0,10. Toegestaan: meer dan 0 en hoogstens 5, in hele centen; niet als een drankje daardoor geen ruimte meer heeft tussen Minimumprijs, Startprijs en Maximumprijs.",
       "Tijdens de borrel: elke koers blijft staan, afgerond op de nieuwe stap en binnen Minimumprijs en Maximumprijs. Alle lopende prijssprongen stoppen, ook die van een marktgebeurtenis; de melding van een marktgebeurtenis blijft staan."
     ]
   },
@@ -227,8 +227,8 @@
     "id": "E17",
     "name": "Minimumprijs (€)",
     "paragraphs": [
-      "De koers van dit drankje komt nooit lager dan de Minimumprijs, afgerond op de Prijsstap. Kies hem als veelvoud van de Prijsstap: anders kan de koers tot een halve stap eronder uitkomen en na een Marktcrash lang op de bodem blijven hangen. Een Marktcrash zakt hierheen. Hoe dichter een prijs bij de Minimumprijs of Maximumprijs, hoe minder ver hij per stap beweegt.",
-      "Toegestaan: 0 of meer, en lager dan de Startprijs.",
+      "De koers van dit drankje komt nooit lager dan de Minimumprijs. Een Marktcrash zakt hierheen. Hoe dichter een prijs bij de Minimumprijs of Maximumprijs, hoe minder ver hij per stap beweegt.",
+      "Toegestaan: 0 of meer, een veelvoud van de Prijsstap, en lager dan de Startprijs.",
       "Tijdens de borrel: de huidige koers blijft staan, binnen de nieuwe grenzen en op de Prijsstap. Een lopende prijssprong op dit drankje stopt, ook die van een marktgebeurtenis."
     ]
   },
@@ -245,8 +245,8 @@
     "id": "E19",
     "name": "Maximumprijs (€)",
     "paragraphs": [
-      "De koers van dit drankje komt nooit hoger dan de Maximumprijs, afgerond op de Prijsstap. Kies hem als veelvoud van de Prijsstap: anders kan de koers tot een halve stap erboven uitkomen en na een Prijsbubbel lang aan de top blijven hangen. Een Prijsbubbel stijgt hierheen. Hoe dichter een prijs bij de Minimumprijs of Maximumprijs, hoe minder ver hij per stap beweegt.",
-      "Toegestaan: hoger dan de Startprijs.",
+      "De koers van dit drankje komt nooit hoger dan de Maximumprijs. Een Prijsbubbel stijgt hierheen. Hoe dichter een prijs bij de Minimumprijs of Maximumprijs, hoe minder ver hij per stap beweegt.",
+      "Toegestaan: een veelvoud van de Prijsstap, hoger dan de Startprijs.",
       "Tijdens de borrel: de huidige koers blijft staan, binnen de nieuwe grenzen en op de Prijsstap. Een lopende prijssprong op dit drankje stopt, ook die van een marktgebeurtenis."
     ]
   },

@@ -4,6 +4,8 @@
 // B-01 T5: the new names, and an (i) per field (E1-E10).
 // B-03 T4: the six noise controls after Kaarsbreedte (SD4-SD6; AC10-AC14; E34-E39).
 // B-06 T17: "Wallet verplicht" and "Rood staan tot" at the top level (SD1-SD3; AC2, AC3).
+// B-07 T10: a Prijsstap that moves a bound asks first (SD3; AC10), and the
+// server's `bounds_collision` shows under Prijsstap (AC8).
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectExplained } from '../../components/ui/infoTesting'
@@ -400,5 +402,101 @@ describe('GlobalSection', () => {
       await save()
       expect(patches()).toEqual([])
     })
+  })
+})
+
+describe('GlobalSection: a Prijsstap that moves bounds (B-07)', () => {
+  const drink = (drink_id: number, slot: number, name: string, low: number, high: number) => ({
+    drink_id,
+    slot,
+    name,
+    active: true,
+    p_min_cents: low,
+    p0_cents: 200,
+    p_max_cents: high,
+    bar_price_cents: 200,
+    a: 10,
+    d: 0.6,
+    s0: 8,
+    c: 0.4,
+  })
+
+  beforeEach(() => {
+    served = {
+      ...config({ ...PARAMS, step_quant: 0.1 }),
+      drinks: [drink(11, 0, 'Bier', 150, 310), drink(12, 1, 'Wijn', 150, 300)],
+    }
+  })
+
+  const prijsstap = (value: string) =>
+    fireEvent.change(input('Prijsstap (€)'), { target: { value } })
+
+  it('0,10 to 0,25 lists the moving bound before sending (AC10)', async () => {
+    await open()
+    prijsstap('0,25')
+    await save()
+    expect(patches()).toEqual([])
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.textContent).toContain('Prijsstap 0,25 opslaan? Deze grenzen schuiven mee:')
+    const items = Array.from(dialog.querySelectorAll('li')).map((li) => li.textContent)
+    expect(items).toEqual(['Bier: Maximumprijs 3,10 → 3,00'])
+  })
+
+  it('"Annuleren" sends nothing and keeps the typed step', async () => {
+    await open()
+    prijsstap('0,25')
+    await save()
+    fireEvent.click(screen.getByRole('button', { name: 'Annuleren' }))
+    await settle()
+    expect(patches()).toEqual([])
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(input('Prijsstap (€)').value).toBe('0,25')
+  })
+
+  it('"Opslaan" sends one PATCH', async () => {
+    await open()
+    prijsstap('0,25')
+    await save()
+    fireEvent.click(screen.getByRole('button', { name: 'Opslaan' }))
+    await settle()
+    expect(patches()).toEqual([{ params: { step_quant: 0.25 } }])
+  })
+
+  it('a step that moves no bound sends without a dialog', async () => {
+    await open()
+    prijsstap('0,05')
+    await save()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(patches()).toEqual([{ params: { step_quant: 0.05 } }])
+  })
+
+  it("the server's bounds_collision shows under Prijsstap, every drink named (AC8)", async () => {
+    const msg =
+      'Past niet bij Bier: de grenzen worden 2,00\u20132,00. ' +
+      'Past niet bij Wijn: de grenzen worden 2,00\u20132,00.'
+    fetchMock.mockImplementation((path: string, init?: RequestInit) => {
+      if (init?.method === 'PATCH') {
+        return Promise.resolve(
+          json(422, {
+            error: {
+              code: 'bounds_collision',
+              message: msg,
+              faults: [{ loc: ['body', 'params', 'step_quant'], msg }],
+            },
+          }),
+        )
+      }
+      if (path === '/api/runs/current') {
+        return Promise.resolve(json(200, { run_id: 7, name: 'Vrijmibo', status: 'live' }))
+      }
+      return Promise.resolve(json(200, served))
+    })
+    await open()
+    prijsstap('2')
+    await save()
+    fireEvent.click(screen.getByRole('button', { name: 'Opslaan' }))
+    await settle()
+    expect(input('Prijsstap (€)').getAttribute('aria-invalid')).toBe('true')
+    expect(screen.getByText(msg)).toBeTruthy()
   })
 })

@@ -15,6 +15,10 @@
  * If the profiles cannot be fetched only "—" is offered. A profile gone meanwhile
  * is said so and dropped; a stored value outside today's rules is named by its
  * setting name (`names`).
+ *
+ * B-07 (SD9; PD11): a copy whose drinks would have no room on the new Prijsstap
+ * is a 422 `bounds_collision`; its message, which names the drink, is shown as
+ * the server wrote it.
  */
 import { type FormEvent, useEffect, useState } from 'react'
 import { Button } from '../../components/ui/Button'
@@ -45,6 +49,8 @@ const REFUSALS: Readonly<Record<string, string>> = {
  * 422 naming a profile's setting (B-04 PD12), before the name fallback.
  */
 function failureText(error: unknown, names: Readonly<Record<string, string>>): string {
+  if (error instanceof HttpError && error.code === 'bounds_collision')
+    return Object.values(faultsOf(error))[0] ?? error.message
   if (error instanceof HttpError && REFUSALS[error.code] !== undefined) return REFUSALS[error.code]
   const field = Object.keys(faultsOf(error)).find((key) => names[key] !== undefined)
   if (field !== undefined)

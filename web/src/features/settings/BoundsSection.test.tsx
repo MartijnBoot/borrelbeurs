@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 // Min/Max/Startprijs (Phase 6 T27: SD25; AC1, AC3, AC11): one row per active
 // drink, each saving only its own dirty bounds. B-01 T7: the new names (E17-E19).
+// B-07 T9 (AC4, AC5): a bound off the Prijsstap is refused before sending; a
+// stored one is warned about and never sent.
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectExplained } from '../../components/ui/infoTesting'
@@ -68,15 +70,17 @@ const json = (status: number, body: unknown) =>
 
 let fetchMock: ReturnType<typeof vi.fn>
 let writeAnswer: () => Response
+let config: typeof CONFIG
 
 beforeEach(() => {
   exchangeStore.setState(exchangeStore.getInitialState(), true)
+  config = CONFIG
   writeAnswer = () => json(200, { revision: 4 })
   fetchMock = vi.fn((path: string, init?: RequestInit) => {
     if (path === '/api/runs/current') {
       return Promise.resolve(json(200, { run_id: 7, name: 'Vrijmibo', status: 'live' }))
     }
-    if ((init?.method ?? 'GET') === 'GET') return Promise.resolve(json(200, CONFIG))
+    if ((init?.method ?? 'GET') === 'GET') return Promise.resolve(json(200, config))
     return Promise.resolve(writeAnswer())
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -133,10 +137,48 @@ describe('BoundsSection', () => {
 
   it('one edited p_max sends one PATCH with only p_max_cents', async () => {
     await open()
-    fireEvent.change(row('Wijn').getByLabelText('Maximumprijs (€)'), { target: { value: '4,75' } })
+    // 4,80, not 4,75: since B-07 a bound is a multiple of the 0,10 step (PD12).
+    fireEvent.change(row('Wijn').getByLabelText('Maximumprijs (€)'), { target: { value: '4,80' } })
     fireEvent.click(row('Wijn').getByRole('button', { name: 'Opslaan' }))
     await settle()
-    expect(writes()).toEqual([['/api/runs/7/drinks/12', { p_max_cents: 475 }]])
+    expect(writes()).toEqual([['/api/runs/7/drinks/12', { p_max_cents: 480 }]])
+  })
+
+  it('a typed bound off the Prijsstap shows SD1 under it and sends nothing (B-07 AC4)', async () => {
+    await open()
+    fireEvent.change(row('Bier').getByLabelText('Minimumprijs (€)'), { target: { value: '1,24' } })
+    fireEvent.click(row('Bier').getByRole('button', { name: 'Opslaan' }))
+    await settle()
+    expect(writes()).toEqual([])
+    const field = row('Bier').getByLabelText('Minimumprijs (€)')
+    expect(field.getAttribute('aria-invalid')).toBe('true')
+    expect(
+      row('Bier').getByText('Moet een veelvoud van de Prijsstap (0,10) zijn: 1,20 of 1,30.'),
+    ).toBeTruthy()
+  })
+
+  it('a stored bound off the Prijsstap is warned about and the row still saves (B-07 AC5)', async () => {
+    config = {
+      ...CONFIG,
+      drinks: [{ ...CONFIG.drinks[0], p_min_cents: 124 }, ...CONFIG.drinks.slice(1)],
+    }
+    await open()
+    expect(row('Bier').getByText('Niet op de Prijsstap: kies 1,20 of 1,30.')).toBeTruthy()
+    expect(row('Wijn').queryByText(/Niet op de Prijsstap/)).toBeNull()
+    fireEvent.change(row('Bier').getByLabelText('Startprijs (€)'), { target: { value: '2,70' } })
+    fireEvent.click(row('Bier').getByRole('button', { name: 'Opslaan' }))
+    await settle()
+    expect(writes()).toEqual([['/api/runs/7/drinks/11', { p0_cents: 270 }]])
+  })
+
+  it('the warning goes once the stored bound is edited', async () => {
+    config = {
+      ...CONFIG,
+      drinks: [{ ...CONFIG.drinks[0], p_min_cents: 124 }, ...CONFIG.drinks.slice(1)],
+    }
+    await open()
+    fireEvent.change(row('Bier').getByLabelText('Minimumprijs (€)'), { target: { value: '1,30' } })
+    expect(row('Bier').queryByText(/Niet op de Prijsstap/)).toBeNull()
   })
 
   it('an order that breaks p_min < p0 < p_max blocks the save (AC11)', async () => {
