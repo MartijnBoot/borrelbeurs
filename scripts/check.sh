@@ -226,8 +226,7 @@ printf 'scripts/check.sh: taking the shared run lock\n'
 coproc HOLDER { exec uv run python -m tests.support.pg_gate hold shared; }
 held_line=""
 read -r -t 900 -u "${HOLDER[0]}" held_line || true
-held_line="${held_line%$''}" # Windows Python ends its lines with 
-
+held_line="${held_line%$'\r'}" # Windows Python ends its lines with CR LF
 if [ "$held_line" != "held" ]; then
   printf '\nscripts/check.sh: FAILED to take the shared run lock (is the database up?)\n' >&2
   release_holder
