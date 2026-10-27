@@ -15,9 +15,10 @@ Top is next. Every item that is not `specced` or `dropped` appears here exactly 
 
 | # | ID | Feature | Size | Status |
 |---|---|---|---|---|
-| 1 | B-07 | Price bounds on the Prijsstap grid | S | idea |
-| 2 | B-09 | Download the sign-up QR code | S | idea |
-| 3 | B-10 | Sign-up QR code on the koers screen | S | idea |
+| 1 | B-11 | A faster gate | M | idea |
+| 2 | B-07 | Price bounds on the Prijsstap grid | S | idea |
+| 3 | B-09 | Download the sign-up QR code | S | idea |
+| 4 | B-10 | Sign-up QR code on the koers screen | S | idea |
 
 ## Items
 
@@ -390,6 +391,57 @@ sign-up is closed, or one with an old code.
 (`app/api/wallets_admin.py`), what a display key may read (`app/api/deps.py`, perhaps
 `docs/design/realtime-protocol.md`). Changes B-05's "only admin sees the code" — a spec decision,
 not an ADR. Not the engine.
+
+### B-11 — A faster gate
+
+- **Status:** idea
+- **Added:** 2026-10-27
+- **Size:** M (a few tasks) — a guess
+
+**Problem.** `scripts/check.sh` now takes over 30 minutes. In Phase 7 it took about 17, and at
+B-01 about 23. Every task and every phase waits on it, and each backlog item makes it longer.
+In the gate of 2026-10-27, `tests/api` (1126 tests) took 15m56s and `tests/integration` (543)
+took 11m24s, each in a single process on a 16-core machine. Web e2e took 4m06s, vitest 1m12s
+and everything else about 2 minutes. Only one gate can run at a time, and no database test may
+run beside one: each pytest session starts by dropping every `bb_test_*` database, including
+those another run is still using.
+
+**Idea.** The gate runs its test suites in parallel and takes about 10 minutes. It runs the
+same checks and gives the same verdict. Two gates, or a gate and a targeted test run, can run
+at the same time. Directions found so far, for `/spec` to settle rather than decided:
+1. Scratch databases that can share one server: a name with a timestamp, and a sweep that drops
+   only old leftovers (`tests/integration/conftest.py`, `_sweep_leftovers`). Everything else
+   depends on this.
+2. pytest in parallel with `pytest-xdist`, one scratch database per worker. Timing-sensitive
+   tests (`test_db_restart`, `test_real_process`, `test_handover`, `test_heavy_reads`,
+   `test_export_worker`, `test_smoke_script`) run serially afterwards.
+3. After the static steps and the build, pytest, vitest and e2e run side by side. E2e already
+   uses its own `borrelbeurs_e2e_*` databases.
+4. Lower per-test costs where profiling shows they pay off. An argon2 key hash takes 72 ms, and
+   every test login does two. Fixtures build and dispose engines each time. Each vitest file
+   takes about 8.75 s to start.
+
+**Why it matters.** Less waiting on every task and phase, and the gate stops growing with each
+item. It also removes the "one gate at a time" and "no database tests while a gate runs" rules.
+Today: about 27 minutes of the 35 go to two single-core pytest runs.
+
+**Not this.** No check dropped or weakened, and no test skipped to save time. CI keeps running
+the same script. Not the engine. A failure, even if it works: a faster but flaky gate, such as
+a timing test that fails only under load, so that a red gate is no longer believed.
+
+**Open questions.**
+- `pytest-xdist` is a new dev dependency (MIT, pytest-dev): the owner's call.
+- How many workers: `-n auto`, or a fixed cap given Postgres's 100 connections and CI's cores?
+- Which tests must run serially, and how they are marked (`--strict-markers` is on).
+- Steps running side by side: how their output is shown, how the failed one is named, and what
+  is left of "stop at the first failure".
+- May the API tests use cheaper argon2 settings, or must every test hash with the real
+  parameters?
+- First: profile where the ~0.85 s of an API test goes, before choosing what to cut.
+
+**Touches.** (A guess.) `scripts/check.sh`, `tests/integration/conftest.py`,
+`tests/api/conftest.py`, `pyproject.toml` and `uv.lock`, the timing-sensitive test modules,
+perhaps the vitest config, and CLAUDE.md's "13 steps" text. Not the engine, no ADR.
 
 ## Deferred work
 
