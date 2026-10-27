@@ -35,10 +35,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from app.api.security import format_key, hash_secret, mint_secret
+from app.api.security import issue_key
 from app.core.config import Settings, get_settings
 from app.db.exports import read_snapshot
-from app.db.keys import create_key, set_secret_hash
 from app.db.runs import add_drink, create_draft_run
 from app.db.session import create_engine, create_heavy_read_engine
 from app.jobs.export_xlsx import build_workbook
@@ -130,10 +129,8 @@ async def _seed(conn: AsyncConnection) -> tuple[int, int, str]:
             text("SELECT product_id FROM drink WHERE drink_id = :d"), {"d": drink_ids[0]}
         )
     ).scalar_one()
-    key_id = await create_key(conn, label="heavy", role="admin", secret_hash="pending")
-    secret = mint_secret()
-    await set_secret_hash(conn, key_id, hash_secret(secret))
-    return run_id, int(product), format_key(key_id, secret)
+    issued = await issue_key(conn, role="admin", label="heavy")
+    return run_id, int(product), issued.key
 
 
 def _timed(timings: dict[str, float], name: str, call: Any) -> Any:

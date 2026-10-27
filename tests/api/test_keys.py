@@ -18,7 +18,7 @@ from sqlalchemy import text
 from app.api import security
 from app.core.config import Settings
 from app.db.session import create_engine
-from tests.api.conftest import Login
+from tests.api.conftest import IssueKey, Login, MintKey
 
 
 def _sql(settings: Settings, url: str, sql: str, **bind: Any) -> Any:
@@ -101,20 +101,20 @@ def test_an_invalid_create_is_422(client: TestClient, login: Login, body: Any) -
     assert login("admin").post("/api/keys", json=body).status_code == 422
 
 
-def test_a_revoked_sessions_next_request_is_401(client: TestClient, mint_key: Any) -> None:
+def test_a_revoked_sessions_next_request_is_401(
+    client: TestClient, mint_key: MintKey, issued_key: IssueKey
+) -> None:
     """AC37, HTTP half."""
     admin = sign_in(client, mint_key("admin"))
-    raw = mint_key("bar")
-    bar = sign_in(client, raw)
-    parsed = security.parse_key(raw)
-    assert parsed is not None
+    issued = issued_key("bar")
+    bar = sign_in(client, issued.key)
 
-    response = switch(client, admin).delete(f"/api/keys/{parsed.key_id}")
+    response = switch(client, admin).delete(f"/api/keys/{issued.key_id}")
 
     assert response.status_code == 204, response.text
     assert switch(client, bar).get("/api/auth/me").status_code == 401
     listed = {k["key_id"]: k["revoked"] for k in switch(client, admin).get("/api/keys").json()}
-    assert listed[parsed.key_id] is True
+    assert listed[issued.key_id] is True
 
 
 def test_revoking_the_last_unrevoked_admin_is_409(

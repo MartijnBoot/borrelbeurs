@@ -23,7 +23,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
 from app.api.deps import Principal, db_engine, refuse_while_draining, require_role
-from app.api.security import issue_key, parse_key
+from app.api.security import issue_key
 from app.core.errors import AppError
 from app.db.keys import Role, get_key, list_keys, lock_unrevoked_admins, revoke_key
 from app.realtime.hub import Hub
@@ -92,10 +92,8 @@ async def post_key(
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> CreatedKey:
     async with db_engine(request).begin() as conn:
-        key = await issue_key(conn, role=body.role, label=body.label)
-    parsed = parse_key(key)
-    assert parsed is not None
-    return CreatedKey(key_id=parsed.key_id, key=key)
+        issued = await issue_key(conn, role=body.role, label=body.label)
+    return CreatedKey(key_id=issued.key_id, key=issued.key)
 
 
 @router.delete("/{key_id}", status_code=204)

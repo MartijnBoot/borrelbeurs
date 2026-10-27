@@ -15,7 +15,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from app.api import security
 from app.cli.keys import main as keys_main
-from tests.api.conftest import BASE_URL, Login, MintKey
+from tests.api.conftest import BASE_URL, IssueKey, Login
 
 Advance = Callable[[int], None]
 
@@ -66,18 +66,16 @@ def _connect(client: TestClient, **headers: str) -> Any:
 
 @pytest.mark.parametrize("case", ["no-cookie", "revoked-key", "foreign-origin", "missing-origin"])
 def test_a_bad_handshake_closes_1008_with_no_frame(
-    live_client: TestClient, mint_key: MintKey, case: str
+    live_client: TestClient, issued_key: IssueKey, case: str
 ) -> None:
     """AC3."""
     client = live_client
     headers: dict[str, str] = {}
     if case != "no-cookie":
-        raw = mint_key("display")
-        assert client.post("/api/auth/login", json={"key": raw}).status_code == 200
+        issued = issued_key("display")
+        assert client.post("/api/auth/login", json={"key": issued.key}).status_code == 200
         if case == "revoked-key":
-            parsed = security.parse_key(raw)
-            assert parsed is not None
-            assert keys_main(["revoke", str(parsed.key_id)]) == 0
+            assert keys_main(["revoke", str(issued.key_id)]) == 0
     if case == "foreign-origin":
         headers["origin"] = "https://evil.example"
     if case == "missing-origin":

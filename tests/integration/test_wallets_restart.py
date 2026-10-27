@@ -19,10 +19,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.api.security import format_key, hash_secret, mint_secret
+from app.api.security import issue_key
 from app.core.config import Settings, get_settings
 from app.db import wallets
-from app.db.keys import Role, create_key, set_secret_hash
+from app.db.keys import Role
 from app.db.session import create_engine
 from app.db.wallets import WalletSettingsRow
 from app.main import create_app
@@ -55,10 +55,8 @@ def on(monkeypatch: pytest.MonkeyPatch, database_url: str) -> Iterator[str]:
 
 async def _key(engine: AsyncEngine, role: Role, label: str) -> str:
     async with engine.begin() as conn:
-        key_id = await create_key(conn, label=label, role=role, secret_hash="pending")
-        secret = mint_secret()
-        await set_secret_hash(conn, key_id, hash_secret(secret))
-    return format_key(key_id, secret)
+        issued = await issue_key(conn, role=role, label=label)
+    return issued.key
 
 
 def _app() -> TestClient:

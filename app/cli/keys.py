@@ -22,7 +22,7 @@ from typing import cast
 
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.security import issue_key
+from app.api.security import IssuedKey, issue_key
 from app.core.config import ConfigError, get_settings
 from app.db.keys import ROLES, AuthKeyRow, Role, list_keys, revoke_key
 from app.db.session import create_engine
@@ -30,7 +30,7 @@ from app.db.session import create_engine
 _MAX_LABEL = 100
 
 
-async def create(role: Role, label: str) -> str:
+async def create(role: Role, label: str) -> IssuedKey:
     engine = create_engine(get_settings())
     try:
         async with engine.begin() as conn:
@@ -92,7 +92,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     file=sys.stderr,
                 )
                 return 2
-            print(asyncio.run(create(cast(Role, args.role), label)))
+            print(asyncio.run(create(cast(Role, args.role), label)).key)
         elif args.command == "list":
             print(format_table(asyncio.run(listing())))
         else:

@@ -23,9 +23,9 @@ from collections.abc import Callable, Iterator
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.security import format_key, hash_secret, mint_secret
+from app.api.security import IssuedKey, issue_key
 from app.core.config import Settings, get_settings
-from app.db.keys import Role, create_key, set_secret_hash
+from app.db.keys import Role
 from app.db.runs import add_drink, create_draft_run, go_live
 from app.db.session import create_engine
 from app.main import create_app
@@ -39,6 +39,7 @@ BASE_URL = "https://testserver"
 T0 = 1_759_312_800_000
 
 MintKey = Callable[..., str]
+IssueKey = Callable[..., IssuedKey]
 Login = Callable[..., TestClient]
 
 
@@ -119,22 +120,29 @@ def advance(client: TestClient, clock: FakeClock) -> Callable[[int], None]:
 
 
 @pytest.fixture
-def mint_key(api_env: str, settings: Settings) -> MintKey:
-    """Mint a key straight into `auth_key`, the way `app.cli.keys create` does; the raw key."""
+def issued_key(api_env: str, settings: Settings) -> IssueKey:
+    """Mint a key through `issue_key`, the way `app.cli.keys create` does; its `key_id` and key."""
 
-    def mint(role: Role = "bar", label: str = "test key") -> str:
-        async def scenario() -> str:
+    def issue(role: Role = "bar", label: str = "test key") -> IssuedKey:
+        async def scenario() -> IssuedKey:
             engine = create_engine(settings.model_copy(update={"database_url": api_env}))
             try:
                 async with engine.begin() as conn:
-                    key_id = await create_key(conn, label=label, role=role, secret_hash="pending")
-                    secret = mint_secret()
-                    await set_secret_hash(conn, key_id, hash_secret(secret))
-                return format_key(key_id, secret)
+                    return await issue_key(conn, role=role, label=label)
             finally:
                 await engine.dispose()
 
         return asyncio.run(scenario())
+
+    return issue
+
+
+@pytest.fixture
+def mint_key(issued_key: IssueKey) -> MintKey:
+    """`issued_key`, the raw key only."""
+
+    def mint(role: Role = "bar", label: str = "test key") -> str:
+        return issued_key(role, label).key
 
     return mint
 

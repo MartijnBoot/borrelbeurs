@@ -14,7 +14,7 @@ from app.api.security import format_key, mint_secret
 from app.cli.keys import main as keys_main
 from app.core.config import Settings
 from app.db.session import create_engine
-from tests.api.conftest import BASE_URL, Login, MintKey
+from tests.api.conftest import BASE_URL, IssueKey, Login, MintKey
 from tests.support.clock import FakeClock
 
 
@@ -33,12 +33,6 @@ def verifier(monkeypatch: pytest.MonkeyPatch) -> Iterator[CountingVerifier]:
     counting = CountingVerifier()
     monkeypatch.setattr(security, "verify_secret", counting)
     yield counting
-
-
-def _key_id(raw: str) -> int:
-    parsed = security.parse_key(raw)
-    assert parsed is not None
-    return parsed.key_id
 
 
 def test_login_sets_a_secure_httponly_samesite_strict_cookie(
@@ -133,18 +127,18 @@ def test_the_login_window_rolls_on_the_injected_clock(
 
 
 def test_exactly_one_verify_per_well_formed_login_and_none_for_malformed(
-    client: TestClient, mint_key: MintKey, verifier: CountingVerifier
+    client: TestClient, issued_key: IssueKey, verifier: CountingVerifier
 ) -> None:
     """AC6: unknown, revoked, wrong secret and valid each cost one verify; malformed costs none."""
-    valid = mint_key("bar")
-    revoked = mint_key("bar")
-    assert keys_main(["revoke", str(_key_id(revoked))]) == 0
+    valid = issued_key("bar")
+    revoked = issued_key("bar")
+    assert keys_main(["revoke", str(revoked.key_id)]) == 0
     cases = {
         "malformed": ("bb_not_a_key!", 0, 401),
         "unknown": (format_key(9_999, mint_secret()), 1, 401),
-        "revoked": (revoked, 1, 401),
-        "wrong-secret": (format_key(_key_id(valid), mint_secret()), 1, 401),
-        "valid": (valid, 1, 200),
+        "revoked": (revoked.key, 1, 401),
+        "wrong-secret": (format_key(valid.key_id, mint_secret()), 1, 401),
+        "valid": (valid.key, 1, 200),
     }
     for name, (raw, verifies, status) in cases.items():
         before = verifier.calls
@@ -180,14 +174,14 @@ def test_login_updates_last_used_at(
 
 
 def test_revoking_a_key_ends_its_session_on_the_next_request(
-    client: TestClient, mint_key: MintKey
+    client: TestClient, issued_key: IssueKey
 ) -> None:
     """AC6e: the row is loaded per request, so revoke takes effect before expiry."""
-    raw = mint_key("admin")
-    assert client.post("/api/auth/login", json={"key": raw}).status_code == 200
+    issued = issued_key("admin")
+    assert client.post("/api/auth/login", json={"key": issued.key}).status_code == 200
     assert client.get("/api/auth/me").status_code == 200
 
-    assert keys_main(["revoke", str(_key_id(raw))]) == 0
+    assert keys_main(["revoke", str(issued.key_id)]) == 0
 
     response = client.get("/api/auth/me")
     assert response.status_code == 401

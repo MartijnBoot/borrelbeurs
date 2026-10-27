@@ -92,8 +92,8 @@ def parse_key(raw: str) -> ParsedKey | None:
 _PLACEHOLDER_HASH: Final = "pending"
 
 
-async def issue_key(conn: AsyncConnection, *, role: Role, label: str) -> str:
-    """Mint a key in the caller's transaction; `bb_<key_id>_<secret>`, the only time it exists.
+async def issue_key(conn: AsyncConnection, *, role: Role, label: str) -> IssuedKey:
+    """Mint a key in the caller's transaction: its `key_id`, and the key, the only time it exists.
 
     The row is inserted with a placeholder hash and updated with the real one,
     because the key needs its `key_id`. Only the argon2id hash is stored (AC36).
@@ -102,7 +102,7 @@ async def issue_key(conn: AsyncConnection, *, role: Role, label: str) -> str:
     key_id = await create_key(conn, label=label, role=role, secret_hash=_PLACEHOLDER_HASH)
     secret = mint_secret()
     await set_secret_hash(conn, key_id, hash_secret(secret))
-    return format_key(key_id, secret)
+    return IssuedKey(key_id=key_id, key=format_key(key_id, secret))
 
 
 def hash_secret(secret: str) -> str:

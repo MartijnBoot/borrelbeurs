@@ -14,9 +14,8 @@ from typing import Final
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api import security
 from app.cli.keys import main as keys_main
-from tests.api.conftest import MintKey
+from tests.api.conftest import IssueKey
 from tests.meta.test_route_authorization import PUBLIC_ROUTES, flatten
 
 # B-05 SD7 (plan PD1 reading A): a kassa session keeps its own routes and the market
@@ -135,10 +134,10 @@ def test_the_table_covers_every_served_route(client: TestClient) -> None:
 @pytest.mark.parametrize("actor", ["anonymous", "display", "bar", "kassa", "admin"])
 @pytest.mark.parametrize(("method", "path"), sorted(WALLET_ROUTES))
 def test_a_player_route_needs_the_wallet_cookie_not_a_session(
-    client: TestClient, mint_key: MintKey, method: str, path: str, actor: str
+    client: TestClient, issued_key: IssueKey, method: str, path: str, actor: str
 ) -> None:
     """B-05 AC38: a crew session without a wallet cookie is 401 `no_wallet`."""
-    _act(client, mint_key, actor)
+    _act(client, issued_key, actor)
 
     response = client.request(method, path)
 
@@ -146,16 +145,14 @@ def test_a_player_route_needs_the_wallet_cookie_not_a_session(
     assert response.json()["error"]["code"] == "no_wallet"
 
 
-def _act(client: TestClient, mint_key: MintKey, actor: str) -> None:
+def _act(client: TestClient, issued_key: IssueKey, actor: str) -> None:
     client.cookies.clear()
     if actor == "anonymous":
         return
-    raw = mint_key("bar" if actor == "revoked" else actor)
-    assert client.post("/api/auth/login", json={"key": raw}).status_code == 200
+    issued = issued_key("bar" if actor == "revoked" else actor)
+    assert client.post("/api/auth/login", json={"key": issued.key}).status_code == 200
     if actor == "revoked":
-        parsed = security.parse_key(raw)
-        assert parsed is not None
-        assert keys_main(["revoke", str(parsed.key_id)]) == 0
+        assert keys_main(["revoke", str(issued.key_id)]) == 0
 
 
 def _status(client: TestClient, method: str, path: str) -> int:
@@ -190,12 +187,12 @@ def _status(client: TestClient, method: str, path: str) -> int:
 @pytest.mark.parametrize("actor", ACTORS)
 @pytest.mark.parametrize(("method", "path"), sorted(SD1))
 def test_every_route_and_actor(
-    live_client: TestClient, mint_key: MintKey, method: str, path: str, actor: str
+    live_client: TestClient, issued_key: IssueKey, method: str, path: str, actor: str
 ) -> None:
     """AC1: 401 for anonymous and revoked, 403 for a role not in the row, else neither."""
     if (method, path) == ("POST", "/api/admin/shutdown") and actor == "admin":
         live_client.app.state.request_shutdown = lambda: None  # type: ignore[attr-defined]
-    _act(live_client, mint_key, actor)
+    _act(live_client, issued_key, actor)
 
     status = _status(live_client, method, path)
 
@@ -210,13 +207,13 @@ def test_every_route_and_actor(
 
 @pytest.mark.parametrize(("run_id", "expected"), [("other", 403), ("live", 200)])
 def test_the_bar_reads_only_the_live_runs_series(
-    live_client: TestClient, live_run: int, mint_key: MintKey, run_id: str, expected: int
+    live_client: TestClient, live_run: int, issued_key: IssueKey, run_id: str, expected: int
 ) -> None:
     """Phase 7 SD9, AC16: inside the route's row, any other run is admin-only.
 
     The other run is unknown here, so the bar learns nothing from 403 vs 404.
     """
-    _act(live_client, mint_key, "bar")
+    _act(live_client, issued_key, "bar")
     target = live_run if run_id == "live" else 999_999
 
     response = live_client.get("/api/earnings/series", params={"run_id": target})

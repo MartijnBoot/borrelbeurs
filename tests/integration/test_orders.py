@@ -15,11 +15,11 @@ from sqlalchemy import event, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from app.api.security import issue_key
 from app.core.config import Settings
 from app.db import wallets
 from app.db.codec import tick_prices
 from app.db.engine_state import StaleState
-from app.db.keys import create_key
 from app.db.mapping import cents_from_quantised, spec_from_rows
 from app.db.orders import (
     OrderLineInput,
@@ -476,7 +476,7 @@ def test_the_actor_and_receipt_are_stored_and_found_by_key(
         try:
             run_id, spec, drink_ids, state = await _live(engine)
             async with engine.begin() as conn:
-                key_id = await create_key(conn, label="Bar", role="bar", secret_hash="x")
+                key_id = (await issue_key(conn, role="bar", label="Bar")).key_id
             candidate, lines = _order(spec, state, drink_ids, {drink_ids[0]: 2}, T0 + 1_000)
             written = await write_order(
                 engine,

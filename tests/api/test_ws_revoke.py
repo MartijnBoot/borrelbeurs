@@ -18,8 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from app.api import security
-from tests.api.conftest import MintKey
+from tests.api.conftest import IssueKey, MintKey
 from tests.api.test_keys import sign_in, switch
 from tests.support.clock import FakeClock
 
@@ -36,23 +35,21 @@ def _handshake(ws: Any) -> None:
 
 
 def test_a_revoked_keys_socket_closes_4401_and_others_stay_open(
-    live_client: TestClient, mint_key: MintKey, clock: FakeClock
+    live_client: TestClient, mint_key: MintKey, issued_key: IssueKey, clock: FakeClock
 ) -> None:
     admin = sign_in(live_client, mint_key("admin"))
-    revoked_raw = mint_key("display", "Oud scherm")
-    parsed = security.parse_key(revoked_raw)
-    assert parsed is not None
+    revoked = issued_key("display", "Oud scherm")
     at = clock.wall_ms()
 
     with ExitStack() as stack:
-        sign_in(live_client, revoked_raw)
+        sign_in(live_client, revoked.key)
         gone = stack.enter_context(_open(live_client))
         _handshake(gone)
         sign_in(live_client, mint_key("display", "Nieuw scherm"))
         stays = stack.enter_context(_open(live_client))
         _handshake(stays)
 
-        assert switch(live_client, admin).delete(f"/api/keys/{parsed.key_id}").status_code == 204
+        assert switch(live_client, admin).delete(f"/api/keys/{revoked.key_id}").status_code == 204
 
         with pytest.raises(WebSocketDisconnect) as closed:
             while True:
