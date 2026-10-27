@@ -1,6 +1,6 @@
 # Plan: B-07 — Price bounds on the Prijsstap grid
 
-Spec: [docs/specs/phase-b-07-bounds-on-grid.md](../specs/phase-b-07-bounds-on-grid.md) (`Status: Approved`) · Status: **Proposed — awaiting audit**
+Spec: [docs/specs/phase-b-07-bounds-on-grid.md](../specs/phase-b-07-bounds-on-grid.md) (`Status: Approved`) · Status: **Audited — PASS (2026-10-27)**
 Design: no change. `docs/design/` names the bounds as columns (`data-model.md:28`) and the `MarketSpec` check (`architecture.md:72`); neither changes.
 ADRs honoured:
 - 0002 and 0012: `exchange/` is read, never changed (AC17, SD12).
@@ -149,6 +149,7 @@ Rows marked **Confirm** are readings the audit confirms or overrules. The rest f
   - **The draft write.** `write_draft_config` calls `_move_bounds` when PD4 says the step changed, after `_merged` and before `_record`, so one transaction holds the moves, the run columns and one revision. A collision raises before any write.
   - **The profile load.** `load_profile_onto_draft` always calls it under the merged step, with loc `["profile", "params", "step_quant"]`. It follows PD5.
   - Both docstrings say so.
+  - **API types.** `bounds_collision` is a new error code; if it appears in the OpenAPI schema, regenerate the API types so `check.sh`'s drift step stays green.
   - **Tests in `tests/api/test_config.py`:**
     - a draft step change from 0,10 to 0,25 over Bier (1,60–3,10), Wijn (on grid) and a drink removed by SQL. Bier moves to 1,75–3,00 and Wijn does not. The removed drink is untouched (its row is deleted on a draft, so the test seeds a draft that still has a `removed_at` row by SQL). The revision count goes up by exactly one, and the new revision's document shows the moved bounds;
     - a collision: `{"name": …, "params": {"step_quant": 0.25, "eta": …}}` gives 422 `bounds_collision` on `step_quant` naming each drink, and leaves the name, `eta`, the bounds and the revision count unchanged;
@@ -407,17 +408,19 @@ Everything in the spec's Out of scope, and also:
 ---
 
 ## Audit (plan-auditor — PASS required before implementation starts)
-- [ ] Every AC maps to at least one task
-- [ ] Every task maps to at least one AC (no orphans)
-- [ ] Each task's expected output is what we actually need
-- [ ] Existing patterns reused; nothing reinvented
-- [ ] No new dependency without an approval note
-- [ ] Data changes additive and reversible
-- [ ] Errors, empty states and permissions are tasks, not afterthoughts
-- [ ] Each task reviewable in one sitting
-- [ ] Verification named per task
-- [ ] Nothing touches prod, secrets or infra it should not
+- [x] Every AC maps to at least one task
+- [x] Every task maps to at least one AC (no orphans)
+- [x] Each task's expected output is what we actually need
+- [x] Existing patterns reused; nothing reinvented
+- [x] No new dependency without an approval note
+- [x] Data changes additive and reversible
+- [x] Errors, empty states and permissions are tasks, not afterthoughts
+- [x] Each task reviewable in one sitting
+- [x] Verification named per task
+- [x] Nothing touches prod, secrets or infra it should not
 - [ ] Every task has a Depends on and an Autonomy note
 - [ ] No two tasks in one parallel group write the same file
 
-Audited by: ______  Date: ______
+Audited by: Martijn Boot (human audit, `/audit b-07`)  Date: 2026-10-27
+
+Audit decisions: PD3 and PD7 kept as written. T13 traces to the spec's In scope › Documents, not to an AC. T3 gains the API-types note. The last two boxes (Depends on/Autonomy note present; no shared file in a group) were checked by the auditing agent, not ticked.
