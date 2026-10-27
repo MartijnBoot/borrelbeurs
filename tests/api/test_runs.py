@@ -271,3 +271,35 @@ def test_a_create_carrying_a_profile_is_admin_only(
 
     assert response.status_code == (401 if role is None else 403)
     assert _run_count(settings, api_env) == 0
+
+
+# --- B-07 T5: a copy that leaves a drink no room (AC13, server half) ----------
+
+
+def test_a_colliding_copy_is_422_bounds_collision_creating_no_draft(
+    login: Login, settings: Settings, api_env: str
+) -> None:
+    admin = login("admin")
+    source = admin.post("/api/runs", json={"name": "Vorige"}).json()["run_id"]
+    _add_drink(settings, api_env, run_id=source, name="Bier")
+    # On a 2,00 step, Bier's 1,00-3,00 becomes 2,00-2,00.
+    _run_sql(
+        settings,
+        api_env,
+        "UPDATE run SET status = 'ended', params = jsonb_set(params, '{step_quant}', '2.0')"
+        " WHERE run_id = :r",
+        {"r": source},
+    )
+    runs = _run_count(settings, api_env)
+
+    response = admin.post("/api/runs", json={"name": "Nieuw", "copy_from_run_id": source})
+
+    assert response.status_code == 422, response.text
+    error = response.json()["error"]
+    assert error["code"] == "bounds_collision"
+    assert error["faults"] == [
+        {"loc": ["body", "copy_from_run_id"], "msg": error["message"]},
+    ]
+    assert error["message"].startswith("Past niet bij Bier: de grenzen worden 2,00")
+    assert _run_count(settings, api_env) == runs
+    assert admin.get("/api/runs/current").status_code == 404

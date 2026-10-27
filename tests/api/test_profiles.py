@@ -8,6 +8,10 @@ overwrite that keeps the stored name), AC4 (a run value outside today's rules is
 T4, the load onto a draft: AC11 (the 22 replaced, nothing else; an equal profile
 appends nothing), AC13 (`run_not_draft` for a live or ended run), AC14 (404 and
 422, the draft unchanged), AC15 (a missing field keeps the draft's value).
+
+B-07 T3 (AC12, server half): a load moves the draft's active bounds onto the
+profile's step, an equal step included; a drink left with no room is 422
+`bounds_collision` and nothing is written.
 """
 
 from __future__ import annotations
@@ -24,7 +28,7 @@ from app.db.runs import create_run
 from app.db.session import create_engine
 from app.runtime.config_patch import PROFILE_FIELDS
 from tests.api.conftest import Login
-from tests.api.test_config import _draft_with_drinks
+from tests.api.test_config import _bounds, _draft_with_drinks, _set_bounds
 
 
 def _sql(settings: Settings, url: str, sql: str, **bind: Any) -> list[Any]:
@@ -515,3 +519,87 @@ def test_a_load_is_admin_only(
         login(role)
 
     assert _load(client, stocked, 1).status_code == (401 if role is None else 403)
+
+
+# --- B-07 T3: a load moves bounds onto the profile's step (AC12) --------------
+
+
+def _quarter_profile(admin: TestClient, settings: Settings, url: str, run_id: int) -> int:
+    """A profile saved from `run_id`, its Prijsstap then set to 0,25 in the store."""
+    profile_id = int(_save(admin, run_id, "Kwartjes").json()["profile_id"])
+    _set_profile(settings, url, profile_id, "jsonb_set(settings, '{step_quant}', '0.25')")
+    return profile_id
+
+
+def test_a_load_with_another_step_moves_the_bounds(
+    stocked: int, login: Login, settings: Settings, api_env: str
+) -> None:
+    admin = login("admin")
+    profile_id = _quarter_profile(admin, settings, api_env, stocked)
+    _set_bounds(settings, api_env, stocked, "Bier", (160, 200, 310))
+    revisions = _revisions(settings, api_env, stocked)
+
+    response = _load(admin, stocked, profile_id)
+
+    assert response.status_code == 200, response.text
+    after = admin.get(f"/api/runs/{stocked}/config").json()
+    assert after["params"]["step_quant"] == 0.25
+    assert _bounds(after)["Bier"] == (175, 200, 300)
+    assert _bounds(after)["Wijn"] == (150, 260, 500)
+    assert len(_revisions(settings, api_env, stocked)) == len(revisions) + 1
+
+
+def test_an_equal_load_still_moves_a_stored_off_grid_bound_in_one_revision(
+    stocked: int, login: Login, settings: Settings, api_env: str
+) -> None:
+    """SD8, PD5: the 22 are equal, but the off-grid Minimumprijs moves, with one revision."""
+    admin = login("admin")
+    profile_id = int(_save(admin, stocked, "Gelijk").json()["profile_id"])
+    _set_bounds(settings, api_env, stocked, "Bier", (124, 260, 500))
+    revisions = _revisions(settings, api_env, stocked)
+
+    response = _load(admin, stocked, profile_id)
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"revision": revisions[-1][0] + 1}
+    assert _bounds(admin.get(f"/api/runs/{stocked}/config").json())["Bier"] == (130, 260, 500)
+    assert len(_revisions(settings, api_env, stocked)) == len(revisions) + 1
+
+
+def test_an_equal_load_with_nothing_to_move_appends_nothing(
+    stocked: int, login: Login, settings: Settings, api_env: str
+) -> None:
+    """PD5: B-04's "appends nothing" holds where nothing changes."""
+    admin = login("admin")
+    profile_id = int(_save(admin, stocked, "Gelijk").json()["profile_id"])
+    revisions = _revisions(settings, api_env, stocked)
+
+    response = _load(admin, stocked, profile_id)
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"revision": revisions[-1][0]}
+    assert _revisions(settings, api_env, stocked) == revisions
+
+
+def test_a_load_that_leaves_a_drink_no_room_is_422_and_writes_nothing(
+    stocked: int, login: Login, settings: Settings, api_env: str
+) -> None:
+    admin = login("admin")
+    profile_id = _quarter_profile(admin, settings, api_env, stocked)
+    _set_bounds(settings, api_env, stocked, "Bier", (110, 122, 280))
+    before = (_run_state(settings, api_env), admin.get(f"/api/runs/{stocked}/config").json())
+
+    response = _load(admin, stocked, profile_id)
+
+    assert response.status_code == 422, response.text
+    error = response.json()["error"]
+    assert error["code"] == "bounds_collision"
+    assert error["faults"] == [
+        {
+            "loc": ["profile", "params", "step_quant"],
+            "msg": "Past niet bij Bier: de grenzen worden 1,25\u20132,75 en de Startprijs 1,22 "
+            "valt daarbuiten.",
+        }
+    ]
+    after = (_run_state(settings, api_env), admin.get(f"/api/runs/{stocked}/config").json())
+    assert after == before

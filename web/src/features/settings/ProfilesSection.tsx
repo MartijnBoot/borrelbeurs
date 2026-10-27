@@ -14,6 +14,10 @@
  * current run, which every settings section refetches its config from, so they
  * show the loaded values and a section with unsaved edits offers "Overnemen"
  * (AC16).
+ *
+ * B-07 (SD5; PD11): a load whose Prijsstap leaves a drink no room between its
+ * bounds is a 422 `bounds_collision`; its message, which names the drink, is
+ * shown as the server wrote it.
  */
 import { type FormEvent, useState } from 'react'
 import { z } from 'zod'
@@ -37,6 +41,8 @@ function settingOf(error: unknown, names: Readonly<Record<string, string>>): str
 }
 
 function loadFailure(error: unknown, names: Readonly<Record<string, string>>): string {
+  if (error instanceof HttpError && error.code === 'bounds_collision')
+    return Object.values(faultsOf(error))[0] ?? error.message
   const setting = settingOf(error, names)
   if (setting !== null)
     return `Profiel niet toegepast: '${setting}' valt buiten de toegestane waarden.`

@@ -16,9 +16,8 @@ Top is next. Every item that is not `specced` or `dropped` appears here exactly 
 | # | ID | Feature | Size | Status |
 |---|---|---|---|---|
 | 1 | B-11 | A faster gate | M | idea |
-| 2 | B-07 | Price bounds on the Prijsstap grid | S | idea |
-| 3 | B-09 | Download the sign-up QR code | S | idea |
-| 4 | B-10 | Sign-up QR code on the koers screen | S | idea |
+| 2 | B-09 | Download the sign-up QR code | S | idea |
+| 3 | B-10 | Sign-up QR code on the koers screen | S | idea |
 
 ## Items
 
@@ -258,7 +257,7 @@ changed. Depends on B-05.
 
 ### B-07 — Price bounds on the Prijsstap grid
 
-- **Status:** idea
+- **Status:** specced → `docs/specs/phase-b-07-bounds-on-grid.md`
 - **Added:** 2026-10-18
 - **Size:** S (a day or less) — a guess; more if existing runs need fixing up
 

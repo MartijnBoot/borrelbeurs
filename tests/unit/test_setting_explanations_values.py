@@ -7,6 +7,8 @@ pydantic validation and must equal the text exactly. `mismatches` holds every
 rule; the last two tests prove it fires on a changed default and a changed range.
 B-03's E34-E39 are run parameters, so the existing rules cover them (B-03 AC15).
 B-06's E40-E41 are run columns with rules of their own (T17, PD17).
+B-07 (T8: SD11; AC16) adds the grid to E17 and E19 and the collision to E1,
+each phrase asserted only while its probe of the code holds.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from pydantic import AfterValidator, BaseModel, Field
 from pydantic.fields import FieldInfo
 
 from app.api.market import EventRequest, JumpRequest
+from app.db.mapping import DrinkRow
 from app.db.models import Run
 from app.db.runs import DEFAULT_PARAMS
 from app.runtime.config import ConfigPatch, InvalidConfig, ParamsPatch, _whole_cents
@@ -36,6 +39,7 @@ from app.runtime.drinks import (
     check_bounds,
 )
 from app.runtime.manipulation import DEFAULT_EVENT_MS
+from app.runtime.price_grid import BoundsCollision, grid_faults, move_inward
 from exchange import Params
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -142,6 +146,29 @@ def _bounds_are_strict() -> bool:
     )
 
 
+# B-07 SD1: a bound is a multiple of the Prijsstap (app/runtime/price_grid.py).
+def _bounds_are_on_the_grid() -> bool:
+    return bool(grid_faults({"p_min_cents": 124}, 10, loc=())) and not grid_faults(
+        {"p_min_cents": 120}, 10, loc=()
+    )
+
+
+# B-07 SD4: a step that leaves a drink no room between its bounds is refused.
+def _step_refuses_no_room() -> bool:
+    row = DrinkRow(1, 0, "x", 160, 170, 180, 10.0, 0.6, 8.0, 0.4, 170)
+    try:
+        move_inward([row], 50, loc=())
+    except BoundsCollision:
+        return True
+    return False
+
+
+NO_ROOM = (
+    "; niet als een drankje daardoor geen ruimte meer heeft tussen Minimumprijs, Startprijs"
+    " en Maximumprijs"
+)
+
+
 def _candle_default_s() -> float:
     default = Run.__table__.c.candle_interval_ms.server_default
     return float(default.arg.text) / 1000
@@ -171,6 +198,10 @@ def mismatches(
             ranged = isinstance(getattr(defaults, key), float)
             allowed[key] = render_range(params_patch, key) if ranged else None
 
+    allowed["step_quant"] = render_range(params_patch, "step_quant") + (
+        NO_ROOM if _step_refuses_no_room() else " (no collision check)"
+    )
+
     start["candle_interval_s"] = ("Standaard", _candle_default_s())
     allowed["candle_interval_s"] = render_range(ConfigPatch, "candle_interval_s")
 
@@ -187,13 +218,16 @@ def mismatches(
     # The relational halves are literal, and true only while check_bounds is strict.
     start["p_min_cents"] = start["p0_cents"] = start["p_max_cents"] = None
     strict = ", en lager dan de Startprijs" if _bounds_are_strict() else ", tot de Startprijs"
-    allowed["p_min_cents"] = render_range(DrinkCreate, "p_min_cents", scale=100) + strict
+    grid = "een veelvoud van de Prijsstap" if _bounds_are_on_the_grid() else "(no grid check)"
+    allowed["p_min_cents"] = (
+        render_range(DrinkCreate, "p_min_cents", scale=100) + f", {grid}" + strict
+    )
     allowed["p0_cents"] = (
         "hoger dan de Minimumprijs en lager dan de Maximumprijs"
         if _bounds_are_strict()
         else "(check_bounds is no longer strict)"
     )
-    allowed["p_max_cents"] = (
+    allowed["p_max_cents"] = f"{grid}, " + (
         "hoger dan de Startprijs" if _bounds_are_strict() else "(check_bounds is no longer strict)"
     )
 

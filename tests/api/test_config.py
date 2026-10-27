@@ -10,6 +10,10 @@ are still 422.
 
 B-06 T2 (AC1, AC2): "Wallet verplicht" and "Rood staan tot" are top-level run
 fields, stored on a draft or live run, 422 off their rules, and broadcast live.
+
+B-07 T3 (AC6, AC8, AC9 on a draft): a Prijsstap change moves the active drinks'
+bounds inward in the same revision, a drink left with no room refuses the whole
+write as `bounds_collision`, and any other write moves no bound.
 """
 
 from __future__ import annotations
@@ -61,6 +65,34 @@ def _draft_with_drinks(settings: Settings, url: str, *, removed: tuple[str, ...]
             await engine.dispose()
 
     return asyncio.run(scenario())
+
+
+def _set_bounds(
+    settings: Settings, url: str, run_id: int, name: str, bounds: tuple[int, int, int]
+) -> None:
+    """Store `name`'s Minimum, Start and Maximum as given, off the grid included."""
+
+    async def scenario() -> None:
+        engine = create_engine(settings.model_copy(update={"database_url": url}))
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        "UPDATE drink SET p_min_cents = :lo, p0_cents = :p0, p_max_cents = :hi "
+                        "WHERE run_id = :r AND name = :n"
+                    ),
+                    {"lo": bounds[0], "p0": bounds[1], "hi": bounds[2], "r": run_id, "n": name},
+                )
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def _bounds(document: Any) -> dict[str, tuple[int, int, int]]:
+    return {
+        d["name"]: (d["p_min_cents"], d["p0_cents"], d["p_max_cents"]) for d in document["drinks"]
+    }
 
 
 def _scalar(settings: Settings, url: str, sql: str, **bind: Any) -> Any:
@@ -360,7 +392,6 @@ def test_a_non_finite_number_is_422_naming_the_field(
         {"history_window_minutes": 240},
         {"refresh_minutes": 0.1},
         {"refresh_minutes": 10},
-        {"step_quant": 5},
         {"step_quant": 0.01},
         {"idle_decay_minutes": 0.1},
         {"idle_rise_minutes": 0.1},
@@ -660,3 +691,96 @@ def test_other_roles_are_403(draft: int, client: TestClient, login: Login, role:
 def test_the_nan_literal_is_valid_json_to_the_server() -> None:
     """Anti-vacuity for the NaN test: Python's parser accepts the literal at all."""
     assert json.loads('{"eta": NaN}')["eta"] != json.loads('{"eta": NaN}')["eta"]
+
+
+# --- B-07 T3: a Prijsstap change on a draft (AC6, AC8, AC9) -------------------
+
+
+def test_step_quant_5_is_inclusive_on_drinks_that_fit_its_grid(
+    draft: int, client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """SD8's top end; since B-07 the drinks must fit a 5,00 grid (its plan PD12)."""
+    for name in ("Bier", "Wijn", "Fris"):
+        _set_bounds(settings, api_env, draft, name, (0, 260, 500))
+    admin = login("admin")
+
+    response = admin.patch(f"/api/runs/{draft}/config", json={"params": {"step_quant": 5}})
+
+    assert response.status_code == 200, response.text
+    assert admin.get(f"/api/runs/{draft}/config").json()["params"]["step_quant"] == 5
+
+
+def test_a_step_change_moves_active_bounds_inward_in_one_revision(
+    client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """AC6: Minimum up, Maximum down; on-grid bounds and a removed drink unchanged."""
+    run_id = _draft_with_drinks(settings, api_env, removed=("Fris",))
+    _set_bounds(settings, api_env, run_id, "Bier", (160, 200, 310))
+    _set_bounds(settings, api_env, run_id, "Fris", (160, 260, 310))
+    admin = login("admin", label="Bestuur")
+    revisions = _revisions(settings, api_env, run_id)
+
+    response = admin.patch(f"/api/runs/{run_id}/config", json={"params": {"step_quant": 0.25}})
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"revision": revisions + 1}
+    after = admin.get(f"/api/runs/{run_id}/config").json()
+    assert _bounds(after) == {
+        "Bier": (175, 200, 300),
+        "Wijn": (150, 260, 500),
+        "Fris": (160, 260, 310),
+    }
+    assert after["params"]["step_quant"] == 0.25
+    assert _revisions(settings, api_env, run_id) == revisions + 1
+    _, stored = _stored_revision(settings, api_env, run_id, revisions + 1)
+    assert stored == after
+
+
+def test_a_collision_refuses_the_whole_patch(
+    draft: int, client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """AC8 on a draft: 422 `bounds_collision` on `step_quant` naming each drink, nothing stored."""
+    _set_bounds(settings, api_env, draft, "Bier", (110, 122, 280))
+    _set_bounds(settings, api_env, draft, "Fris", (160, 170, 180))
+    admin = login("admin")
+    before = admin.get(f"/api/runs/{draft}/config").json()
+
+    response = admin.patch(
+        f"/api/runs/{draft}/config",
+        json={"name": "Anders", "params": {"step_quant": 0.25, "eta": 0.9}},
+    )
+
+    assert response.status_code == 422, response.text
+    error = response.json()["error"]
+    assert error["code"] == "bounds_collision"
+    assert error["faults"] == [
+        {
+            "loc": ["body", "params", "step_quant"],
+            "msg": "Past niet bij Bier: de grenzen worden 1,25\u20132,75 en de Startprijs 1,22 "
+            "valt daarbuiten. Past niet bij Fris: de grenzen worden 1,75\u20131,75.",
+        }
+    ]
+    assert admin.get(f"/api/runs/{draft}/config").json() == before
+    assert _revisions(settings, api_env, draft) == 1
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"params": {"eta": 0.9}},
+        {"name": "Anders"},
+        {"candle_interval_s": 30},
+        {"params": {"step_quant": 0.1}},
+    ],
+)
+def test_a_write_that_keeps_the_step_moves_no_bound(
+    draft: int, client: TestClient, login: Login, settings: Settings, api_env: str, body: Any
+) -> None:
+    """AC9: a stored off-grid bound stays through any write but a step change."""
+    _set_bounds(settings, api_env, draft, "Bier", (124, 260, 497))
+    admin = login("admin")
+
+    response = admin.patch(f"/api/runs/{draft}/config", json=body)
+
+    assert response.status_code == 200, response.text
+    assert _bounds(admin.get(f"/api/runs/{draft}/config").json())["Bier"] == (124, 260, 497)

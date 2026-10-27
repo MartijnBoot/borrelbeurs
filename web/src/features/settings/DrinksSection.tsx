@@ -4,7 +4,9 @@
  * **Add:** a name, the three bounds as `MoneyField`s, and an optional bar price
  * and `a/d/s0/c`, each under its B-01 name with an (i) (E13-E20) -- the same
  * entries the bounds rows and the coefficient table use (AC9). A blank optional is left out of the body, so the server's
- * default applies (AC4); an invalid entry blocks the add.
+ * default applies (AC4); an invalid entry blocks the add. A Minimumprijs or
+ * Maximumprijs off the Prijsstap shows B-07 SD1's message under it and blocks
+ * the add too (B-07 SD10; PD9).
  *
  * **Per active drink:** its name and bar price, saved as a dirty-only `PATCH`
  * ("Niets te wijzigen" when untouched), and "Verwijderen" behind
@@ -24,6 +26,7 @@ import { HttpError, request } from '../../lib/http'
 import { useEditableRecord } from '../../lib/useEditableRecord'
 import explanations from './explanations.json'
 import styles from './settings.module.css'
+import { gridMessage, onGrid, stepCents } from './grid'
 import { faultsOf, Revision, type RunConfig, useRunConfig } from './useRunConfig'
 
 const REFUSALS: Readonly<Record<string, string>> = {
@@ -50,7 +53,7 @@ export function DrinksSection() {
   const runId = config.run.run_id
   return (
     <>
-      <AddDrinkForm runId={runId} onDone={reload} />
+      <AddDrinkForm runId={runId} step={stepCents(config.params.step_quant)} onDone={reload} />
       {config.drinks
         .filter((drink) => drink.active)
         .map((drink) => (
@@ -112,7 +115,15 @@ const EMPTY: AddDraft = {
   c: null,
 }
 
-function AddDrinkForm({ runId, onDone }: { runId: number; onDone: () => Promise<void> }) {
+function AddDrinkForm({
+  runId,
+  step,
+  onDone,
+}: {
+  runId: number
+  step: number
+  onDone: () => Promise<void>
+}) {
   const [draft, setDraft] = useState<AddDraft>(EMPTY)
   const [error, setError] = useState<string | null>(null)
   const [faults, setFaults] = useState<Record<string, string>>({})
@@ -139,6 +150,16 @@ function AddDrinkForm({ runId, onDone }: { runId: number; onDone: () => Promise<
       p_min_cents: draft.p_min_cents as number,
       p0_cents: draft.p0_cents as number,
       p_max_cents: draft.p_max_cents as number,
+    }
+    const offGrid: Record<string, string> = {}
+    for (const field of ['p_min_cents', 'p_max_cents'] as const) {
+      const cents = body[field] as number
+      if (!onGrid(cents, step)) offGrid[field] = gridMessage(cents, step)
+    }
+    if (Object.keys(offGrid).length > 0) {
+      setFaults(offGrid)
+      setError(null)
+      return
     }
     for (const field of ['bar_price_cents', ...OPTIONAL_COEFFICIENTS] as const) {
       const value = draft[field]

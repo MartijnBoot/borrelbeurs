@@ -26,6 +26,17 @@ is 409 `run_ended`.
 the same one transaction as the profile read, and only onto a draft: a live or
 ended run is 409 `run_not_draft`.
 
+**Bounds follow the Prijsstap (B-07 SD3-SD5, SD8; plan PD3-PD5).** A draft or
+live write whose merged `step_quant` differs from the stored one, and every
+profile load, move each active drink's bounds inward onto the new step
+(`app.runtime.price_grid.move_inward`): the moved rows are written before the
+revision is appended, so one transaction and one revision hold both. A drink
+left with no room is 422 `bounds_collision` on `step_quant`, raised before any
+write. A profile load that changes no setting but moves a stored off-grid bound
+still appends one revision; one that changes nothing appends nothing. Any other
+write moves no bound, a stored off-grid one included (AC9). Live, the spec is
+rebuilt from the moved rows before the one hold over every active slot.
+
 **Anchor s0 (SD5, SD26)** is v1's "📌 Zet huidige prijs als evenwicht", live
 only: one `mutate("config")` running `anchor_s0_to_current_y` on the masked
 spec -- the mean over active drinks, a removed drink's `s0` kept (AC16) -- and
@@ -44,7 +55,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from app.db.codec import tick_prices
 from app.db.engine_state import compare_and_set, insert_tick
-from app.db.mapping import DrinkRow
+from app.db.mapping import DrinkRow, spec_from_rows
 from app.db.profiles import get_profile
 from app.db.runs import (
     RunEnded,
@@ -57,6 +68,7 @@ from app.db.runs import (
     get_run,
     latest_revision,
     set_drink_s0,
+    update_drink,
     update_run,
 )
 from app.runtime.clock import Clock, commit_stamp_ms
@@ -67,6 +79,7 @@ from app.runtime.config_patch import _whole_cents as _whole_cents
 from app.runtime.config_patch import profile_patch
 from app.runtime.history import TickEntry
 from app.runtime.holder import ConfigChanged, MarketHolder, MarketView, Outcome
+from app.runtime.price_grid import BoundMove, move_inward, step_cents
 from exchange import EngineState, MarketSpec, Params, anchor_s0_to_current_y, hold_quoted_prices
 
 
@@ -242,6 +255,29 @@ async def _merged(conn: AsyncConnection, run: RunRow, patch: ConfigPatch) -> Run
     return None if merged == run else merged
 
 
+def _step_changed(run: RunRow, merged: RunRow) -> bool:
+    """PD4: the merged Prijsstap differs from the stored one, compared as floats."""
+    return Params.from_dict(merged.params).step_quant != Params.from_dict(run.params).step_quant
+
+
+async def _move_bounds(
+    conn: AsyncConnection, run: RunRow, step_quant: float, *, loc: tuple[str, ...]
+) -> tuple[list[DrinkRow], list[BoundMove]]:
+    """Move the active drinks' bounds inward onto `step_quant` and write each moved row.
+
+    Every row of the run as it now is, and the moves; `BoundsCollision` on `loc`
+    before any write (B-07 SD3, SD4). A removed drink is left as it is.
+    """
+    drinks = await all_drinks(conn, run.run_id)
+    rows, moves = move_inward([d for d in drinks if not d.removed], step_cents(step_quant), loc=loc)
+    moved = {row.drink_id: row for row in rows}
+    for before in drinks:
+        after = moved.get(before.drink_id, before)
+        if after != before:
+            await update_drink(conn, run.run_id, after)
+    return [moved.get(d.drink_id, d) for d in drinks], moves
+
+
 async def _record(conn: AsyncConnection, run: RunRow, *, author: str) -> int:
     """Write `run`'s columns and append its config as the next revision; that revision."""
     await update_run(
@@ -370,6 +406,9 @@ async def write_draft_config(
         merged = await _merged(conn, run, patch)
         if merged is None:
             return await latest_revision(conn, run_id)
+        if _step_changed(run, merged):
+            step_quant = Params.from_dict(merged.params).step_quant
+            await _move_bounds(conn, merged, step_quant, loc=("body", "params", "step_quant"))
         return await _record(conn, merged, author=author)
 
 
@@ -380,8 +419,10 @@ async def load_profile_onto_draft(
 
     One transaction, the status checked first: a live or ended run is 409
     `run_not_draft` whatever the profile holds. Then 404 `profile_not_found`, or
-    422 naming a stored value outside today's rules. A profile equal to the
-    draft appends nothing and returns the current revision.
+    422 naming a stored value outside today's rules. The draft's bounds move
+    onto the profile's step, an equal one included (B-07 SD5, SD8), or 422
+    `bounds_collision`. A profile equal to the draft that moves no bound appends
+    nothing and returns the current revision (PD5).
     """
     async with engine.begin() as conn:
         run = await get_run(conn, run_id, lock=True)
@@ -389,9 +430,14 @@ async def load_profile_onto_draft(
             raise RunNotDraft(f"run {run_id} is {run.status}; a profile loads only onto a draft")
         profile = await get_profile(conn, profile_id)
         merged = await _merged(conn, run, profile_patch(profile.settings, source="profile"))
-        if merged is None:
+        loaded = run if merged is None else merged
+        step_quant = Params.from_dict(loaded.params).step_quant
+        _, moves = await _move_bounds(
+            conn, loaded, step_quant, loc=("profile", "params", "step_quant")
+        )
+        if merged is None and not moves:
             return await latest_revision(conn, run_id)
-        return await _record(conn, merged, author=author)
+        return await _record(conn, loaded, author=author)
 
 
 async def write_live_config(
@@ -399,10 +445,14 @@ async def write_live_config(
 ) -> int:
     """Merge `patch` into the live run as one engine transition (SD7); the new revision.
 
-    A `step_quant` change holds every active slot's quoted price (SD9,
-    `hold_quoted_prices`, its jumps cancelled); any other change leaves `y`
-    alone. A patch that changes nothing returns the current revision and takes
-    no transition.
+    A `step_quant` change first moves the active drinks' bounds inward onto
+    the new step (B-07 SD3) and rebuilds the spec from those rows; then it holds
+    every active slot's quoted price from the old spec to the new one (SD9,
+    `hold_quoted_prices`, its jumps cancelled), so each quote stays, clamped into
+    the moved bounds and on the new grid. A collision is 422 `bounds_collision`
+    inside the step, before any write: no transition. Any other change keeps the
+    view's spec with the new params and leaves `y` alone. A patch that changes
+    nothing returns the current revision and takes no transition.
     """
     engine = holder.engine
     if _is_empty(patch):
@@ -420,6 +470,11 @@ async def write_live_config(
             spec = dataclasses.replace(view.spec, params=params)
             state = view.state
             if params.step_quant != view.spec.params.step_quant:
+                rows, _ = await _move_bounds(
+                    conn, merged, params.step_quant, loc=("body", "params", "step_quant")
+                )
+                spec, drink_ids = spec_from_rows(rows, params)
+                assert drink_ids == view.drink_ids
                 active = [i for i, on in enumerate(spec.active.tolist()) if on]
                 state = hold_quoted_prices(view.spec, spec, state, active)
             revision = await _record(conn, merged, author=author)

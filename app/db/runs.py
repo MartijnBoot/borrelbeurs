@@ -48,6 +48,7 @@ from app.db.models import EngineState as EngineStateRow
 from app.db.products import name_key, resolve_product
 from app.db.profiles import get_profile
 from app.runtime.config_patch import profile_patch
+from app.runtime.price_grid import move_inward, step_cents
 from exchange import EngineState, Params, anchor_s0_to_current_y, initial_state
 
 _NAME_INDEX = "drink_name_live"
@@ -489,6 +490,12 @@ async def create_run(
 
     Every path starts with "Wallet verplicht" on and "Rood staan tot" at 0
     (B-06 SD1, SD2, AC1): neither comes from a profile or the copied run (SD3).
+
+    Copied drinks start on the grid (B-07 SD9): each bound is moved inward onto
+    the draft's final Prijsstap -- the profile's, else the source run's -- and
+    only the bounds change. A drink left with no room is `BoundsCollision` (422
+    `bounds_collision`) naming it, on the profile's `step_quant` or, without a
+    profile, on `copy_from_run_id`, with nothing written.
     """
     name = name.strip()
     async with engine.begin() as conn:
@@ -521,6 +528,13 @@ async def create_run(
                 params = dataclasses.replace(params, **patch.params.model_dump(exclude_unset=True))
             if patch.candle_interval_s is not None:
                 candle_interval_ms = patch.candle_interval_s * 1000
+        if drinks:
+            loc = (
+                ("profile", "params", "step_quant")
+                if profile_id is not None
+                else ("body", "copy_from_run_id")
+            )
+            drinks, _ = move_inward(drinks, step_cents(params.step_quant), loc=loc)
         run_id = await create_draft_run(
             conn,
             name=name,

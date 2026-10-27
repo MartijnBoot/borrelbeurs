@@ -17,16 +17,27 @@
  * B-06 (SD1-SD3) adds "Wallet verplicht" as a `Switch` and "Rood staan tot" as a
  * `MoneyField` (E40, E41), after the noise. Both are run columns: they go at the
  * top level beside the candle interval, never under `params`.
+ *
+ * B-07 (SD3; PD10): a new Prijsstap moves every active drink's off-grid bound
+ * inward. When the save holds a valid new step and at least one bound would move
+ * (from this page's own config), a `ConfirmDialog` lists the moves first:
+ * "Annuleren" sends nothing and keeps the input, "Opslaan" sends. With no move,
+ * it sends as before. The server recomputes the moves and is what is stored; a
+ * drink left with no room comes back as its `bounds_collision` message under
+ * Prijsstap.
  */
 import { type FormEvent, useMemo, useState } from 'react'
 import { Button } from '../../components/ui/Button'
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { MoneyField } from '../../components/ui/MoneyField'
 import { NumberField } from '../../components/ui/NumberField'
 import { Switch } from '../../components/ui/Switch'
 import { Toast } from '../../components/ui/Toast'
+import { centsText } from '../../lib/format'
 import { request } from '../../lib/http'
 import { useEditableRecord } from '../../lib/useEditableRecord'
 import explanations from './explanations.json'
+import { type BoundMove, boundMoves, stepCents } from './grid'
 import styles from './settings.module.css'
 import { faultsOf, Revision, type RunConfig, useRunConfig } from './useRunConfig'
 
@@ -51,6 +62,21 @@ type GlobalRecord = Record<Field, number> & {
   bm_enabled: boolean
   wallet_required: boolean
   credit_limit_cents: number
+}
+
+const BOUND_NAMES: Readonly<Record<BoundMove['field'], string>> = {
+  p_min_cents: 'Minimumprijs',
+  p_max_cents: 'Maximumprijs',
+}
+
+/** A step the server would accept: above 0, at most 5, in whole cents. */
+function validStep(step: unknown): step is number {
+  return (
+    typeof step === 'number' &&
+    step > 0 &&
+    step <= 5 &&
+    Math.abs(step * 100 - Math.round(step * 100)) < 1e-9
+  )
 }
 
 function recordOf(config: RunConfig): GlobalRecord {
@@ -85,14 +111,32 @@ export function GlobalSection() {
   const [faults, setFaults] = useState<Record<string, string>>({})
   const [saveError, setSaveError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [moving, setMoving] = useState<{ step: number; moves: BoundMove[] } | null>(null)
 
   if (config === null) {
     return <p className={styles.muted}>{failed ? 'Verbindingsfout. Probeer opnieuw.' : 'Laden…'}</p>
   }
   const runId = config.run.run_id
+  const drinks = config.drinks
 
-  async function submit(event: FormEvent) {
+  function submit(event: FormEvent) {
     event.preventDefault()
+    // `patch` is typed as the record, but holds an edited field as typed: maybe empty or invalid.
+    const edited: Record<string, unknown> = record.patch
+    const step = edited.step_quant
+    const complete = Object.values(edited).every((v) => v !== null && v !== 'invalid')
+    if (complete && validStep(step)) {
+      const moves = boundMoves(drinks, stepCents(step))
+      if (moves.length > 0) {
+        setMoving({ step, moves })
+        return
+      }
+    }
+    void send()
+  }
+
+  async function send() {
+    setMoving(null)
     setFaults({})
     setSaveError(null)
     setBusy(true)
@@ -138,7 +182,7 @@ export function GlobalSection() {
   )
 
   return (
-    <form onSubmit={(event) => void submit(event)}>
+    <form onSubmit={submit}>
       {record.conflict && (
         <p className={styles.row} role="alert">
           Serverwaarden gewijzigd — overnemen?
@@ -185,6 +229,30 @@ export function GlobalSection() {
         {saveError !== null && <span className={styles.error}>{saveError}</span>}
       </div>
       <Toast message={notice} onDone={() => setNotice(null)} />
+      <ConfirmDialog
+        open={moving !== null}
+        message={
+          moving !== null && (
+            <>
+              <p>
+                Prijsstap {centsText(stepCents(moving.step))} opslaan? Deze grenzen schuiven mee:
+              </p>
+              <ul>
+                {moving.moves.map((move) => (
+                  <li key={`${move.name}-${move.field}`}>
+                    {move.name}: {BOUND_NAMES[move.field]} {centsText(move.from)} →{' '}
+                    {centsText(move.to)}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )
+        }
+        confirmLabel="Opslaan"
+        cancelLabel="Annuleren"
+        onConfirm={() => void send()}
+        onCancel={() => setMoving(null)}
+      />
     </form>
   )
 }
