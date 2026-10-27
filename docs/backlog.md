@@ -17,6 +17,8 @@ Top is next. Every item that is not `specced` or `dropped` appears here exactly 
 |---|---|---|---|---|
 | 1 | B-07 | Price bounds on the Prijsstap grid | S | idea |
 | 2 | B-08 | Short keys you can read aloud | S | idea |
+| 3 | B-09 | Download the sign-up QR code | S | idea |
+| 4 | B-10 | Sign-up QR code on the koers screen | S | idea |
 
 ## Items
 
@@ -326,6 +328,69 @@ a short key that lets someone guess or try their way into the admin pages.
 Toegangssleutels page (`web/src/features/keys/KeysSection.tsx`), the login page,
 `scripts/smoke.py` / `BB_SMOKE_KEY`. Changes Phase 3 SD5/SD6 and Phase 6 SD30 — spec
 decisions, not an ADR. Probably no migration. Not the engine.
+
+### B-09 — Download the sign-up QR code
+
+- **Status:** idea
+- **Added:** 2026-10-27
+- **Size:** S (a day or less) — a guess
+
+**Problem.** Players reach `/speler?code=<code>` to make a wallet. The place where they used to
+get vouchers is where they will now find the sign-up QR code. Today admin sees only the link, as
+text, under Instellingen → Wallets, so the organizer has to make a QR code with some outside tool.
+
+**Idea.** Admin can download the sign-up link as a QR code image from the Wallets settings, and
+the organizer drops it into a poster they make themselves. Scanning it opens the player page with
+the code filled in.
+
+**Why it matters.** It is the missing first step of B-05: no outside QR site, and no mistyped
+link on the poster.
+
+**Not this.** The app does not design a poster — no text, logo or print page; that is the
+organizer's. (A guess.) No new dependency: B-05's QR library draws it, inside the app (ADR 0006).
+A failure, even if it works (a guess): a printed QR code that silently stops working because the
+code changed.
+
+**Open questions.**
+- Image format and size: PNG, SVG or both, and how large for print?
+- Changing or clearing the code kills every printed QR code: does the page warn when it changes?
+- Is the code shown as text under the QR code in the image, or not?
+
+**Touches.** (A guess.) `web/src/features/wallets/WalletsSection.tsx` (Aanmeldcode),
+`web/src/features/player/QrCode.tsx` (reused). No server change, not the engine.
+
+### B-10 — Sign-up QR code on the koers screen
+
+- **Status:** idea
+- **Added:** 2026-10-27
+- **Size:** S (a day or less) — a guess; M if getting the code to the display is more than it
+  looks
+
+**Problem.** People in the room who have not signed up have to find the poster first, while the
+big screen everyone is already looking at could show them how.
+
+**Idea.** When enabled, the koers screen shows the sign-up QR code at the top left, next to the
+price and news marquees. Scanning it opens the player page with the code filled in, as the
+poster does.
+
+**Why it matters.** Sign-up is visible to the whole room all evening, poster or not.
+
+**Not this.** (A guess, not contradicted.) It does not cover prices or market events. No QR code
+for anything but sign-up. A failure, even if it works (a guess): the screen shows a QR code while
+sign-up is closed, or one with an old code.
+
+**Open questions.**
+- Who turns it on, and where? (A guess: admin, next to the Aanmeldcode.)
+- Does it hide by itself when sign-up is closed (no code set)?
+- A display key cannot read the sign-up code today: how does it reach the screen (snapshot,
+  WebSocket, a display route), and does it update live when admin changes the code?
+- Up all evening, or hidden during a crash or other market event?
+- Size: readable across the room without squeezing the marquees too far?
+
+**Touches.** (A guess.) `web/src/features/koers/KoersPage.tsx` and its CSS, the wallet settings
+(`app/api/wallets_admin.py`), what a display key may read (`app/api/deps.py`, perhaps
+`docs/design/realtime-protocol.md`). Changes B-05's "only admin sees the code" — a spec decision,
+not an ADR. Not the engine.
 
 ## Deferred work
 
