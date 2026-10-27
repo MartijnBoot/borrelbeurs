@@ -51,11 +51,59 @@ conftest, and `tests/api` re-exporting it works).
 
 | Where `tests/api` time goes, single process | Seconds | Share |
 |---|---|---|
-| key hashing (mint + login) | _T1_ | _T1_ |
-| app boot + shutdown (`create_app` lifespan) | _T1_ | _T1_ |
-| engine create/dispose in fixtures | _T1_ | _T1_ |
-| `TRUNCATE` | _T1_ | _T1_ |
-| the request itself | _T1_ | _T1_ |
+| key hashing (mint + login) | 44.6 (792 hashes, 56 ms each; 22.3 inside login requests) | **11.3 %** |
+| app boot + shutdown (`create_app` lifespan) | 72.8 (`TestClient` enter 66.6 + exit 6.2, 422 apps) | 18.5 % |
+| engine create/dispose in fixtures | 6.7 for every `dispose` (2184); the whole `live_run` fixture (engine, seed, go-live) 45.7 | 1.7 % / 11.6 % |
+| `TRUNCATE` | 163.0 (`database_url`: a `NullPool` engine and one `TRUNCATE … CASCADE` of every table, 0.38 s each) | **41.4 %** |
+| the request itself | 25.4 (881 requests, 47.6 less the 22.3 of hashing inside login) | 6.4 % |
+
+T1 (2026-10-27): measured on the named sample, `test_authorization_matrix.py`, `test_orders.py`,
+`test_keys.py`, `test_ws.py` (424 of 1154 tests), one process, the compose `db`: **424 passed in
+394.0 s** (0.93 s a test). Instrumentation was a `-p` plugin in the scratchpad, not committed: a timing
+wrapper on `app.api.security.argon2_hash_secret` (what `key_hash` calls), on `TestClient.__enter__`,
+`__exit__`, `request` and `AsyncEngine.dispose`, and `pytest_fixture_setup` timers (exclusive per
+fixture, since dependencies are set up first). Setup phase 282.1 s, call 103.6 s, teardown 7.3 s.
+
+- **Key hashing is 11.3 % ≥ 10 %: T11 is triggered.**
+- **Candidate amendments (≥ 5 %, not built, need a re-audit):** the per-test `TRUNCATE` (41.4 %, the
+  largest single cost: e.g. truncating only the tables a test wrote, or `DELETE` on small tables);
+  app boot + shutdown (18.5 %); the `live_run` seed per test (11.6 %); the request itself (6.4 %) is
+  what the tests check and is not a cost to cut.
+
+`--durations=30` of that run:
+
+```
+3.55s setup    test_authorization_matrix.py::test_the_table_covers_every_served_route
+3.46s call     test_ws.py::test_closing_a_session_never_leaks_a_foreign_cancellation
+1.68s setup    test_authorization_matrix.py::test_every_route_and_actor[GET-/api/analytics/runs/{run_id}-kassa]
+1.41s call     test_orders.py::test_the_limit_admits_exactly_minus_l_and_refuses_one_cent_more
+1.11s setup    test_authorization_matrix.py::test_every_route_and_actor[GET-/api/state-kassa]
+1.04s call     test_orders.py::test_a_key_first_used_without_a_wallet_resent_with_one_is_422
+1.03s setup    test_orders.py::test_bad_lines_are_422[duplicate-drink]
+1.01s setup    test_ws.py::test_a_binary_frame_gets_an_error_and_the_connection_stays_open
+0.99s setup    test_authorization_matrix.py::test_every_route_and_actor[PATCH-/api/runs/{run_id}/drinks/{drink_id}-admin]
+0.98s setup    test_authorization_matrix.py::test_every_route_and_actor[GET-/api/analytics/price-curve-revoked]
+0.98s setup    test_authorization_matrix.py::test_every_route_and_actor[DELETE-/api/runs/{run_id}-admin]
+0.97s setup    test_authorization_matrix.py::test_every_route_and_actor[POST-/api/runs/{run_id}/go-live-anonymous]
+0.97s setup    test_authorization_matrix.py::test_every_route_and_actor[POST-/api/theme/images/{slot}-admin]
+0.97s call     test_orders.py::test_a_paid_order_resent_replays_its_bytes_even_after_the_balance_moved
+0.94s teardown test_ws.py::test_the_handshake_needs_the_same_origin_even_with_a_valid_session
+0.94s call     test_orders.py::test_a_wallet_that_no_longer_resolves_is_404_and_writes_nothing[deleted]
+0.93s setup    test_ws.py::test_a_bad_handshake_closes_1008_with_no_frame[missing-origin]
+0.89s setup    test_authorization_matrix.py::test_every_route_and_actor[PATCH-/api/runs/{run_id}/config-admin]
+0.88s setup    test_authorization_matrix.py::test_every_route_and_actor[GET-/api/runs/current-display]
+0.88s setup    test_authorization_matrix.py::test_every_route_and_actor[GET-/api/analytics/runs/{run_id}-bar]
+0.88s setup    test_ws.py::test_a_current_hello_gets_exactly_the_missed_broadcasts_and_no_snapshot
+0.87s setup    test_authorization_matrix.py::test_every_route_and_actor[PATCH-/api/runs/{run_id}/drinks/{drink_id}-bar]
+0.86s setup    test_ws.py::test_resync_request_gets_a_snapshot_and_garbage_gets_an_error
+0.86s setup    test_ws.py::test_client_messages_never_touch_the_market_and_six_a_second_close_1008
+0.86s setup    test_authorization_matrix.py::test_every_route_and_actor[POST-/api/market/jumps-display]
+0.86s setup    test_authorization_matrix.py::test_every_route_and_actor[PATCH-/api/runs/{run_id}/config-display]
+0.85s setup    test_ws.py::test_five_a_second_is_allowed
+0.85s setup    test_authorization_matrix.py::test_every_route_and_actor[POST-/api/runs/{run_id}/anchor-s0-kassa]
+0.85s setup    test_ws.py::test_ping_gets_a_json_pong_and_every_frame_is_json
+0.84s setup    test_authorization_matrix.py::test_every_route_and_actor[DELETE-/api/keys/{key_id}-display]
+```
 
 Cuts the profile justifies are appended below as **amendments** (T-numbered, with their measured
 saving) and need a re-audit before they are built — the plan cannot name them yet.
