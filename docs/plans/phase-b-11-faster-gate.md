@@ -529,20 +529,25 @@ T12 implements SD15, which the spec states in "In scope" but gives no AC. Every 
 least one AC.
 
 ## Audit (plan-auditor — PASS required before implementation starts)
-- [ ] Every AC maps to at least one task
-- [ ] Every task maps to at least one AC (no orphans; T12 maps to SD15)
-- [ ] Each task's expected output is what we actually need
-- [ ] Existing patterns reused; nothing reinvented
-- [ ] No new dependency without an approval note (T2 carries it)
-- [ ] Data changes additive and reversible (none)
-- [ ] Errors, empty states and permissions are tasks, not afterthoughts
-- [ ] Each task reviewable in one sitting
-- [ ] Verification named per task
-- [ ] Nothing touches prod, secrets or infra it should not
-- [ ] Every task has a Depends on and an Autonomy note
-- [ ] No two tasks in one parallel group write the same file
+- [x] Every AC maps to at least one task
+- [x] Every task maps to at least one AC (no orphans; T12 maps to SD15)
+- [x] Each task's expected output is what we actually need
+- [x] Existing patterns reused; nothing reinvented
+- [x] No new dependency without an approval note (T2 carries it)
+- [x] Data changes additive and reversible (none)
+- [x] Errors, empty states and permissions are tasks, not afterthoughts
+- [x] Each task reviewable in one sitting
+- [x] Verification named per task
+- [x] Nothing touches prod, secrets or infra it should not
+- [x] Every task has a Depends on and an Autonomy note
+- [x] No two tasks in one parallel group write the same file
 
 Audited by: plan-auditor (agent), 2026-10-27 — first audit FAIL (R1–R4), plan revised; re-audit **PASS**.
 Re-audit mediums 1–5 and lows 6–14, 16 are folded in above. Still the owner's before `/build`: acknowledge the
 SD5 amendment (holders cover their children via `BB_GATE_LOCK_HELD`), and note T3 touches 15 files (two-line edits).
+
+Human audit (/audit b-11): Martijn Boot, 2026-10-27 — all lines accepted and ticked in one answer. This
+includes the SD5 amendment (`BB_GATE_LOCK_HELD`), SD11–SD15 as written, and T3's 15 files. Noted, not
+changed: AC23 is an owner step after T14, and AC19/T11 are conditional on T1. T4, T8 and T10 are the
+tasks most likely to near the size limit; the builder stops and asks if one passes ~400 source lines.
 
