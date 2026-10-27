@@ -12,6 +12,10 @@ B-03 T2 (AC5-AC9, SD2): a live change of one of the six noise params is that
 same transition and moves no `y`; it acts at the engine's next step, as the
 engine already does. These tests change no source: one failing means the code
 does not do what SD2 says.
+
+B-07 T4 (AC7, AC8, AC9, AC11 live): a Prijsstap change moves the active bounds
+inward and holds every quote under the moved bounds and the new step, in one
+transition; a collision takes none; any other save moves no bound.
 """
 
 from __future__ import annotations
@@ -39,6 +43,7 @@ from app.runtime.config import ConfigPatch, write_live_config
 from app.runtime.history import TickEntry
 from app.runtime.holder import DomainEvent, MarketHolder, MarketView, Outcome, TickCommitted
 from app.runtime.manipulation import schedule, start_event
+from app.runtime.price_grid import BoundsCollision
 from app.runtime.rehydrate import RehydratedRun, rehydrate
 from exchange import EngineState, Params, advance, prices_from_y
 from tests.support.clock import FakeClock
@@ -99,10 +104,17 @@ class Runtime:
             return (await conn.execute(text(sql), bind)).scalar_one()
 
 
+Bounds = tuple[tuple[int, int], ...]
+
+
 @asynccontextmanager
 async def _live(
-    settings: Settings, url: str, params: Params | None = None
+    settings: Settings,
+    url: str,
+    params: Params | None = None,
+    bounds: Bounds = ((150, 500), (150, 500), (150, 500)),
 ) -> AsyncIterator[Runtime]:
+    """`bounds` is each slot's (Minimum, Maximum), stored as given, off the grid included."""
     engine = create_engine(settings.model_copy(update={"database_url": url}))
     try:
         async with engine.begin() as conn:
@@ -115,9 +127,9 @@ async def _live(
                     run_id,
                     name=name,
                     slot=slot,
-                    p_min_cents=150,
+                    p_min_cents=bounds[slot][0],
                     p0_cents=260 + 30 * slot,
-                    p_max_cents=500,
+                    p_max_cents=bounds[slot][1],
                     a=1.0,
                     d=0.1,
                     s0=1.0,
@@ -600,5 +612,163 @@ def test_a_live_switch_or_limit_change_is_one_transition_into_the_view(
             data = snapshot(runtime.holder, tick_interval_ms=1_000)
             assert data is not None
             assert (data.run.wallet_required, data.run.credit_limit_cents) == (True, 250)
+
+    asyncio.run(scenario())
+
+
+# --- B-07 T4: a Prijsstap change on the live run (AC7, AC8, AC9, AC11) --------
+
+TENTHS = Params(step_quant=0.1)
+# Bier moves to 1,75-3,00 on a 0,25 grid; Wijn and Fris are on it already.
+OFF_QUARTER: Bounds = ((160, 310), (150, 500), (150, 500))
+
+
+async def _bounds(runtime: Runtime) -> list[tuple[int, int]]:
+    async with runtime.engine.connect() as conn:
+        rows = await conn.execute(
+            text("SELECT p_min_cents, p_max_cents FROM drink WHERE run_id = :r ORDER BY slot"),
+            {"r": runtime.run_id},
+        )
+        return [(int(r.p_min_cents), int(r.p_max_cents)) for r in rows]
+
+
+def _spec_bounds(holder: MarketHolder) -> list[tuple[int, int]]:
+    assert holder.spec is not None
+    return [
+        (round(lo * 100), round(hi * 100))
+        for lo, hi in zip(holder.spec.p_min.tolist(), holder.spec.p_max.tolist(), strict=True)
+    ]
+
+
+def _held(old_cents: int, lo: int, hi: int, step: int) -> int:
+    """SD9's hold on on-grid bounds: clamp, then the nearest grid point (never a tie here)."""
+    clamped = min(max(old_cents, lo), hi)
+    return round(clamped / step) * step
+
+
+def test_a_live_step_change_moves_bounds_and_holds_every_quote_in_one_transition(
+    settings: Settings, database_url: str
+) -> None:
+    """AC7: one transition; moved bounds in rows and spec; quotes held, clamped, on the grid."""
+
+    async def scenario() -> None:
+        async with _live(settings, database_url, TENTHS, OFF_QUARTER) as runtime:
+            holder = runtime.holder
+            bier = holder.drink_ids[0]
+            await start_event(holder, "bubble", 30_000, clock=runtime.clock)
+            await schedule(holder, bier, 310, 60_000, clock=runtime.clock)
+            for _ in range(20):
+                await _tick(runtime.engine, holder, runtime.clock)
+            state, old_spec = holder.state, holder.spec
+            assert state is not None and old_spec is not None and state.jumps
+            before = _quoted_cents(holder)
+            assert before[0] > 300  # Bier quotes above its moved Maximum: the clamp shows
+            revisions = len(await _revisions(runtime))
+            ticks = await _ticks(runtime, "config")
+
+            revision = await runtime.patch({"params": {"step_quant": 0.25}})
+
+            after = holder.state
+            assert after is not None and holder.spec is not None
+            assert after.version == state.version + 1
+            assert revision == revisions + 1
+            assert await _ticks(runtime, "config") == ticks + 1
+            assert await _bounds(runtime) == [(175, 300), (150, 500), (150, 500)]
+            assert _spec_bounds(holder) == [(175, 300), (150, 500), (150, 500)]
+            assert holder.spec.params.step_quant == 0.25
+            # Only the bounds and the step changed in the spec.
+            for name in ("p0", "a", "d", "s0", "c", "active"):
+                assert getattr(holder.spec, name).tobytes() == getattr(old_spec, name).tobytes()
+            assert after.jumps == ()
+            quoted = _quoted_cents(holder)
+            assert quoted == [
+                _held(old, lo, hi, 25)
+                for old, (lo, hi) in zip(before, _spec_bounds(holder), strict=True)
+            ]
+            assert quoted[0] == 300
+            for cents, (lo, hi) in zip(quoted, _spec_bounds(holder), strict=True):
+                assert lo <= cents <= hi and cents % 25 == 0
+            prices = await _last_config_prices(runtime)
+            assert {d: round(p["p_q"] * 100) for d, p in prices.items()} == {
+                str(d): q for d, q in zip(holder.drink_ids, quoted, strict=True)
+            }
+
+    asyncio.run(scenario())
+
+
+def test_a_live_collision_takes_no_transition(settings: Settings, database_url: str) -> None:
+    """AC8 live: refused inside the step; version, rows, ticks and revisions unchanged."""
+
+    async def scenario() -> None:
+        # Bier (Startprijs 2,60) at 2,50-2,70: on a 0,25 grid both bounds become 2,50.
+        bounds: Bounds = ((250, 270), (150, 500), (150, 500))
+        async with _live(settings, database_url, TENTHS, bounds) as runtime:
+            await _tick(runtime.engine, runtime.holder, runtime.clock)
+            state = runtime.holder.state
+            assert state is not None
+            revisions = await _revisions(runtime)
+            ticks = await _ticks(runtime, "config")
+
+            try:
+                await runtime.patch({"params": {"step_quant": 0.25, "eta": 0.9}})
+            except BoundsCollision as error:
+                assert str(error) == "Past niet bij Bier: de grenzen worden 2,50\u20132,50."
+            else:
+                raise AssertionError("the step change was not refused")
+
+            after = runtime.holder.state
+            assert after is not None
+            assert after.version == state.version
+            assert after.y.tobytes() == state.y.tobytes()
+            assert await _bounds(runtime) == [(250, 270), (150, 500), (150, 500)]
+            assert await _revisions(runtime) == revisions
+            assert await _ticks(runtime, "config") == ticks
+            assert runtime.holder.spec is not None
+            assert runtime.holder.spec.params.step_quant == 0.1
+
+    asyncio.run(scenario())
+
+
+def test_a_live_save_that_keeps_the_step_moves_no_bound(
+    settings: Settings, database_url: str
+) -> None:
+    """AC9 live: a stored off-grid bound stays, and `y` is bitwise unchanged."""
+
+    async def scenario() -> None:
+        bounds: Bounds = ((124, 497), (150, 500), (150, 500))
+        async with _live(settings, database_url, TENTHS, bounds) as runtime:
+            state = runtime.holder.state
+            assert state is not None
+
+            await runtime.patch({"params": {"eta": 0.9}})
+
+            after = runtime.holder.state
+            assert after is not None
+            assert after.y.tobytes() == state.y.tobytes()
+            assert await _bounds(runtime) == [(124, 497), (150, 500), (150, 500)]
+            assert _spec_bounds(runtime.holder) == [(124, 497), (150, 500), (150, 500)]
+
+    asyncio.run(scenario())
+
+
+def test_a_restart_after_a_live_step_change_has_the_moved_bounds(
+    settings: Settings, database_url: str
+) -> None:
+    """AC11: a fresh rehydrate, as boot does, runs on the new step and the moved bounds."""
+
+    async def scenario() -> None:
+        async with _live(settings, database_url, TENTHS, OFF_QUARTER) as runtime:
+            await runtime.patch({"params": {"step_quant": 0.25}})
+            quoted = _quoted_cents(runtime.holder)
+
+            run = await rehydrate(runtime.engine, now_ms=runtime.clock.wall_ms())
+
+            assert isinstance(run, RehydratedRun)
+            holder = MarketHolder.from_rehydrated(
+                run, engine=runtime.engine, clock=runtime.clock, sink=lambda events: None
+            )
+            assert run.spec.params.step_quant == 0.25
+            assert _spec_bounds(holder) == [(175, 300), (150, 500), (150, 500)]
+            assert _quoted_cents(holder) == quoted
 
     asyncio.run(scenario())
