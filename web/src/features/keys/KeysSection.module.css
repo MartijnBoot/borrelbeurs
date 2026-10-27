@@ -23,9 +23,14 @@
   border-radius: 8px;
 }
 
-.secret code {
+/* Read aloud at the bar (B-08 SD8): larger than body text, monospaced, spaced out. */
+.key {
   display: block;
   margin-bottom: 8px;
+  font-family: ui-monospace, monospace;
+  font-size: 1.75rem;
+  letter-spacing: 0.1em;
+  user-select: all;
   word-break: break-all;
 }
 
