@@ -107,6 +107,15 @@ a real phone; the inference is from the browser rule, not an observed failure.
 |---|---|---|---|---|
 | D-49 | The bar page makes its `Idempotency-Key` with `crypto.randomUUID()`, which browsers only provide in a secure context (HTTPS or loopback) | `web/src/features/bar/useBarController.ts:76`, called per intent at `model/orderIntents.ts:229,262` | At the venue (`http://192.168.8.10/`, Phase 8 SD1) **every order tap likely throws `TypeError`**. The e2e and image tests use `http://127.0.0.1`, which counts as secure, so none can catch it | fixed in B-06 ([B-05 SD24](phase-b-05-player-wallets.md); [B-06 SD12, AC31](phase-b-06-wallet-payments.md); evidence below) |
 
+## H. Found while specifying B-08
+
+Found by the B-08 spec interview (2026-10-27), against `main` at `3778ba9`. Unverified on a real
+phone; the inference is from the browser rule, as for D-49.
+
+| ID | Defect | Where | Consequence | Phase |
+|---|---|---|---|---|
+| D-50 | "Kopieer" in the new-key dialog calls `navigator.clipboard.writeText`, and browsers provide `navigator.clipboard` only in a secure context | `web/src/features/keys/KeysSection.tsx:184` | At the venue (`http://192.168.8.10/`) the click **throws `TypeError` and copies nothing**. e2e and the image tests use `http://127.0.0.1`, which counts as secure, so none can catch it | fixed in B-08 ([SD9, AC16](phase-b-08-short-keys.md); evidence below) |
+
 ### Phase 6 evidence
 
 Each defect Phase 6 fixes, the acceptance criteria that pin it
@@ -158,6 +167,16 @@ its evidence ([plan](../plans/phase-b-06-wallet-payments.md)):
 | ID | ACs | Evidence tasks |
 |---|---|---|
 | D-49 | AC31 | T11 (the bar's keys come from `lib/idempotencyKey.ts`, and `walletCode.provenance.test.ts` now scans the bar and fails on a planted `crypto.randomUUID()`); T19 (`web/e2e/payments.spec.ts` books with and without a wallet at `http://payments.test:<port>`, where `isSecureContext` is false and `crypto.randomUUID` is undefined) |
+
+### B-08 evidence
+
+The defect B-08 fixes, the acceptance criterion that pins it
+([phase-b-08-short-keys.md](phase-b-08-short-keys.md)), and the tasks whose tests are its
+evidence ([plan](../plans/phase-b-08-short-keys.md)):
+
+| ID | ACs | Evidence tasks |
+|---|---|---|
+| D-50 | AC16 | T5 (`KeysSection.test.tsx`: a rejecting `writeText` and a `navigator` with no `clipboard` both show the hint, throw nothing and leave the key selected); T6 (`web/e2e/keys.spec.ts` presses "Kopieer" at `http://keys.test:<port>`, where `isSecureContext` is false and `navigator.clipboard` is undefined: no page error, the hint shown, the selection equal to the key) |
 
 ## Deliberately not treated as defects
 

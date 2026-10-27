@@ -4,12 +4,16 @@
  * - **The list:** every key's label, role, created, last used and
  *   Actief/Ingetrokken; never a secret.
  * - **"Nieuwe sleutel"** (role, label 1–100) posts `/api/keys` and shows the
- *   returned `bb_…` exactly once, with "Kopieer". "Sluiten" drops it from
- *   component state, so it is gone from the DOM (AC36).
+ *   returned key exactly once, grouped as `K7M-4QX-9PR`, larger and monospaced
+ *   so it can be read aloud (B-08 SD8). "Sluiten" drops it from component
+ *   state, so it is gone from the DOM (AC36).
+ * - **"Kopieer"** writes it to the clipboard. Where that fails -- a plain-HTTP
+ *   page has no `navigator.clipboard` (D-50), or `writeText` rejects -- it
+ *   selects the key's text instead and says so (B-08 SD9). It never throws.
  * - **"Intrekken"** sits behind `ConfirmDialog` "'{label}' intrekken?" (AC39);
  *   the server's `last_admin_key` refusal shows in Dutch (AC38).
  */
-import { type FormEvent, useCallback, useEffect, useId, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from 'react'
 import { z } from 'zod'
 import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
@@ -63,6 +67,8 @@ export function KeysSection() {
   const [role, setRole] = useState<Role>('bar')
   const [label, setLabel] = useState('')
   const [secret, setSecret] = useState<string | null>(null)
+  const [copyFailed, setCopyFailed] = useState(false)
+  const shownKey = useRef<HTMLElement>(null)
   const [revoking, setRevoking] = useState<KeyInfo | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -97,6 +103,7 @@ export function KeysSection() {
         schema: CreatedKey,
       })
       setSecret(created.key)
+      setCopyFailed(false)
       setLabel('')
       setError(null)
       await reload()
@@ -105,6 +112,22 @@ export function KeysSection() {
     } finally {
       setBusy(false)
     }
+  }
+
+  async function copy(key: string) {
+    try {
+      // A missing `navigator.clipboard` throws here, inside the `try` (D-50).
+      await navigator.clipboard.writeText(key)
+      setCopyFailed(false)
+    } catch {
+      if (shownKey.current !== null) window.getSelection()?.selectAllChildren(shownKey.current)
+      setCopyFailed(true)
+    }
+  }
+
+  function close() {
+    setSecret(null)
+    setCopyFailed(false)
   }
 
   async function revoke(key: KeyInfo) {
@@ -178,11 +201,18 @@ export function KeysSection() {
 
       {secret !== null && (
         <div className={styles.secret}>
-          <code>{secret}</code>
+          <code ref={shownKey} className={styles.key}>
+            {secret}
+          </code>
           <p className={styles.muted}>Wordt maar één keer getoond</p>
+          {copyFailed && (
+            <p className={styles.muted} role="status">
+              Kopiëren lukt hier niet. De sleutel is geselecteerd: kopieer hem zelf.
+            </p>
+          )}
           <div className={styles.row}>
-            <Button onClick={() => void navigator.clipboard.writeText(secret)}>Kopieer</Button>
-            <Button onClick={() => setSecret(null)}>Sluiten</Button>
+            <Button onClick={() => void copy(secret)}>Kopieer</Button>
+            <Button onClick={close}>Sluiten</Button>
           </div>
         </div>
       )}

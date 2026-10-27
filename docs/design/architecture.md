@@ -194,11 +194,13 @@ unchanged.
 `auth_key` rows with argon2 hashes replace plaintext `keys.json`. Two practical consequences
 that "hash the keys" hides:
 
-- Argon2 blocks for 50–100 ms by design, which stalls the event loop. `verify` runs in a
-  thread.
-- You can no longer look a key up by value. A naive implementation iterates every key at
-  100 ms each per login attempt. Keys are issued as `bb_<key_id>_<secret>`: look up by
-  `key_id`, verify once.
+- Argon2 blocks for 50–100 ms by design, which stalls the event loop. The login hash runs
+  in a thread.
+- A per-key random salt means a key cannot be looked up by value, and a naive implementation
+  iterates every key at 100 ms each per login attempt. A key is 9 Crockford base32 symbols
+  with no `key_id` in it (B-08), hashed under one fixed salt with pinned argon2id parameters,
+  so the hash itself is the lookup: one hash per login, then one `SELECT` on the unique
+  `secret_hash`. No iterating over keys.
 - Rate-limit login **before** hashing, or the hash cost is itself the denial-of-service.
 
 **Every route carries an explicit authorization dependency, and the WebSocket handshake

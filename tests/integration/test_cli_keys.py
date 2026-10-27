@@ -1,4 +1,4 @@
-"""`python -m app.cli.keys` (Phase 3 T10: SD5; AC6c storage half; AC6e CLI half)."""
+"""`python -m app.cli.keys` (Phase 3 T10: SD5; AC6c, AC6e CLI halves; B-08 AC1, AC3, AC8, AC9)."""
 
 from __future__ import annotations
 
@@ -10,12 +10,12 @@ from typing import Any
 import pytest
 from sqlalchemy import text
 
-from app.api.security import parse_key, verify_secret
+from app.api import security
 from app.cli.keys import main
 from app.core.config import Settings, get_settings
 from app.db.session import create_engine
 
-KEY_SHAPE = re.compile(r"bb_(\d+)_([A-Za-z0-9_-]{43})")
+KEY_SHAPE = re.compile(r"^[0-9A-HJKMNP-TV-Z]{3}(-[0-9A-HJKMNP-TV-Z]{3}){2}$")
 
 
 @pytest.fixture
@@ -49,20 +49,19 @@ def test_create_prints_the_key_once_and_stores_only_its_argon2id_hash(
     scratch: str, settings: Settings, capsys: pytest.CaptureFixture[str]
 ) -> None:
     key = _create(capsys, "admin", "Bestuur")
-    match = KEY_SHAPE.fullmatch(key)
-    assert match is not None, key
-    parsed = parse_key(key)
-    assert parsed is not None
+    assert KEY_SHAPE.fullmatch(key), key
+    assert "bb_" not in key
+    symbols = security.normalise_key(key)
+    assert symbols is not None
 
     (row,) = _rows(settings, scratch)
 
-    assert (row["key_id"], row["role"], row["label"]) == (parsed.key_id, "admin", "Bestuur")
-    assert str(row["secret_hash"]).startswith("$argon2id$")
-    assert verify_secret(row["secret_hash"], parsed.secret)
+    assert (row["role"], row["label"]) == ("admin", "Bestuur")
+    assert str(row["key_id"]) not in key.split("-")
+    assert row["secret_hash"] == security.key_hash(symbols)
     for column, value in row.items():
-        assert value != parsed.secret, f"auth_key.{column} holds the secret"
-        assert value != key, f"auth_key.{column} holds the key"
-        assert parsed.secret not in str(value), f"auth_key.{column} contains the secret"
+        assert key not in str(value), f"auth_key.{column} holds the key"
+        assert symbols not in str(value), f"auth_key.{column} holds the key's symbols"
     assert row["revoked_at"] is None
     assert row["last_used_at"] is None
 
@@ -78,9 +77,8 @@ def test_list_shows_id_label_role_status_and_nothing_secret(
     out = capsys.readouterr().out
 
     for key in (bar, display):
-        parsed = parse_key(key)
-        assert parsed is not None
-        assert parsed.secret not in out
+        assert key not in out
+        assert key.replace("-", "") not in out
     for secret_hash in stored:
         assert secret_hash not in out
     assert "$argon2" not in out
@@ -92,11 +90,10 @@ def test_list_shows_id_label_role_status_and_nothing_secret(
 def test_revoke_sets_revoked_at_and_list_shows_it(
     scratch: str, settings: Settings, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    key = _create(capsys)
-    parsed = parse_key(key)
-    assert parsed is not None
+    _create(capsys)
+    (row,) = _rows(settings, scratch)
 
-    assert main(["revoke", str(parsed.key_id)]) == 0
+    assert main(["revoke", str(row["key_id"])]) == 0
     capsys.readouterr()
 
     (row,) = _rows(settings, scratch)
@@ -133,9 +130,30 @@ def test_create_mints_a_kassa_key(
     scratch: str, settings: Settings, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """B-05 SD7, AC40: `create --role kassa`."""
-    parsed = parse_key(_create(capsys, "kassa", "Kassa 1"))
-    assert parsed is not None
+    key = _create(capsys, "kassa", "Kassa 1")
+    symbols = security.normalise_key(key)
+    assert symbols is not None
 
     (row,) = _rows(settings, scratch)
 
-    assert (row["key_id"], row["role"], row["label"]) == (parsed.key_id, "kassa", "Kassa 1")
+    assert (row["role"], row["label"]) == ("kassa", "Kassa 1")
+    assert row["secret_hash"] == security.key_hash(symbols)
+
+
+def test_create_gives_up_after_five_collisions_and_writes_nothing(
+    scratch: str,
+    settings: Settings,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B-08 AC9, CLI half: exit 1, the message, and no new row."""
+    taken = security.normalise_key(_create(capsys))
+    assert taken is not None
+    monkeypatch.setattr(security, "new_key_symbols", lambda: taken)
+
+    assert main(["create", "--role", "bar", "--label", "Bar 2"]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.strip() == "keys: no free key after 5 draws, nothing written"
+    assert len(_rows(settings, scratch)) == 1

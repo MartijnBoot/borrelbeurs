@@ -74,12 +74,21 @@ Settled at the spec interview (2026-10-01). The planner must not reopen them.
   `revoked_at`, `last_used_at`. `uv run python -m app.cli.keys create --role <r> --label <l>`
   prints `bb_<key_id>_<secret>` **once**. `list` shows id, label, role and status, never a
   secret or hash. `revoke <key_id>` sets `revoked_at`. There is no key UI before Phase 6.
+
+  > **Amended by B-08** ([phase-b-08-short-keys.md](phase-b-08-short-keys.md)). `create` prints a 9-symbol Crockford key grouped as
+  > `K7M-4QX-9PR`, with no `key_id` in it. `secret_hash` is a fixed-salt argon2id hash and
+  > is UNIQUE; every key minted before B-08 was revoked by migration `0015`.
 - **SD6 — Login does exactly one argon2 verify, off the event loop.** The key is parsed as
   `bb_<key_id>_<secret>`. A malformed key returns 401 without hashing. For an unknown,
   revoked or well-formed key, the system verifies once, inside `asyncio.to_thread`, against
   the stored hash or, if there is none, a fixed dummy hash, so the response time does not
   reveal whether `key_id` exists. A successful login sets `last_used_at`; no other request
   writes to `auth_key`.
+
+  > **Amended by B-08** ([phase-b-08-short-keys.md](phase-b-08-short-keys.md)). Login now reads the key forgivingly (case, spaces, dashes,
+  > `O`/`I`/`L`) as 9 symbols; a malformed key is still 401 with no hash. A well-formed key
+  > costs one argon2 hash off the event loop and one lookup by that hash, so there is no
+  > verify and no dummy hash: unknown and revoked keys cost the same.
 - **SD7 — Login is rate-limited per client IP, in memory, before parsing or hashing.**
   Defaults: 10 attempts per rolling 60 s per IP, a `LOGIN_RATE_PER_MINUTE` setting in
   `app/core/config.py`. Over the limit returns 429 with `Retry-After`. Failed and successful

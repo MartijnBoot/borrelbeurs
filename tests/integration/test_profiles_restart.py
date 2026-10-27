@@ -21,9 +21,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.api.security import format_key, hash_secret, mint_secret
+from app.api.security import issue_key
 from app.core.config import Settings, get_settings
-from app.db.keys import create_key, set_secret_hash
 from app.db.runs import DEFAULT_PARAMS, add_drink, create_run, delete_run, go_live
 from app.db.session import create_engine
 from app.main import create_app
@@ -165,10 +164,8 @@ def test_a_fresh_app_lists_the_profile_as_committed(settings: Settings, on: str)
     async def seed(engine: AsyncEngine) -> tuple[dict[str, Any], str]:
         stored = await _wild_profile(engine)
         async with engine.begin() as conn:
-            key_id = await create_key(conn, label="Bestuur", role="admin", secret_hash="pending")
-            secret = mint_secret()
-            await set_secret_hash(conn, key_id, hash_secret(secret))
-        return stored, format_key(key_id, secret)
+            issued = await issue_key(conn, role="admin", label="Bestuur")
+        return stored, issued.key
 
     stored, key = _run(settings, on, seed)
 

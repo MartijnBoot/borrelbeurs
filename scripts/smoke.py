@@ -1,6 +1,6 @@
 """Smoke-test a running BorrelBeurs: is the build the one asked for, and does it work?
 
-    BB_SMOKE_KEY=bb_... python scripts/smoke.py https://borrelbeurs.example --expect-sha <sha>
+    BB_SMOKE_KEY=K7M-4QX-9PR python scripts/smoke.py https://borrelbeurs.example --expect-sha <sha>
 
 Phase 8 SD12. Seven steps, one line each, exit 0 when all pass and 1 at the first
 that fails:

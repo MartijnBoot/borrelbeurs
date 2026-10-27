@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
 // Toegangssleutels (Phase 6 T32: SD30; AC36, AC38, AC39): the list, a new key
-// shown exactly once, and revocation behind a dialog.
+// shown exactly once, and revocation behind a dialog. B-08 T5 (SD8, SD9; AC15,
+// AC16, D-50): the grouped key in a larger monospaced <code>, and "Kopieer"
+// that selects the key instead of throwing when the clipboard is missing.
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { KeysSection } from './KeysSection'
+import styles from './KeysSection.module.css'
 
 const KEYS = [
   {
@@ -32,7 +35,8 @@ const KEYS = [
   },
 ]
 
-const SECRET = 'bb_3_c2VjcmV0LXNlY3JldC1zZWNyZXQ'
+const SECRET = 'K7M-4QX-9PR'
+const HINT = 'Kopiëren lukt hier niet. De sleutel is geselecteerd: kopieer hem zelf.'
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -105,7 +109,10 @@ describe('KeysSection', () => {
     await create()
 
     expect(writes()[0]).toEqual(['/api/keys', 'POST', '{"role":"bar","label":"Tap 2"}'])
-    expect(screen.getByText(SECRET)).toBeTruthy()
+    const shown = screen.getByText(SECRET)
+    expect(shown.tagName).toBe('CODE')
+    expect(shown.classList.contains(styles.key)).toBe(true)
+    expect(screen.getAllByText(SECRET)).toHaveLength(1)
     expect(screen.getByText('Wordt maar één keer getoond')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: 'Sluiten' }))
@@ -114,7 +121,7 @@ describe('KeysSection', () => {
     expect(document.body.textContent).not.toContain(SECRET)
   })
 
-  it('"Kopieer" copies the key to the clipboard', async () => {
+  it('"Kopieer" copies the grouped key to the clipboard, with no hint (AC16)', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal('navigator', { clipboard: { writeText } })
     await open()
@@ -124,6 +131,43 @@ describe('KeysSection', () => {
     await settle()
 
     expect(writeText).toHaveBeenCalledWith(SECRET)
+    expect(screen.queryByText(HINT)).toBeNull()
+  })
+
+  it.each([
+    [
+      'writeText rejects',
+      () => ({ clipboard: { writeText: vi.fn().mockRejectedValue(new Error('no')) } }),
+    ],
+    ['navigator.clipboard is missing (D-50)', () => ({})],
+  ])('when %s, "Kopieer" selects the key and shows the hint (AC16)', async (_, nav) => {
+    // A throw here would be an unhandled rejection, which fails the vitest run.
+    vi.stubGlobal('navigator', nav())
+    await open()
+    await create()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Kopieer' }))
+    await settle()
+
+    expect(screen.getByRole('status').textContent).toBe(HINT)
+    expect(window.getSelection()?.toString()).toBe(SECRET)
+    expect(screen.getByText(SECRET)).toBeTruthy()
+  })
+
+  it('"Sluiten" after a failed copy clears the hint for the next key', async () => {
+    vi.stubGlobal('navigator', {})
+    await open()
+    await create()
+    fireEvent.click(screen.getByRole('button', { name: 'Kopieer' }))
+    await settle()
+    expect(screen.getByText(HINT)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sluiten' }))
+    await settle()
+    await create()
+
+    expect(screen.getByText(SECRET)).toBeTruthy()
+    expect(screen.queryByText(HINT)).toBeNull()
   })
 
   it('revoke asks first: Cancel sends nothing, Confirm sends DELETE (AC39)', async () => {

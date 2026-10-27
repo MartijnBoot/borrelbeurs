@@ -1,8 +1,9 @@
-"""Login, logout and "who am I" (Phase 3 SD1, SD2, SD6-SD8).
+"""Login, logout and "who am I" (Phase 3 SD1, SD2, SD6-SD8; B-08 SD3).
 
-Login is rate-limited per client IP before the key is parsed or hashed (SD7),
-then costs exactly one argon2 verify off the event loop for any well-formed key
-(SD6). Success writes `last_used_at` -- the only request that writes to
+Login is rate-limited per client IP before the key is read or hashed (SD7).
+Any well-formed key then costs exactly one argon2 hash off the event loop and
+one lookup by that hash; unknown and revoked keys get the same 401 (B-08 SD3).
+Success writes `last_used_at` -- the only request that writes to
 `auth_key` -- and sets the session cookie: `HttpOnly`, `SameSite=Strict` and
 `Secure` per `SESSION_COOKIE_SECURE` (SD8). The body is `{key}`, never echoed
 back in an error.
@@ -27,7 +28,7 @@ from app.api.deps import (
     settings_of,
 )
 from app.core.errors import AppError
-from app.db.keys import AuthKeyRow, Role, get_key, touch_last_used
+from app.db.keys import AuthKeyRow, Role, get_key_by_hash, touch_last_used
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -66,12 +67,12 @@ async def login(body: LoginRequest, request: Request, response: Response) -> Me:
 
     engine = db_engine(request)
 
-    async def lookup(key_id: int) -> AuthKeyRow | None:
+    async def lookup(secret_hash: str) -> AuthKeyRow | None:
         async with engine.connect() as conn:
-            return await get_key(conn, key_id)
+            return await get_key_by_hash(conn, secret_hash)
 
-    # Looked up on the module at call time, so a test can count the verifies.
-    row = await security.verify_login(body.key, lookup, verifier=security.verify_secret)
+    # Looked up on the module at call time, so a test can count the hashes.
+    row = await security.find_login(body.key, lookup, hasher=security.key_hash)
     if row is None:
         raise Unauthenticated("that key is not valid")
     async with engine.begin() as conn:
