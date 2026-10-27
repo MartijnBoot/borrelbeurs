@@ -59,9 +59,15 @@ cd "$REPO_ROOT"
 # and it hands the variable only to the stage-2 children (never exported).
 unset BB_GATE_LOCK_HELD
 
-# The most database-test workers a gate may use. Provisional until T9 measures
-# the per-worker Postgres connections.
-CAP=4 # provisional until T9 measures
+# The most database-test workers a gate may use, so that two full gates together
+# stay at or below 80 of Postgres's 100 connections (B-11 SD2): 40 each.
+# Measured 2026-10-27 (T9), peak client connections sampled once a second:
+#   not-serial database tests, 2 / 4 / 8 workers: 19 / 22 / 30
+#     = about 15 fixed + 1.8 per worker (controller, maintenance connections)
+#   web e2e (the shared and the --empty server): 15; the stage-2 holder: 1
+#   serial stage, alone: 11
+# Stage 2 peak = 15 + 1.8 * workers + 15 + 1 <= 40  ->  4 workers (38 measured).
+CAP=4
 
 fail_early() {
   echo "scripts/check.sh: $*" >&2

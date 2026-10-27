@@ -161,11 +161,14 @@ the serial stage. A worker's peak = its `TestClient` app (SQLAlchemy pool 5 + 10
 connection; the heavy-read engine is `NullPool`) + the `_admin` connections (`NullPool`, one at a
 time) + its maintenance connection. T9 measures this; `cap = floor((40 − e2e − holder) / per-worker)`.
 
-| Quantity | Measured |
+| Quantity | Measured (T9, 2026-10-27, one gate's steps, `pg_stat_activity` once a second) |
 |---|---|
-| per-worker peak | _T9_ |
-| one e2e server pair (shared + `--empty`) | _T9_ |
-| cap | _T9_ |
+| not-serial database tests, 2 / 4 / 8 workers | peak 19 / 22 / 30 connections (13m28s / 8m04s / 5m32s, 1683 passed each) |
+| per-worker peak | about 1.8 (slope 2 → 8); about 15 fixed (controller, maintenance connections, the heaviest test) |
+| one e2e server pair (shared + `--empty`) | 15 (alone: 5.1 min, 48 passed) |
+| stage-2 holder | 1 |
+| serial stage, alone | peak 11; 32 tests, 6m18s |
+| cap | `15 + 1.8 × n + 15 + 1 ≤ 40` → **4** (38 measured at 4); two gates ≤ 76 of 80 |
 
 ## Files
 
