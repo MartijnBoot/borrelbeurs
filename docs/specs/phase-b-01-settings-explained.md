@@ -121,6 +121,8 @@ changed what the room is told the maths does, so they were the owner's:
   (`exchange/steps.py:113-130`) never fires, so a crashed drink stays on the floor. E17 and
   E19 say so and advise a bound on the grid. Requiring on-grid bounds is
   [B-07](../backlog.md), not this item.
+  *Superseded by B-07 SD1 and SD3* ([phase-b-07-bounds-on-grid.md](phase-b-07-bounds-on-grid.md)):
+  an off-grid bound is now refused, and a Prijsstap change moves the bounds inward.
 - **SD12 — Events and jumps are described as they look.** The smoothstep runs in `y`, and a
   bound target is `y ≈ ±20,7`. A crash or bubble therefore reaches its bound after roughly a
   third of the duration and then holds, and a correction straight after one lingers at the
@@ -167,6 +169,8 @@ Numbers use the Dutch decimal comma. "Toegestaan" ranges are the server's.
 > Tijdens de borrel: elke koers blijft staan, afgerond op de nieuwe stap en binnen Minimumprijs en Maximumprijs. Alle lopende prijssprongen stoppen, ook die van een marktgebeurtenis; de melding van een marktgebeurtenis blijft staan.
 
 Bron: `exchange/pricing.py:32-42`, `exchange/steps.py:161-162`, `app/runtime/candles.py:1-6`, `:83`, `app/runtime/config.py:433-456`, `exchange/state.py:104-130`.
+
+Since B-07 the page shows that item's text for this row, not the one above: see [phase-b-07-bounds-on-grid.md](phase-b-07-bounds-on-grid.md), "The texts (SD11)".
 
 **E2 — `eta`.** Was "⚡ Snelheid". **Beweging per bestelling**
 
@@ -305,6 +309,8 @@ for E20, the drink row.
 
 Bron: `exchange/pricing.py:32-42`, `exchange/steps.py:96-100`, `:113-130` (the unstick check needs the quote exactly on the bound), `app/runtime/market_events.py:47-53`, `exchange/state.py:104-130`; measured by `engine-guardian` 2026-10-18 (Minimumprijs 1,24 at step 0,10 quotes 1,20).
 
+Since B-07 the page shows that item's text for this row, not the one above: see [phase-b-07-bounds-on-grid.md](phase-b-07-bounds-on-grid.md), "The texts (SD11)".
+
 **E18 — `p0_cents`.** Was "Start". **Startprijs (€)**
 
 > De prijs waarmee dit drankje begint: bij Live zetten, of meteen als je het tijdens de borrel toevoegt. Terug naar startprijs gaat hierheen.
@@ -320,6 +326,8 @@ Bron: `exchange/state.py:79`, `:169`; `app/runtime/market_events.py:47-53`; Phas
 > Tijdens de borrel: de huidige koers blijft staan, binnen de nieuwe grenzen en op de Prijsstap. Een lopende prijssprong op dit drankje stopt, ook die van een marktgebeurtenis.
 
 Bron: as E17.
+
+Since B-07 the page shows that item's text for this row, not the one above: see [phase-b-07-bounds-on-grid.md](phase-b-07-bounds-on-grid.md), "The texts (SD11)".
 
 **E20 — `bar_price_cents`.** Was "Barprijs". **Normale barprijs (€)**
 

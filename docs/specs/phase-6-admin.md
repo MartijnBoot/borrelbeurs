@@ -213,6 +213,9 @@ Settled at the spec interview (2026-10-06).
   - Per drink:
     - `p_min_cents ≥ 0` and `p_min_cents < p0_cents < p_max_cents`, checked on the
       *resulting* row;
+    - since B-07, `p_min_cents` and `p_max_cents` a multiple of the Prijsstap, and a
+      Prijsstap change moves them inward
+      ([phase-b-07-bounds-on-grid.md](phase-b-07-bounds-on-grid.md));
     - `bar_price_cents ≥ 0`;
     - `a/d/s0/c` finite;
     - `name` 1–40 characters after trim.
