@@ -16,9 +16,8 @@ Top is next. Every item that is not `specced` or `dropped` appears here exactly 
 | # | ID | Feature | Size | Status |
 |---|---|---|---|---|
 | 1 | B-07 | Price bounds on the Prijsstap grid | S | idea |
-| 2 | B-08 | Short keys you can read aloud | S | idea |
-| 3 | B-09 | Download the sign-up QR code | S | idea |
-| 4 | B-10 | Sign-up QR code on the koers screen | S | idea |
+| 2 | B-09 | Download the sign-up QR code | S | idea |
+| 3 | B-10 | Sign-up QR code on the koers screen | S | idea |
 
 ## Items
 
@@ -291,7 +290,7 @@ drink at the bottom for half the evening.
 
 ### B-08 — Short keys you can read aloud
 
-- **Status:** idea
+- **Status:** specced → `docs/specs/phase-b-08-short-keys.md`
 - **Added:** 2026-10-24
 - **Size:** S (a day or less) — a guess: only how keys are made and typed changes, not who may
   do what

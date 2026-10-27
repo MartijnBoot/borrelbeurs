@@ -107,6 +107,15 @@ a real phone; the inference is from the browser rule, not an observed failure.
 |---|---|---|---|---|
 | D-49 | The bar page makes its `Idempotency-Key` with `crypto.randomUUID()`, which browsers only provide in a secure context (HTTPS or loopback) | `web/src/features/bar/useBarController.ts:76`, called per intent at `model/orderIntents.ts:229,262` | At the venue (`http://192.168.8.10/`, Phase 8 SD1) **every order tap likely throws `TypeError`**. The e2e and image tests use `http://127.0.0.1`, which counts as secure, so none can catch it | fixed in B-06 ([B-05 SD24](phase-b-05-player-wallets.md); [B-06 SD12, AC31](phase-b-06-wallet-payments.md); evidence below) |
 
+## H. Found while specifying B-08
+
+Found by the B-08 spec interview (2026-10-27), against `main` at `3778ba9`. Unverified on a real
+phone; the inference is from the browser rule, as for D-49.
+
+| ID | Defect | Where | Consequence | Phase |
+|---|---|---|---|---|
+| D-50 | "Kopieer" in the new-key dialog calls `navigator.clipboard.writeText`, and browsers provide `navigator.clipboard` only in a secure context | `web/src/features/keys/KeysSection.tsx:184` | At the venue (`http://192.168.8.10/`) the click **throws `TypeError` and copies nothing**. e2e and the image tests use `http://127.0.0.1`, which counts as secure, so none can catch it | B-08 ([SD9, AC16](phase-b-08-short-keys.md)) |
+
 ### Phase 6 evidence
 
 Each defect Phase 6 fixes, the acceptance criteria that pin it
