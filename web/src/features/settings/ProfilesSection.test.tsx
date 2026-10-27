@@ -436,6 +436,24 @@ describe('the load failures (AC13, AC14, AC23; PD12)', () => {
     expect(sent()).toHaveLength(1)
   })
 
+  it("a collision on the profile's Prijsstap shows the server's sentence (B-07 AC12)", async () => {
+    const msg =
+      'Past niet bij Bier: de grenzen worden 1,25\u20132,75 en de Startprijs 1,22 valt daarbuiten.'
+    writes = [
+      () =>
+        json(422, {
+          error: {
+            code: 'bounds_collision',
+            message: msg,
+            faults: [{ loc: ['profile', 'params', 'step_quant'], msg }],
+          },
+        }),
+    ]
+    await load()
+
+    expect(screen.getByRole('alert').textContent).toBe(msg)
+  })
+
   it('a run that is no longer a draft says so and reloads the run', async () => {
     writes = [() => json(409, { error: { code: 'run_not_draft', message: 'live' } })]
     await open()

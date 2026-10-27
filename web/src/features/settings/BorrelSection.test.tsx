@@ -401,6 +401,27 @@ describe('BorrelSection: copy from a past run (Phase 7 T18)', () => {
     )
   })
 
+  it("a copy with no room on the new Prijsstap shows the server's sentence (B-07 AC13)", async () => {
+    const msg =
+      'Past niet bij Bier: de grenzen worden 1,25\u20132,75 en de Startprijs 1,22 valt daarbuiten.'
+    runList = () => json(200, [listed(9, 'Vrijdag', 'ended')])
+    serve(noRun, () =>
+      json(422, {
+        error: {
+          code: 'bounds_collision',
+          message: msg,
+          faults: [{ loc: ['body', 'copy_from_run_id'], msg }],
+        },
+      }),
+    )
+    await openForm()
+    fireEvent.change(screen.getByLabelText('Kopieer drankjes uit'), { target: { value: '9' } })
+
+    await create()
+
+    expect(screen.getByRole('alert').textContent).toBe(msg)
+  })
+
   it('a bad name keeps its own text', async () => {
     serve(noRun, () =>
       json(422, {
