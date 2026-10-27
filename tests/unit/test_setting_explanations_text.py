@@ -11,6 +11,9 @@ record of what B-01 shipped.
 B-06 (T17: SD3; AC3; PD17) adds E40-E41, "Wallet verplicht" and "Rood staan tot".
 Its spec gives no text; the owner approved the wording in the B-06 plan's own
 "The table" at the audit, so that plan is the source here.
+
+B-07 (T8: SD11; AC16) replaces E1, E17 and E19 with its spec's "The texts
+(SD11)", overlaid last; every other row still comes from its old source.
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SPEC = REPO_ROOT / "docs" / "specs" / "phase-b-01-settings-explained.md"
 B03_SPEC = REPO_ROOT / "docs" / "specs" / "phase-b-03-brownian-settings.md"
 B06_PLAN = REPO_ROOT / "docs" / "plans" / "phase-b-06-wallet-payments.md"
+B07_SPEC = REPO_ROOT / "docs" / "specs" / "phase-b-07-bounds-on-grid.md"
 SETTINGS_JSON = REPO_ROOT / "web" / "src" / "features" / "settings" / "explanations.json"
 MANIPULATION_JSON = REPO_ROOT / "web" / "src" / "features" / "manipulation" / "explanations.json"
 
@@ -52,13 +56,14 @@ class Row:
         return f"Row({self.name!r}, {self.paragraphs!r})"
 
 
-def parse_spec_table(text: str) -> dict[str, Row]:
-    """`## The table`: per `**E<n> — …**` line, its last bold run and the `> ` lines under it.
+def parse_spec_table(text: str, heading: str = "## The table") -> dict[str, Row]:
+    """`heading`'s section: per `**E<n> — …**` line, its last bold run and the `> ` lines.
 
     The field is the backticked name on the row line, when there is one (E1-E26).
-    `Bron:` lines and prose between rows are ignored.
+    `Bron:` lines and prose between rows are ignored. The section ends at the
+    next `## ` heading (B-07's `### The texts (SD11)` sits inside `## Decisions`).
     """
-    section = text[text.index("\n## The table\n") :]
+    section = text[text.index(f"\n{heading}\n") :]
     end = section.find("\n## ", 1)
     lines = section[: end if end != -1 else None].splitlines()
     rows: dict[str, Row] = {}
@@ -110,7 +115,8 @@ SPEC_ROWS = parse_spec_table(SPEC.read_text(encoding="utf-8"))
 B03_TEXT = B03_SPEC.read_text(encoding="utf-8")
 B03_ROWS = parse_spec_table(B03_TEXT)
 B06_ROWS = parse_spec_table(B06_PLAN.read_text(encoding="utf-8"))
-EXPECTED_ROWS = {**_amended(SPEC_ROWS), **B03_ROWS, **B06_ROWS}
+B07_ROWS = parse_spec_table(B07_SPEC.read_text(encoding="utf-8"), "### The texts (SD11)")
+EXPECTED_ROWS = {**_amended(SPEC_ROWS), **B03_ROWS, **B06_ROWS, **B07_ROWS}
 SETTINGS = _load(SETTINGS_JSON)
 MANIPULATION = _load(MANIPULATION_JSON)
 
@@ -142,6 +148,15 @@ def test_the_b06_table_has_e40_and_e41_each_a_field_row() -> None:
     assert list(B06_ROWS) == ["E40", "E41"]
     assert [row.field for row in B06_ROWS.values()] == ["wallet_required", "credit_limit_cents"]
     assert [row.name for row in B06_ROWS.values()] == ["Wallet verplicht", "Rood staan tot (€)"]
+
+
+def test_the_b07_texts_are_e1_e17_and_e19_keyed_by_their_fields() -> None:
+    """B-07 SD11, AC16: three rows replaced, their names unchanged, nothing else."""
+    assert list(B07_ROWS) == ["E1", "E17", "E19"]
+    assert [row.field for row in B07_ROWS.values()] == ["step_quant", "p_min_cents", "p_max_cents"]
+    for row_id, row in B07_ROWS.items():
+        assert row.name == SPEC_ROWS[row_id].name, row_id
+        assert row != SPEC_ROWS[row_id], row_id
 
 
 def test_e9_s_amendment_applies_once_and_b03_states_it() -> None:
