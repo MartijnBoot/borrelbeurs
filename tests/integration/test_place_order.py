@@ -142,13 +142,21 @@ class Market:
 
 
 @asynccontextmanager
-async def _market(settings: Settings, url: str, *, grace: int = 2) -> AsyncIterator[Market]:
+async def _market(
+    settings: Settings,
+    url: str,
+    *,
+    grace: int = 2,
+    bounds: tuple[int, int] = (150, 500),
+    params: Params | None = None,
+) -> AsyncIterator[Market]:
+    """`bounds` is every drink's (Minimum, Maximum), stored as given, off the grid included."""
     engine = _engine(settings, url)
     clock = FakeClock(T0)
     try:
         async with engine.begin() as conn:
             run_id = await create_draft_run(
-                conn, name="Borrel", params=Params(step_quant=0.1), run_seed=7
+                conn, name="Borrel", params=params or Params(step_quant=0.1), run_seed=7
             )
             for slot, name in enumerate(("Bier", "Wijn", "Fris")):
                 await add_drink(
@@ -156,9 +164,9 @@ async def _market(settings: Settings, url: str, *, grace: int = 2) -> AsyncItera
                     run_id,
                     name=name,
                     slot=slot,
-                    p_min_cents=150,
+                    p_min_cents=bounds[0],
                     p0_cents=260,
-                    p_max_cents=500,
+                    p_max_cents=bounds[1],
                     a=1.0,
                     d=0.1,
                     s0=1.0,
