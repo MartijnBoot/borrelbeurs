@@ -243,6 +243,11 @@ def sweep(base_url: str, prefixes: Sequence[str] = PREFIXES) -> list[str]:
 # --- ports (SD14) ------------------------------------------------------------------
 
 
+def has_connection() -> bool:
+    """Whether this process already holds a maintenance connection (it owns a database)."""
+    return _connection is not None
+
+
 def claim_port(port: int) -> bool:
     """Claim `port` for this process; `False` if another run of the harness has it."""
     return bool(maintenance().scalar(f"SELECT pg_try_advisory_lock({_KEY})", k=f"bb-port:{port}"))
