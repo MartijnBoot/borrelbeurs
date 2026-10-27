@@ -1,7 +1,7 @@
 """Access keys over HTTP (Phase 6 T16: SD30; AC36, AC37 (HTTP half), AC38).
 
 `GET /api/keys` lists keys without a secret or hash; `POST /api/keys` shows
-`bb_<key_id>_<secret>` once and stores only its argon2id hash; `DELETE
+the grouped 9-symbol key once and stores only its argon2id hash (B-08); `DELETE
 /api/keys/{key_id}` revokes, refusing the last unrevoked admin key.
 """
 

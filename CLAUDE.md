@@ -35,7 +35,7 @@ route's invariants, the [rebuild review](docs/rebuild-review.md).
 - `uv run python -m app.cli.import_v1 --config <path> [--news <path>] [--bar-prices <path>]` —
   import v1's files as a new draft run; prints its `run_id`.
 - `uv run python -m app.cli.keys create --role <display|bar|admin> --label <l>` / `list` /
-  `revoke <key_id>` — access keys; `create` prints `bb_<key_id>_<secret>` once.
+  `revoke <key_id>` — access keys; `create` prints the key, 9 symbols grouped as `K7M-4QX-9PR`, once (B-08).
 - `uv run python -m app.cli.runs go-live <run_id>` — make a draft run live; refused while the
   app runs (it holds the advisory lock), so it takes effect at the next boot.
 - `bash scripts/make_bundle.sh <sha> [--local <image>]` — the venue bundle in `bundle/` (gitignored).

@@ -18,6 +18,8 @@ second insert proceeds. Both mints commit (`test_migration_0015.py`).
 
 `downgrade()` drops the constraint only. It does not un-revoke: it cannot tell
 which rows the upgrade revoked, and a revived long key is what SD6 rules out.
+So a `downgrade -1` and `upgrade` again revokes every key unrevoked at that
+moment, short keys included: mint new ones after.
 
 Revision ID: 0015
 Revises: 0014
