@@ -17,7 +17,9 @@
    `docker compose -f compose.yml --env-file .env stop app`, then, for each command below,
    `docker compose -f compose.yml --env-file .env run --rm --no-deps app <command>`:
    - `python -m app.cli.keys create --role admin --label <who>` (roles `admin`, `bar`,
-     `display`, `kassa`; the key is shown once, write it down);
+     `display`, `kassa`; the key, for example `K7M-4QX-9PR`, is shown once, write it down).
+     The first start of a B-08 bundle revokes every older key, so after that update every key
+     is minted again: your admin key here, then bar, display and kassa keys;
    - `python -m app.cli.import_v1 --config /seed/<name>` prints a `run_id` (the file must be
      mounted into the container with `-v <host path>:/seed/<name>:ro` before `app`);
    - `python -m app.cli.runs go-live <run_id>`.

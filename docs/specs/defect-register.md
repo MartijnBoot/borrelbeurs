@@ -114,7 +114,7 @@ phone; the inference is from the browser rule, as for D-49.
 
 | ID | Defect | Where | Consequence | Phase |
 |---|---|---|---|---|
-| D-50 | "Kopieer" in the new-key dialog calls `navigator.clipboard.writeText`, and browsers provide `navigator.clipboard` only in a secure context | `web/src/features/keys/KeysSection.tsx:184` | At the venue (`http://192.168.8.10/`) the click **throws `TypeError` and copies nothing**. e2e and the image tests use `http://127.0.0.1`, which counts as secure, so none can catch it | B-08 ([SD9, AC16](phase-b-08-short-keys.md)) |
+| D-50 | "Kopieer" in the new-key dialog calls `navigator.clipboard.writeText`, and browsers provide `navigator.clipboard` only in a secure context | `web/src/features/keys/KeysSection.tsx:184` | At the venue (`http://192.168.8.10/`) the click **throws `TypeError` and copies nothing**. e2e and the image tests use `http://127.0.0.1`, which counts as secure, so none can catch it | fixed in B-08 ([SD9, AC16](phase-b-08-short-keys.md); evidence below) |
 
 ### Phase 6 evidence
 
@@ -167,6 +167,16 @@ its evidence ([plan](../plans/phase-b-06-wallet-payments.md)):
 | ID | ACs | Evidence tasks |
 |---|---|---|
 | D-49 | AC31 | T11 (the bar's keys come from `lib/idempotencyKey.ts`, and `walletCode.provenance.test.ts` now scans the bar and fails on a planted `crypto.randomUUID()`); T19 (`web/e2e/payments.spec.ts` books with and without a wallet at `http://payments.test:<port>`, where `isSecureContext` is false and `crypto.randomUUID` is undefined) |
+
+### B-08 evidence
+
+The defect B-08 fixes, the acceptance criterion that pins it
+([phase-b-08-short-keys.md](phase-b-08-short-keys.md)), and the tasks whose tests are its
+evidence ([plan](../plans/phase-b-08-short-keys.md)):
+
+| ID | ACs | Evidence tasks |
+|---|---|---|
+| D-50 | AC16 | T5 (`KeysSection.test.tsx`: a rejecting `writeText` and a `navigator` with no `clipboard` both show the hint, throw nothing and leave the key selected); T6 (`web/e2e/keys.spec.ts` presses "Kopieer" at `http://keys.test:<port>`, where `isSecureContext` is false and `navigator.clipboard` is undefined: no page error, the hint shown, the selection equal to the key) |
 
 ## Deliberately not treated as defects
 

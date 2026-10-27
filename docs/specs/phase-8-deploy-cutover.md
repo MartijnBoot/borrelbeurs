@@ -192,6 +192,10 @@ of them at approval.
   - Accepted risk: with `*`, a client can put its own `X-Forwarded-For` in front and choose its
     rate-limit bucket. The limiter guards a 256-bit random secret, so brute force is not the
     threat it slows down.
+
+    > **Amended by B-08** ([phase-b-08-short-keys.md](phase-b-08-short-keys.md)). Keys are now 45 bits, so the "256-bit random secret"
+    > rationale no longer holds. The accepted risk is restated with its own numbers in B-08
+    > SD4's table, and SD5 adds no new guessing protection.
 - **SD10 — Hosting tiers are the human's cost decision.** *(delegated: recommendation
   recorded)*
   - Free Render Postgres expires after 90 days (SDR §8), and a free web service sleeps when

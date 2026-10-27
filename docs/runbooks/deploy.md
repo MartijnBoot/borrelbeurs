@@ -12,7 +12,7 @@ nothing, so a merge during a live event never redeploys it (SD6, ADR 0009).
     (in the Render web service's shell, `python -m app.cli.keys create --role admin --label
     smoke`: the image has no `uv`. From a dev machine instead, export Render's external
     `DATABASE_URL` with the `postgresql+asyncpg://` scheme and any `JWT_SECRET` first, or the
-    key lands in the local database. It prints `bb_<key_id>_<secret>` once);
+    key lands in the local database. It prints the key, for example `K7M-4QX-9PR`, once);
   - variable `RENDER_URL`, for example `https://borrelbeurs.onrender.com`.
 
 ## First deploy (H1)
@@ -29,6 +29,20 @@ nothing, so a merge during a live event never redeploys it (SD6, ADR 0009).
    auto-sync on, a later merge that edits the file would put that old SHA back, a silent
    rollback. From here the image changes only through the "Deploy a SHA" workflow.
 6. Run "Deploy a SHA" below with the same SHA.
+
+## Once: the B-08 key switch-over
+
+The first deploy of a B-08 build revokes every key, `BB_SMOKE_KEY` included (migration
+`0015`). Do it between borrels, never during one.
+
+1. Run "Deploy a SHA" below with the B-08 SHA. Smoke passes `build_sha` and then **fails at
+   login**, because the smoke key was revoked. This one failure is expected: do not roll back.
+2. In the Render web service's shell, mint your own admin key and an admin key labelled
+   `smoke`: `python -m app.cli.keys create --role admin --label <who>`, then `... --label smoke`.
+3. Set the GitHub secret `BB_SMOKE_KEY` to the new smoke key.
+4. Run "Deploy a SHA" again with the same SHA. It must be green.
+
+Then hand out new bar, display and kassa keys from Toegangssleutels.
 
 ## Deploy a SHA
 
@@ -56,4 +70,6 @@ nothing, so a merge during a live event never redeploys it (SD6, ADR 0009).
 - *Deploy hook returns an error:* the secret is wrong or the hook was regenerated.
 - *Smoke times out on `build_sha`:* the new instance is not live. Read Render's logs for
   `boot_failed` (see `incident.md`), then roll back (`rollback.md`).
-- *Smoke fails after the SHA matches:* the new build is up but broken. Roll back.
+- *Smoke fails after the SHA matches:* the new build is up but broken. Roll back. The one
+  exception is the first B-08 deploy, where a login failure is expected ("Once: the B-08 key
+  switch-over").
