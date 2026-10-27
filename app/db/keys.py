@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import func, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.db.models import AuthKey
@@ -66,6 +67,31 @@ async def set_secret_hash(conn: AsyncConnection, key_id: int, secret_hash: str) 
     )
     if result.scalar_one_or_none() is None:
         raise LookupError(f"no key {key_id}")
+
+
+async def insert_key(
+    conn: AsyncConnection, *, label: str, role: Role, secret_hash: str
+) -> int | None:
+    """The new row's `key_id`, or `None` if any row, revoked or not, holds that hash (B-08 SD3).
+
+    One statement: a collision inserts nothing and needs no savepoint.
+    """
+    result = await conn.execute(
+        insert(AuthKey)
+        .values(label=label, role=role, secret_hash=secret_hash)
+        .on_conflict_do_nothing(index_elements=[AuthKey.secret_hash])
+        .returning(AuthKey.key_id)
+    )
+    key_id = result.scalar_one_or_none()
+    return None if key_id is None else int(key_id)
+
+
+async def get_key_by_hash(conn: AsyncConnection, secret_hash: str) -> AuthKeyRow | None:
+    """The row holding `secret_hash`, revoked or not: a short key's login lookup (B-08 SD3)."""
+    row = (
+        await conn.execute(select(*_COLUMNS).where(AuthKey.secret_hash == secret_hash))
+    ).one_or_none()
+    return None if row is None else AuthKeyRow(**row._asdict())
 
 
 async def get_key(conn: AsyncConnection, key_id: int) -> AuthKeyRow | None:

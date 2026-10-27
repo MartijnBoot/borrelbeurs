@@ -275,13 +275,14 @@ class News(Base):
 
 
 class AuthKey(Base):
-    """An access key, minted by CLI (Phase 3 SD5). The secret is stored only as
-    its argon2id hash (AC6c)."""
+    """An access key, minted by CLI (Phase 3 SD5). The key is stored only as
+    its argon2id hash (AC6c), unique across every row (B-08 SD3)."""
 
     __tablename__ = "auth_key"
     __table_args__ = (
         CheckConstraint("role IN ('display', 'bar', 'admin', 'kassa')", name="auth_key_role_check"),
         CheckConstraint("char_length(label) BETWEEN 1 AND 100", name="auth_key_label_check"),
+        UniqueConstraint("secret_hash", name="auth_key_secret_hash_key"),
     )
 
     key_id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)

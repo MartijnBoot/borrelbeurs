@@ -9,9 +9,10 @@ repository published them. v2 keys are `bb_<key_id>_<secret>`, minted by
 - No file names `keys.json` -- except the image check, whose denylist names it to forbid it.
 - No `ADMIN_TOKEN` (v1's shared admin secret; Phase 3 removed it, AC6d).
 - A key row is created only by `issue_key` (`app/api/security.py`): `insert(AuthKey)`
-  lives in `app/db/keys.py: create_key`, and `create_key`, `set_secret_hash` and
-  `hash_secret` are called only inside `issue_key` -- and `hash_secret` also by
-  `dummy_hash`, which builds a hash no secret matches and stores nothing.
+  lives in `app/db/keys.py: create_key` and `insert_key`, and `create_key`,
+  `insert_key`, `set_secret_hash` and `hash_secret` are called only inside
+  `issue_key` -- and `hash_secret` also by `dummy_hash`, which builds a hash no
+  secret matches and stores nothing.
 
 Read by AST, like the other meta guards; nothing is imported or run.
 """
@@ -32,8 +33,9 @@ ALLOWED_CALLERS: dict[str, frozenset[tuple[Path, str]]] = {
     "create_key": frozenset({(SECURITY, "issue_key")}),
     "set_secret_hash": frozenset({(SECURITY, "issue_key")}),
     "hash_secret": frozenset({(SECURITY, "issue_key"), (SECURITY, "dummy_hash")}),
+    "insert_key": frozenset({(SECURITY, "issue_key")}),
 }
-INSERT_ALLOWED = frozenset({(KEYS_REPO, "create_key")})
+INSERT_ALLOWED = frozenset({(KEYS_REPO, "create_key"), (KEYS_REPO, "insert_key")})
 
 # Files that name `keys.json` in order to forbid it: the image check's denylist (T11).
 KEYS_JSON_NAMED_TO_FORBID = frozenset({Path("scripts") / "ci" / "check_image.py"})
