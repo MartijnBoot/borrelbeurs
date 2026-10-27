@@ -3,7 +3,10 @@
 `GET /api/keys` lists every key: id, label, role, created, last used and
 whether it is revoked -- never a secret or a hash. `POST /api/keys {role,
 label}` mints one through `issue_key` and returns `{key_id, key}`: the only
-time the key exists outside its holder's hands (AC36). `DELETE
+time the key exists outside its holder's hands (AC36). The key is 9 symbols
+grouped as `K7M-4QX-9PR`; `key_id` is the new row's and is not part of it
+(B-08 SD1, SD8). Five colliding draws in a row are a 500 with nothing written
+(SD3). `DELETE
 /api/keys/{key_id}` revokes it; after the commit, every WebSocket of that key
 is closed with 4401 (PD12), and its sessions get 401 on their next request, as
 `require_role` reads the key row each time (AC37). Revoking the last unrevoked

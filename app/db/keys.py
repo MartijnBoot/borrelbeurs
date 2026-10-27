@@ -1,9 +1,9 @@
 """The `auth_key` repository (Phase 3 SD5).
 
 Every function takes an `AsyncConnection` and never begins or commits: the
-caller owns the transaction, as in `app/db/runs.py`. Only the argon2id hash of
-a key's secret is ever stored (AC6c); hashing and the key format live in
-`app/api/security.py`.
+caller owns the transaction, as in `app/db/runs.py`. Only a key's argon2id
+hash is ever stored (AC6c), unique across every row, revoked ones included
+(B-08 SD3); hashing and the key format live in `app/api/security.py`.
 """
 
 from __future__ import annotations
@@ -46,27 +46,6 @@ _COLUMNS = (
     AuthKey.revoked_at,
     AuthKey.last_used_at,
 )
-
-
-async def create_key(conn: AsyncConnection, *, label: str, role: Role, secret_hash: str) -> int:
-    result = await conn.execute(
-        insert(AuthKey)
-        .values(label=label, role=role, secret_hash=secret_hash)
-        .returning(AuthKey.key_id)
-    )
-    return int(result.scalar_one())
-
-
-async def set_secret_hash(conn: AsyncConnection, key_id: int, secret_hash: str) -> None:
-    """Replace a key's hash; `app.cli.keys create` needs the `key_id` before it can hash."""
-    result = await conn.execute(
-        update(AuthKey)
-        .where(AuthKey.key_id == key_id)
-        .values(secret_hash=secret_hash)
-        .returning(AuthKey.key_id)
-    )
-    if result.scalar_one_or_none() is None:
-        raise LookupError(f"no key {key_id}")
 
 
 async def insert_key(

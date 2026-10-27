@@ -4,9 +4,10 @@
     uv run python -m app.cli.keys list
     uv run python -m app.cli.keys revoke <key_id>
 
-`create` prints `bb_<key_id>_<secret>` **once**: only the argon2id hash is
-stored, so a lost key is revoked and replaced, never recovered
-(`app.api.security.issue_key`, shared with `POST /api/keys`). `list` shows id,
+`create` prints the key, 9 symbols grouped as `K7M-4QX-9PR`, **once**: only
+its argon2id hash is stored, so a lost key is revoked and replaced, never
+recovered (`app.api.security.issue_key`, shared with `POST /api/keys`). If 5
+draws in a row collide with stored keys, it writes nothing and exits 1 (B-08 SD3). `list` shows id,
 label, role and status, never a secret or a hash. `revoke` takes effect on the
 key's next request (SD8). Exit status: 0 on success, 2 on bad input, 1 on an
 unknown key or a database error.
@@ -22,7 +23,7 @@ from typing import cast
 
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api.security import IssuedKey, issue_key
+from app.api.security import IssuedKey, KeyDrawExhausted, issue_key
 from app.core.config import ConfigError, get_settings
 from app.db.keys import ROLES, AuthKeyRow, Role, list_keys, revoke_key
 from app.db.session import create_engine
@@ -100,6 +101,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"key {args.key_id} revoked")
     except LookupError as error:
         print(f"keys: {error}", file=sys.stderr)
+        return 1
+    except KeyDrawExhausted as error:
+        print(f"keys: {error}, nothing written", file=sys.stderr)
         return 1
     except (ConfigError, SQLAlchemyError, OSError) as error:
         print(f"keys: database error, nothing written: {error}", file=sys.stderr)

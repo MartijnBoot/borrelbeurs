@@ -1,15 +1,13 @@
-"""Access keys, sessions, the login limiter and the Origin check (Phase 3 SD2, SD5-SD9; PD2, PD18).
+"""Access keys, sessions, the login limiter and the Origin check (Phase 3 SD2, SD5-SD9; B-08).
 
-A key is `bb_<key_id>_<secret>`, with `secret = secrets.token_urlsafe(32)`
-(43 characters of `[A-Za-z0-9_-]`). It is parsed by `split("_", 2)` with an
-all-digit `key_id`, so an `_` inside the secret is safe. Only the argon2id hash
-of the secret is stored (`argon2.PasswordHasher` defaults, RFC 9106); the key
-itself is printed once by `app.cli.keys` and never written anywhere.
-
-`dummy_hash()` is what login verifies against when no stored hash exists, so
-an unknown `key_id` costs the same argon2 verify as a real one (SD6). It is
-built on first use, never at import: hashing at import would slow every
-process start, test collection included.
+A key is 9 symbols of Crockford base32, drawn from `secrets` and shown grouped
+as `K7M-4QX-9PR` (B-08 SD1). It carries no `key_id`. It is read forgivingly:
+case, spaces and dashes are ignored and `O`, `I`, `L` read as `0`, `1`, `1`
+(SD2). Only its argon2id hash is stored, under a fixed salt and pinned
+parameters (SD3), so the same key always hashes the same and login finds the
+row by that hash: one hash per well-formed attempt, never a walk over the keys.
+The key itself is shown once, by `app.cli.keys` or `POST /api/keys`, and never
+written anywhere.
 
 **Sessions (SD8).** HS256 JWTs carrying `sub` (the `key_id`), `role` and `exp`,
 valid 24 hours. `exp` is checked against the injected time, not PyJWT's wall
@@ -30,17 +28,13 @@ from __future__ import annotations
 import asyncio
 import math
 import re
-import secrets
 from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from functools import cache
 from typing import Any, Final, cast
 from urllib.parse import urlsplit
 
 import jwt
-from argon2 import PasswordHasher
-from argon2.exceptions import InvalidHashError, VerificationError
 from argon2.low_level import Type
 from argon2.low_level import hash_secret as argon2_hash_secret
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -49,81 +43,12 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.core.config import Settings
-from app.db.keys import ROLES, AuthKeyRow, Role, create_key, set_secret_hash
+from app.core.errors import AppError
+from app.db.keys import ROLES, AuthKeyRow, Role, insert_key
 from app.runtime import crockford
 from app.runtime.clock import Clock
 
-KEY_PREFIX: Final = "bb"
-
-# token_urlsafe(32) is 43 characters; the bound only stops an absurd input from
-# reaching argon2.
-_SECRET = re.compile(r"[A-Za-z0-9_-]{1,128}")
-_KEY_ID = re.compile(r"[1-9][0-9]{0,18}")
-
-_hasher = PasswordHasher()
-
-
-@dataclass(frozen=True)
-class ParsedKey:
-    key_id: int
-    secret: str
-
-
-def mint_secret() -> str:
-    return secrets.token_urlsafe(32)
-
-
-def format_key(key_id: int, secret: str) -> str:
-    return f"{KEY_PREFIX}_{key_id}_{secret}"
-
-
-def parse_key(raw: str) -> ParsedKey | None:
-    """`raw` split into `key_id` and secret, or `None` if malformed. Never hashes."""
-    parts = raw.split("_", 2)
-    if len(parts) != 3:
-        return None
-    prefix, key_id, secret = parts
-    if prefix != KEY_PREFIX or not _KEY_ID.fullmatch(key_id) or not _SECRET.fullmatch(secret):
-        return None
-    return ParsedKey(key_id=int(key_id), secret=secret)
-
-
-# Never a valid argon2 hash, and never committed: `issue_key` replaces it first.
-_PLACEHOLDER_HASH: Final = "pending"
-
-
-async def issue_key(conn: AsyncConnection, *, role: Role, label: str) -> IssuedKey:
-    """Mint a key in the caller's transaction: its `key_id`, and the key, the only time it exists.
-
-    The row is inserted with a placeholder hash and updated with the real one,
-    because the key needs its `key_id`. Only the argon2id hash is stored (AC36).
-    Shared by `app.cli.keys create` and `POST /api/keys` (Phase 6 SD30).
-    """
-    key_id = await create_key(conn, label=label, role=role, secret_hash=_PLACEHOLDER_HASH)
-    secret = mint_secret()
-    await set_secret_hash(conn, key_id, hash_secret(secret))
-    return IssuedKey(key_id=key_id, key=format_key(key_id, secret))
-
-
-def hash_secret(secret: str) -> str:
-    return _hasher.hash(secret)
-
-
-def verify_secret(secret_hash: str, secret: str) -> bool:
-    """Whether `secret` matches `secret_hash`; any malformed hash is simply no match."""
-    try:
-        return _hasher.verify(secret_hash, secret)
-    except (VerificationError, InvalidHashError):
-        return False
-
-
-@cache
-def dummy_hash() -> str:
-    """A hash no presented secret matches, built once, on first use."""
-    return hash_secret(mint_secret())
-
-
-# --- short keys (B-08 SD1-SD3) ------------------------------------------------------
+# --- keys (B-08 SD1-SD3) ------------------------------------------------------------
 
 KEY_LENGTH: Final = 9
 
@@ -147,8 +72,12 @@ class IssuedKey:
     key: str
 
 
-class KeyDrawExhausted(RuntimeError):
-    """Every draw collided with a stored hash; nothing was written (SD3)."""
+class KeyDrawExhausted(AppError):
+    """Every draw collided with a stored hash; nothing was written (SD3).
+
+    An `AppError` with its defaults, so `POST /api/keys` answers the generic 500
+    `internal_error`; the CLI catches it and exits 1.
+    """
 
 
 def new_key_symbols() -> str:
@@ -169,6 +98,28 @@ def key_hash(symbols: str) -> str:
     return argon2_hash_secret(symbols.encode(), _KEY_SALT, **_KEY_PARAMS).decode("ascii")
 
 
+_MAX_DRAWS: Final = 5
+
+
+async def issue_key(
+    conn: AsyncConnection, *, role: Role, label: str, draw: Callable[[], str] | None = None
+) -> IssuedKey:
+    """Mint a key in the caller's transaction: its `key_id`, and the key, the only time it exists.
+
+    Each draw is hashed and inserted in one statement. A hash any row already
+    holds, revoked or not, inserts nothing, and the key is drawn again, up to 5
+    times; then `KeyDrawExhausted`, with nothing inserted (SD3). `new_key_symbols`
+    is looked up at call time, so a test can force a collision. Shared by
+    `app.cli.keys create` and `POST /api/keys` (Phase 6 SD30).
+    """
+    for _ in range(_MAX_DRAWS):
+        symbols = (draw or new_key_symbols)()
+        key_id = await insert_key(conn, label=label, role=role, secret_hash=key_hash(symbols))
+        if key_id is not None:
+            return IssuedKey(key_id=key_id, key=display_key(symbols))
+    raise KeyDrawExhausted(f"no free key after {_MAX_DRAWS} draws")
+
+
 # --- roles (SD2) ----------------------------------------------------------------
 
 ROLE_ROUTES: Final[dict[Role, tuple[str, ...]]] = {
@@ -182,6 +133,8 @@ ROLE_ROUTES: Final[dict[Role, tuple[str, ...]]] = {
 # --- sessions (SD8) ---------------------------------------------------------------
 
 SESSION_MS: Final = 24 * 60 * 60 * 1000
+# A session's `sub`: the `key_id`, all digits.
+_KEY_ID = re.compile(r"[1-9][0-9]{0,18}")
 _ALGORITHM: Final = "HS256"
 
 
@@ -273,31 +226,7 @@ def same_origin(origin: str | None, host: str | None) -> bool:
     return bool(parts.netloc) and parts.netloc.lower() == host.lower()
 
 
-# --- login (SD6) -------------------------------------------------------------------
-
-
-async def verify_login(
-    raw_key: str,
-    lookup: Callable[[int], Awaitable[AuthKeyRow | None]],
-    *,
-    verifier: Callable[[str, str], bool] = verify_secret,
-) -> AuthKeyRow | None:
-    """The key's active row, or `None`.
-
-    A malformed key costs nothing. Any well-formed key -- unknown, revoked, wrong
-    or right -- costs exactly one argon2 verify, in a worker thread, against the
-    stored hash or the dummy, so timing does not reveal whether a `key_id` exists.
-    """
-    parsed = parse_key(raw_key)
-    if parsed is None:
-        return None
-    row = await lookup(parsed.key_id)
-    # The first dummy_hash() is a full argon2 hash: build it off the loop too.
-    stored = row.secret_hash if row is not None else await asyncio.to_thread(dummy_hash)
-    matched = await asyncio.to_thread(verifier, stored, parsed.secret)
-    if row is None or not matched or row.revoked:
-        return None
-    return row
+# --- login (B-08 SD3) ------------------------------------------------------------
 
 
 async def find_login(
