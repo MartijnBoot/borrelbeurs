@@ -70,6 +70,11 @@ dev = [
     # the plan audit). MIT; what v1 used. `tests/meta/test_no_file_io.py` keeps
     # it out of `app/db`, `app/runtime` and `app/jobs`.
     "openpyxl>=3.1,<4",
+    # The gate runs the database tests across worker processes (B-11 SD1, owner Q1:
+    # A). Stdlib has no runner that shares pytest's collection and fixtures across
+    # processes; hand-sharding splits unevenly. MIT, pytest-dev; brings `execnet`,
+    # its worker transport (MIT, pytest-dev).
+    "pytest-xdist>=3.6,<4",
 ]
 
 [tool.uv]
@@ -132,5 +137,8 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 minversion = "8.0"
 addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "serial: asserts a bound on real elapsed time, or starts a real app (SD3)",
+]
 testpaths = ["tests"]
 pythonpath = ["."]
