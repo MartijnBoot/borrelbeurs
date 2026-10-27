@@ -86,6 +86,23 @@ def test_the_right_build_passes_and_resaves_the_theme_unchanged(
     assert key not in result.stdout + result.stderr
 
 
+@pytest.mark.parametrize("dashes", [True, False], ids=["grouped", "without-dashes"])
+def test_a_short_key_passes_grouped_or_without_dashes(
+    app: AppProcess, database_url: str, dashes: bool
+) -> None:
+    """B-08 AC19: smoke sends the key as given, and the server reads either spelling."""
+    minted = mint_key(database_url, "admin")
+    key = minted if dashes else minted.replace("-", "")
+
+    result = _smoke(app.base, key, "--expect-sha", SHA)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert len(result.stdout.splitlines()[:7]) == 7
+    assert result.stdout.splitlines()[-1] == "smoke: all steps passed"
+    output = result.stdout + result.stderr
+    assert minted not in output and minted.replace("-", "") not in output
+
+
 def test_a_wrong_build_fails_once_the_wait_runs_out(app: AppProcess, database_url: str) -> None:
     key = mint_key(database_url, "admin")
 
