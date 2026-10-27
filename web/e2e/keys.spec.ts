@@ -14,7 +14,7 @@
  */
 import { test, expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
-import { startServer, stopServer, type ServerProcess } from './serverProcess'
+import { startServer, STOP_HOOK_TIMEOUT_MS, stopServer, type ServerProcess } from './serverProcess'
 
 const VENUE_HOST = 'keys.test'
 const GROUPED = /^[0-9A-HJKMNP-TV-Z]{3}(-[0-9A-HJKMNP-TV-Z]{3}){2}$/
@@ -41,6 +41,7 @@ test.beforeAll(async () => {
 })
 
 test.afterAll(async () => {
+  test.setTimeout(STOP_HOOK_TIMEOUT_MS)
   await stopServer(server?.child)
 })
 

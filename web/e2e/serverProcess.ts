@@ -14,6 +14,13 @@ import { join, resolve } from 'node:path'
 
 const REPO_ROOT = resolve(import.meta.dirname, '..', '..')
 const READY_TIMEOUT_MS = 120_000
+/**
+ * How long a spec's `afterAll` may take to stop its server. Stopping drops the
+ * scratch database, which on a Postgres that other test runs share can wait on a
+ * checkpoint for tens of seconds (B-11); Playwright's 30 s default was too short.
+ * A wait, not a bound.
+ */
+export const STOP_HOOK_TIMEOUT_MS = 120_000
 
 export interface ServerProcess {
   child: ChildProcess

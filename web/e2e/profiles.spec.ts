@@ -9,7 +9,7 @@
  */
 import { test as base, expect, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
-import { startServer, stopServer, type ServerProcess } from './serverProcess'
+import { startServer, STOP_HOOK_TIMEOUT_MS, stopServer, type ServerProcess } from './serverProcess'
 
 let server: ServerProcess
 let baseUrl: string
@@ -34,6 +34,7 @@ test.beforeAll(async () => {
 })
 
 test.afterAll(async () => {
+  test.setTimeout(STOP_HOOK_TIMEOUT_MS)
   await stopServer(server?.child)
 })
 

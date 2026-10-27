@@ -151,7 +151,7 @@ makes the serial stage longer:
 
 | Test / file | Wait | Old | New |
 |---|---|---|---|
-| _none yet_ | | | |
+| `web/e2e/{admin,analytics,bounds,keys,payments,profiles,wallets}.spec.ts` `afterAll` (stop the spec's server: `serve.py` drops its scratch database, which waits on a checkpoint while workers load the shared Postgres; 40 s seen) | the hook's timeout | 30 s (Playwright default) | 120 s (`STOP_HOOK_TIMEOUT_MS`, `web/e2e/serverProcess.ts`) |
 
 ## Connection budget (SD2, AC3) — T9 fills this in
 
