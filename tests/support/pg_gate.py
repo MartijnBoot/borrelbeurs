@@ -49,6 +49,7 @@ LOCK_HELD_ENV = "BB_GATE_LOCK_HELD"
 PREFIXES = ("bb_test_", "borrelbeurs_e2e_")
 
 Mode = Literal["shared", "exclusive"]
+Announce = Callable[[str], None]
 T = TypeVar("T")
 
 
@@ -142,7 +143,7 @@ def acquire_run_lock(
     mode: Mode,
     *,
     key: str = GATE_KEY,
-    announce: Callable[[str], None] = _say,
+    announce: Announce = _say,
 ) -> bool:
     """Take the run lock; `False` without asking when a holder covers this process.
 
@@ -162,6 +163,11 @@ def acquire_run_lock(
     _held.append((key, mode))
     announce(f"pg_gate: got the {mode} run lock after {time.monotonic() - started:.1f} s")
     return True
+
+
+def cover_children() -> None:
+    """Tell the processes this one starts that it holds the run lock for them."""
+    os.environ[LOCK_HELD_ENV] = "1"
 
 
 def release_run_lock() -> None:
