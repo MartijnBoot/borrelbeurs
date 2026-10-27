@@ -13,6 +13,15 @@ scratch database and `get_settings`' cache cleared, so the lifespan reads it.
 **https://testserver**, so the `Secure` session cookie round-trips, and a
 same-origin `Origin` on every request by default (SD9); a test that wants none,
 or a foreign one, overrides it.
+
+**Cheap key hashes, here only** (B-11 SD7). Every test mints a key and logs in
+with it, two argon2 hashes at production parameters: 11.3 % of this directory's
+wall time in the plan's profile. `cheap_key_hash` swaps `_KEY_PARAMS` for
+minimal ones. Every hash a test here makes and looks up goes through `key_hash`
+in this one process, so both sides agree; what a test checks does not change.
+Nowhere else (`tests/meta/test_argon2_swap.py`): `tests/unit` pins the real
+parameters and a known-answer hash, and `tests/integration`, the real-app
+harness and e2e hash in real processes with real parameters.
 """
 
 from __future__ import annotations
@@ -23,6 +32,7 @@ from collections.abc import Callable, Iterator
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api import security
 from app.api.security import IssuedKey, issue_key
 from app.core.config import Settings, get_settings
 from app.db.keys import Role
@@ -41,6 +51,13 @@ T0 = 1_759_312_800_000
 MintKey = Callable[..., str]
 IssueKey = Callable[..., IssuedKey]
 Login = Callable[..., TestClient]
+
+
+@pytest.fixture(autouse=True)
+def cheap_key_hash(monkeypatch: pytest.MonkeyPatch) -> None:
+    """argon2id at its minimum cost for `key_hash`: one pass, 8 KiB, one lane (see above)."""
+    cheap = {**security._KEY_PARAMS, "time_cost": 1, "memory_cost": 8, "parallelism": 1}
+    monkeypatch.setattr(security, "_KEY_PARAMS", cheap)
 
 
 @pytest.fixture

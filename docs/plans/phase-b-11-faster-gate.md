@@ -65,6 +65,9 @@ wrapper on `app.api.security.argon2_hash_secret` (what `key_hash` calls), on `Te
 fixture, since dependencies are set up first). Setup phase 282.1 s, call 103.6 s, teardown 7.3 s.
 
 - **Key hashing is 11.3 % ≥ 10 %: T11 is triggered.**
+- **T11 built (2026-10-27), re-measured on the same sample:** 424 passed in **337.4 s**, from 394.0 s,
+  a saving of **56.6 s (14.4 %)**; hashing 44.6 s → 0.1 s. The swap is `time_cost=1`, 8 KiB, one lane,
+  in `tests/api/conftest.py` only.
 - **Candidate amendments (≥ 5 %, not built, need a re-audit):** the per-test `TRUNCATE` (41.4 %, the
   largest single cost: e.g. truncating only the tables a test wrote, or `DELETE` on small tables);
   app boot + shutdown (18.5 %); the `live_run` seed per test (11.6 %); the request itself (6.4 %) is
