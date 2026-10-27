@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -114,6 +115,8 @@ def test_release_frees_the_lock_for_another_holder(settings: Settings, database_
     assert asyncio.run(scenario()) == 0
 
 
+# Serial (SD3): asserts elapsed time, `took_s < 3`.
+@pytest.mark.serial
 def test_a_silent_lock_connection_trips_the_watchdog_within_its_timeout(
     settings: Settings, database_url: str
 ) -> None:

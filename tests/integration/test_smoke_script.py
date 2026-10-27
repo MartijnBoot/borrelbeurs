@@ -29,6 +29,9 @@ from tests.integration.realapp.harness import (
     start_app,
 )
 
+# Serial (SD3): starts a real app.
+pytestmark = pytest.mark.serial
+
 SHA = "0123456789abcdef0123456789abcdef01234567"
 SMOKE = REPO_ROOT / "scripts" / "smoke.py"
 

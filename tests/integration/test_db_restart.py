@@ -41,6 +41,9 @@ from tests.integration.realapp.harness import (
 )
 from tests.support.proxy import BlackholeProxy, proxied
 
+# Serial (SD3): starts a real app, and asserts it ready within 60 s.
+pytestmark = pytest.mark.serial
+
 READY_AFTER_RESTORE_S = 60.0  # AC18
 BACKOFF_CAP_S = 5.0
 

@@ -49,6 +49,9 @@ from app.main import create_app
 from exchange import Params
 from tests.support.clock import FakeClock
 
+# Serial (SD3): asserts a deadline -- `wait_for`'s 30 s is the no-deadlock check.
+pytestmark = pytest.mark.serial
+
 T0 = 1_759_312_800_000
 BASE_URL = "https://testserver"
 LIMIT = 250

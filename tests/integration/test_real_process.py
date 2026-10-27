@@ -27,6 +27,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+import pytest
 from sqlalchemy import pool, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -40,6 +41,9 @@ from tests.integration.realapp.harness import (
     spawn_app,
     start_app,
 )
+
+# Serial (SD3): starts real apps, and asserts the kill test within 600 s.
+pytestmark = pytest.mark.serial
 
 KILL_POINTS = ("mid-order-stream", "after-ack", "mid-tick-early", "mid-tick-late", "idle")
 

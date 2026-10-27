@@ -40,6 +40,9 @@ from tests.integration.realapp.harness import (
     stop_gracefully,
 )
 
+# Serial (SD3): starts real apps, and asserts the takeover within 2 s.
+pytestmark = pytest.mark.serial
+
 TAKEOVER_S = 2.0
 
 

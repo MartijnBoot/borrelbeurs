@@ -208,6 +208,8 @@ def test_a_stale_state_becomes_persistence_unavailable_and_memory_is_unchanged(
     assert record.__dict__["memory_version"] == 0
 
 
+# Serial (SD3): asserts elapsed time, under 2 s.
+@pytest.mark.serial
 def test_a_step_that_outlives_its_timeout_is_persistence_unavailable_and_frees_the_lock(
     settings: Settings, database_url: str
 ) -> None:

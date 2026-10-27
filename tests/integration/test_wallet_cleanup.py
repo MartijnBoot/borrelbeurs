@@ -195,6 +195,8 @@ def test_the_periods_are_the_settings(settings: Settings, database_url: str) -> 
     assert _run(settings, database_url, body) == ["Vandaag"]
 
 
+# Serial (SD3): asserts a deadline: `wait_for(..., 5)` is "skipped, not waited for".
+@pytest.mark.serial
 def test_a_wallet_another_transaction_holds_is_skipped_not_waited_for(
     settings: Settings, database_url: str
 ) -> None:
