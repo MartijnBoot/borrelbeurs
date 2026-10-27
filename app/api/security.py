@@ -41,6 +41,8 @@ from urllib.parse import urlsplit
 import jwt
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
+from argon2.low_level import Type
+from argon2.low_level import hash_secret as argon2_hash_secret
 from sqlalchemy.ext.asyncio import AsyncConnection
 from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
@@ -48,6 +50,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.core.config import Settings
 from app.db.keys import ROLES, AuthKeyRow, Role, create_key, set_secret_hash
+from app.runtime import crockford
 from app.runtime.clock import Clock
 
 KEY_PREFIX: Final = "bb"
@@ -118,6 +121,52 @@ def verify_secret(secret_hash: str, secret: str) -> bool:
 def dummy_hash() -> str:
     """A hash no presented secret matches, built once, on first use."""
     return hash_secret(mint_secret())
+
+
+# --- short keys (B-08 SD1-SD3) ------------------------------------------------------
+
+KEY_LENGTH: Final = 9
+
+# Drawn once with `secrets.token_hex(16)` and never changed: every stored key is
+# found by its hash under this salt, so a new salt would make every key unfindable.
+_KEY_SALT: Final = bytes.fromhex("c77cf770c7ef3c145727c41bcac25ec1")
+# `PasswordHasher()`'s defaults when B-08 shipped (RFC 9106, low memory), pinned so
+# a library upgrade cannot change the stored form (plan PD2).
+_KEY_PARAMS: Final[dict[str, Any]] = {
+    "time_cost": 3,
+    "memory_cost": 65536,
+    "parallelism": 4,
+    "hash_len": 32,
+    "type": Type.ID,
+}
+
+
+@dataclass(frozen=True)
+class IssuedKey:
+    key_id: int
+    key: str
+
+
+class KeyDrawExhausted(RuntimeError):
+    """Every draw collided with a stored hash; nothing was written (SD3)."""
+
+
+def new_key_symbols() -> str:
+    return crockford.draw(KEY_LENGTH)
+
+
+def normalise_key(raw: str) -> str | None:
+    """The key's 9 stored symbols, read forgivingly (SD2), or `None` if malformed."""
+    return crockford.read(raw, KEY_LENGTH)
+
+
+def display_key(symbols: str) -> str:
+    return f"{symbols[:3]}-{symbols[3:6]}-{symbols[6:]}"
+
+
+def key_hash(symbols: str) -> str:
+    """The fixed-salt argon2id hash a key is stored and found by, `$argon2id$v=19$...`."""
+    return argon2_hash_secret(symbols.encode(), _KEY_SALT, **_KEY_PARAMS).decode("ascii")
 
 
 # --- roles (SD2) ----------------------------------------------------------------
@@ -247,6 +296,27 @@ async def verify_login(
     stored = row.secret_hash if row is not None else await asyncio.to_thread(dummy_hash)
     matched = await asyncio.to_thread(verifier, stored, parsed.secret)
     if row is None or not matched or row.revoked:
+        return None
+    return row
+
+
+async def find_login(
+    raw_key: str,
+    lookup: Callable[[str], Awaitable[AuthKeyRow | None]],
+    *,
+    hasher: Callable[[str], str] = key_hash,
+) -> AuthKeyRow | None:
+    """The key's active row, or `None` (B-08 SD3).
+
+    A malformed key costs nothing. Any well-formed key -- unknown, revoked or
+    valid -- costs exactly one argon2 hash, in a worker thread, and one lookup by
+    that hash, so timing does not reveal whether a key exists.
+    """
+    symbols = normalise_key(raw_key)
+    if symbols is None:
+        return None
+    row = await lookup(await asyncio.to_thread(hasher, symbols))
+    if row is None or row.revoked:
         return None
     return row
 

@@ -9,7 +9,8 @@ a wallet's id or name (plan PD5).
   a key carries its `key_id` to look it up by, the cookie carries nothing (PD5).
 - The **short code** is 8 symbols of Crockford's base32 (no I, L, O, U), stored
   uppercase without the hyphen and shown as `K7Q4-M2XD` (SD14, PD6). Reading one
-  back forgives case, hyphens, spaces, `O` for `0` and `I`/`L` for `1`.
+  back forgives case, hyphens, spaces, `O` for `0` and `I`/`L` for `1`
+  (`app.runtime.crockford`, shared with access keys).
 """
 
 from __future__ import annotations
@@ -18,11 +19,11 @@ import hashlib
 import secrets
 from typing import Final
 
-ALPHABET: Final = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+from app.runtime import crockford
+from app.runtime.crockford import ALPHABET as ALPHABET
+
 SHORT_CODE_LENGTH: Final = 8
 NAME_MAX: Final = 40
-
-_READ_AS: Final = str.maketrans({"O": "0", "I": "1", "L": "1"})
 
 
 def new_qr_token() -> str:
@@ -38,15 +39,12 @@ def cookie_hash(value: str) -> str:
 
 
 def new_short_code() -> str:
-    return "".join(secrets.choice(ALPHABET) for _ in range(SHORT_CODE_LENGTH))
+    return crockford.draw(SHORT_CODE_LENGTH)
 
 
 def normalise_short_code(text: str) -> str | None:
     """The stored form of a typed short code, or `None` if it cannot be one (AC14)."""
-    code = text.strip().upper().replace("-", "").replace(" ", "").translate(_READ_AS)
-    if len(code) != SHORT_CODE_LENGTH or any(symbol not in ALPHABET for symbol in code):
-        return None
-    return code
+    return crockford.read(text, SHORT_CODE_LENGTH)
 
 
 def display_short_code(code: str) -> str:
