@@ -39,6 +39,7 @@ from app.db.runs import (
 )
 from app.db.session import create_engine
 from app.runtime.config_patch import PROFILE_FIELDS, InvalidConfig, profile_settings
+from app.runtime.price_grid import BoundsCollision
 from exchange import Params
 
 T = TypeVar("T")
@@ -494,7 +495,10 @@ def test_create_run_copies_a_closed_runs_active_drinks_and_params(
     assert [row[1] for row in new] == ["Bier", "Fris"]
     assert [row[0] for row in new] == [0, 1]
     # Every copied column, the product included, equals the source's; slot and id do not.
-    assert [row[1:11] for row in new] == [row[1:11] for row in active]
+    # B-07 SD9: on the 0,30 step Bier's Maximumprijs 5,00 moves to 4,80 (its plan PD12).
+    assert new[0][4] == 480 and active[0][4] == 500
+    on_grid = [(*active[0][1:4], 480, *active[0][5:11]), active[1][1:11]]
+    assert [row[1:11] for row in new] == on_grid
     assert not {row[11] for row in new} & {row[11] for row in old}
     assert all(row[-1] for row in new)
     assert Params.from_dict(new_params) == Params.from_dict(source_params) == Params(step_quant=0.3)
@@ -773,3 +777,110 @@ def test_a_draft_made_directly_has_the_switch_off(settings: Settings, database_u
         return tuple(row)
 
     assert _transaction(settings, database_url, body) == (False, 0)
+
+
+# --- B-07 T5: Nieuwe borrel copies drinks onto the grid (AC13; SD9, PD3) -------
+
+
+async def _copied_bounds(engine: AsyncEngine, run_id: int) -> dict[str, tuple[int, int, int]]:
+    async with engine.connect() as conn:
+        rows = await conn.execute(
+            text(
+                "SELECT name, p_min_cents, p0_cents, p_max_cents FROM drink WHERE run_id = :r"
+                " ORDER BY slot"
+            ),
+            {"r": run_id},
+        )
+        return {r.name: (r.p_min_cents, r.p0_cents, r.p_max_cents) for r in rows}
+
+
+async def _set_source_bounds(
+    engine: AsyncEngine, run_id: int, name: str, bounds: tuple[int, int, int]
+) -> None:
+    async with engine.begin() as conn:
+        await conn.execute(
+            text(
+                "UPDATE drink SET p_min_cents = :lo, p0_cents = :p0, p_max_cents = :hi"
+                " WHERE run_id = :r AND name = :n"
+            ),
+            {"lo": bounds[0], "p0": bounds[1], "hi": bounds[2], "r": run_id, "n": name},
+        )
+
+
+def test_a_copy_without_a_profile_moves_a_bound_off_the_sources_own_step(
+    settings: Settings, database_url: str
+) -> None:
+    async def body(engine: AsyncEngine) -> dict[str, tuple[int, int, int]]:
+        source = await _ended_source(engine, Params(step_quant=0.1))
+        await _set_source_bounds(engine, source, "Bier", (124, 260, 497))
+        run_id = await create_run(engine, name="Nieuw", author="a", copy_from_run_id=source)
+        return await _copied_bounds(engine, run_id)
+
+    assert _with_engine(settings, database_url, body) == {
+        "Bier": (130, 260, 490),
+        "Fris": (150, 260, 500),
+    }
+
+
+def test_a_copy_with_a_profile_moves_bounds_onto_the_profiles_step(
+    settings: Settings, database_url: str
+) -> None:
+    async def body(engine: AsyncEngine) -> tuple[Params, dict[str, tuple[int, int, int]]]:
+        source = await _ended_source(engine, Params(step_quant=0.1))
+        await _set_source_bounds(engine, source, "Bier", (160, 200, 310))
+        profile_id = await _profile(engine, WILD_SETTINGS | {"step_quant": 0.25})
+        run_id = await create_run(
+            engine, name="Nieuw", author="a", copy_from_run_id=source, profile_id=profile_id
+        )
+        return (await _created(engine, run_id))[0], await _copied_bounds(engine, run_id)
+
+    params, bounds = _with_engine(settings, database_url, body)
+
+    assert params.step_quant == 0.25
+    assert bounds == {"Bier": (175, 200, 300), "Fris": (150, 260, 500)}
+
+
+@pytest.mark.parametrize("with_profile", [False, True])
+def test_a_copy_that_leaves_a_drink_no_room_creates_no_run(
+    settings: Settings, database_url: str, with_profile: bool
+) -> None:
+    async def body(engine: AsyncEngine) -> tuple[int, int, BoundsCollision]:
+        source = await _ended_source(engine, Params(step_quant=0.1))
+        await _set_source_bounds(engine, source, "Fris", (110, 122, 280))
+        profile_id = await _profile(engine, WILD_SETTINGS | {"step_quant": 0.25})
+        if not with_profile:
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        "UPDATE run SET params = jsonb_set(params, '{step_quant}', '0.25')"
+                        " WHERE run_id = :r"
+                    ),
+                    {"r": source},
+                )
+        async with engine.connect() as conn:
+            before = int((await conn.execute(text("SELECT count(*) FROM run"))).scalar_one())
+        with pytest.raises(BoundsCollision) as caught:
+            await create_run(
+                engine,
+                name="Nieuw",
+                author="a",
+                copy_from_run_id=source,
+                profile_id=profile_id if with_profile else None,
+            )
+        async with engine.connect() as conn:
+            after = int((await conn.execute(text("SELECT count(*) FROM run"))).scalar_one())
+        return before, after, caught.value
+
+    before, after, error = _with_engine(settings, database_url, body)
+
+    assert after == before
+    loc = ["profile", "params", "step_quant"] if with_profile else ["body", "copy_from_run_id"]
+    assert error.extra == {
+        "faults": [
+            {
+                "loc": loc,
+                "msg": "Past niet bij Fris: de grenzen worden 1,25\u20132,75 en de Startprijs"
+                " 1,22 valt daarbuiten.",
+            }
+        ]
+    }
