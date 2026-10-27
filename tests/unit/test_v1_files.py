@@ -1,6 +1,9 @@
 """v1 file parsing and the exact-cents rule, without a database (Phase 2 T3).
 
 AC10 and AC16 (import-mapping halves), SD7, SD13, SD15 validation, PD11-PD13.
+
+B-07 T6 (AC14, plan level): bounds move inward onto the file's Prijsstap; a bad
+step or a drink with no room is a `ValueError` naming it.
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from app.cli.v1_files import (
     normalise_level,
     resolve_bar_prices,
 )
+from app.runtime.price_grid import BoundMove
 from exchange import Params
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -234,3 +238,42 @@ def test_building_a_plan_does_not_mutate_its_input() -> None:
     build_plan(config, news=[], sidecar={"Bier": 2.0})
 
     assert config == original
+
+
+# --- B-07 T6: bounds on the Prijsstap grid (AC14; SD7, PD7) -------------------
+
+
+def test_the_real_v1_config_needs_no_move() -> None:
+    assert load_plan(LIVE_CONFIG_PATH).moves == ()
+
+
+def test_an_off_grid_bound_is_moved_inward_and_reported() -> None:
+    config = _live()
+    config["p_min"][0] = 1.24
+
+    plan = build_plan(config)
+
+    assert plan.drinks[0].p_min_cents == 130
+    assert plan.moves == (BoundMove("Bier", "p_min_cents", 124, 130),)
+
+
+@pytest.mark.parametrize("step", [0, 0.015, -0.1])
+def test_a_bad_step_is_rejected_naming_step_quant(step: float) -> None:
+    config = _live()
+    config["params"]["step_quant"] = step
+
+    with pytest.raises(ValueError, match="step_quant"):
+        build_plan(config)
+
+
+def test_a_drink_with_no_room_is_rejected_naming_it() -> None:
+    config = _live()
+    # On a 2,00 step Stelz (3,00 / 6,00 / 7,00) becomes 4,00-6,00, its Startprijs on
+    # the edge, and Alcmaeon shot (1,00 / 1,50 / 3,00) becomes 2,00-2,00.
+    config["params"]["step_quant"] = 2.0
+
+    with pytest.raises(ValueError) as caught:
+        build_plan(config)
+
+    assert str(caught.value).startswith("Past niet bij Stelz: ")
+    assert "Past niet bij Alcmaeon shot: " in str(caught.value)

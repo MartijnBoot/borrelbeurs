@@ -124,6 +124,23 @@ describe('login (AC21)', () => {
     expect(where()).toBe('/login')
   })
 
+  // B-08 SD10, AC17: one attribute more, nothing else changes.
+  it('the key field opens a phone keyboard in capitals, label and button unchanged', async () => {
+    await open('/login')
+    const field = screen.getByLabelText('Toegangscode')
+    expect(field.getAttribute('autocapitalize')).toBe('characters')
+    expect(field.getAttribute('placeholder')).toBeNull()
+    expect(field.getAttribute('maxlength')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Inloggen' })).toBeTruthy()
+  })
+
+  it('a malformed key answered 401 shows v1 failure string (B-08 AC17)', async () => {
+    await open('/login')
+    await logIn('bb_1_' + 'a'.repeat(43))
+    expect(screen.getByRole('alert').textContent).toBe('Ongeldige toegangscode.')
+    expect(where()).toBe('/login')
+  })
+
   it('a 429 shows the rate-limit string', async () => {
     loginStatus = 429
     await open('/login')

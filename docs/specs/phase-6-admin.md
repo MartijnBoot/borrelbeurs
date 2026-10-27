@@ -213,6 +213,9 @@ Settled at the spec interview (2026-10-06).
   - Per drink:
     - `p_min_cents ≥ 0` and `p_min_cents < p0_cents < p_max_cents`, checked on the
       *resulting* row;
+    - since B-07, `p_min_cents` and `p_max_cents` a multiple of the Prijsstap, and a
+      Prijsstap change moves them inward
+      ([phase-b-07-bounds-on-grid.md](phase-b-07-bounds-on-grid.md));
     - `bar_price_cents ≥ 0`;
     - `a/d/s0/c` finite;
     - `name` 1–40 characters after trim.
@@ -468,6 +471,11 @@ Settled at the spec interview (2026-10-06).
     - Its sessions get 401 on their next request, as today.
     - Revoking the last unrevoked admin key is 409 `last_admin_key`.
   - **Routes:** `GET/POST /api/keys`, `DELETE /api/keys/{key_id}`, all admin.
+
+  > **Amended by B-08** ([phase-b-08-short-keys.md](phase-b-08-short-keys.md)). "Nieuwe sleutel" shows a 9-symbol key grouped as
+  > `K7M-4QX-9PR`, larger and monospaced. Where "Kopieer" cannot reach a clipboard (a plain-HTTP
+  > venue, D-50), it selects the key and says "Kopiëren lukt hier niet. De sleutel is
+  > geselecteerd: kopieer hem zelf."
 
   > **Superseded in part by B-02** ([phase-b-02-pixel-icons.md](phase-b-02-pixel-icons.md)).
   > The section name above is quoted with v1's emoji, kept as the record. Its heading now

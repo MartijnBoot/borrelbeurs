@@ -3,7 +3,10 @@
 `GET /api/keys` lists every key: id, label, role, created, last used and
 whether it is revoked -- never a secret or a hash. `POST /api/keys {role,
 label}` mints one through `issue_key` and returns `{key_id, key}`: the only
-time the key exists outside its holder's hands (AC36). `DELETE
+time the key exists outside its holder's hands (AC36). The key is 9 symbols
+grouped as `K7M-4QX-9PR`; `key_id` is the new row's and is not part of it
+(B-08 SD1, SD8). Five colliding draws in a row are a 500 with nothing written
+(SD3). `DELETE
 /api/keys/{key_id}` revokes it; after the commit, every WebSocket of that key
 is closed with 4401 (PD12), and its sessions get 401 on their next request, as
 `require_role` reads the key row each time (AC37). Revoking the last unrevoked
@@ -23,7 +26,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
 from app.api.deps import Principal, db_engine, refuse_while_draining, require_role
-from app.api.security import issue_key, parse_key
+from app.api.security import issue_key
 from app.core.errors import AppError
 from app.db.keys import Role, get_key, list_keys, lock_unrevoked_admins, revoke_key
 from app.realtime.hub import Hub
@@ -92,10 +95,8 @@ async def post_key(
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> CreatedKey:
     async with db_engine(request).begin() as conn:
-        key = await issue_key(conn, role=body.role, label=body.label)
-    parsed = parse_key(key)
-    assert parsed is not None
-    return CreatedKey(key_id=parsed.key_id, key=key)
+        issued = await issue_key(conn, role=body.role, label=body.label)
+    return CreatedKey(key_id=issued.key_id, key=issued.key)
 
 
 @router.delete("/{key_id}", status_code=204)

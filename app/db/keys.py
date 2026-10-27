@@ -1,9 +1,9 @@
 """The `auth_key` repository (Phase 3 SD5).
 
 Every function takes an `AsyncConnection` and never begins or commits: the
-caller owns the transaction, as in `app/db/runs.py`. Only the argon2id hash of
-a key's secret is ever stored (AC6c); hashing and the key format live in
-`app/api/security.py`.
+caller owns the transaction, as in `app/db/runs.py`. Only a key's argon2id
+hash is ever stored (AC6c), unique across every row, revoked ones included
+(B-08 SD3); hashing and the key format live in `app/api/security.py`.
 """
 
 from __future__ import annotations
@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import func, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.db.models import AuthKey
@@ -47,25 +48,29 @@ _COLUMNS = (
 )
 
 
-async def create_key(conn: AsyncConnection, *, label: str, role: Role, secret_hash: str) -> int:
+async def insert_key(
+    conn: AsyncConnection, *, label: str, role: Role, secret_hash: str
+) -> int | None:
+    """The new row's `key_id`, or `None` if any row, revoked or not, holds that hash (B-08 SD3).
+
+    One statement: a collision inserts nothing and needs no savepoint.
+    """
     result = await conn.execute(
         insert(AuthKey)
         .values(label=label, role=role, secret_hash=secret_hash)
+        .on_conflict_do_nothing(index_elements=[AuthKey.secret_hash])
         .returning(AuthKey.key_id)
     )
-    return int(result.scalar_one())
+    key_id = result.scalar_one_or_none()
+    return None if key_id is None else int(key_id)
 
 
-async def set_secret_hash(conn: AsyncConnection, key_id: int, secret_hash: str) -> None:
-    """Replace a key's hash; `app.cli.keys create` needs the `key_id` before it can hash."""
-    result = await conn.execute(
-        update(AuthKey)
-        .where(AuthKey.key_id == key_id)
-        .values(secret_hash=secret_hash)
-        .returning(AuthKey.key_id)
-    )
-    if result.scalar_one_or_none() is None:
-        raise LookupError(f"no key {key_id}")
+async def get_key_by_hash(conn: AsyncConnection, secret_hash: str) -> AuthKeyRow | None:
+    """The row holding `secret_hash`, revoked or not: a short key's login lookup (B-08 SD3)."""
+    row = (
+        await conn.execute(select(*_COLUMNS).where(AuthKey.secret_hash == secret_hash))
+    ).one_or_none()
+    return None if row is None else AuthKeyRow(**row._asdict())
 
 
 async def get_key(conn: AsyncConnection, key_id: int) -> AuthKeyRow | None:

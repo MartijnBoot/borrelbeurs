@@ -8,6 +8,13 @@ are strict and finite. The name is 1-40 characters after trim. An absent
 optional field of an add takes the server default:
 `bar_price_cents = p0_cents`, `a = 10`, `d = 0.6`, `s0 = 8`, `c = 0.4` (AC4).
 
+**On the Prijsstap grid (B-07 SD1, SD6; plan PD6).** After the order check, a
+`p_min_cents` or `p_max_cents` the request gives must be a whole multiple of the
+run's Prijsstap, read under the `run` row lock: else 422 naming that field and
+its two grid neighbours, nothing written, and on the live run no transition.
+Only a bound present in the request is checked, so a stored off-grid bound
+survives an edit of the other fields. The Startprijs is not on the grid (SD2).
+
 **The slot** is `max(slot) + 1` over every row of the run, removed ones
 included, so a re-added name gets a new `drink_id` and slot (AC21). A name that
 matches an active drink, trimmed and case-folded, is 409 `duplicate_drink_name`
@@ -36,9 +43,18 @@ Removing the last active drink is 409 `last_active_drink` (SD16).
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Mapping
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, StringConstraints, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    StrictInt,
+    StringConstraints,
+    field_validator,
+)
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from app.db.mapping import DrinkRow, spec_from_rows
@@ -67,6 +83,7 @@ from app.runtime.config import (
     readable,
 )
 from app.runtime.holder import MarketHolder, MarketView, Outcome
+from app.runtime.price_grid import grid_faults, step_cents
 from exchange import Params, append_slot, cancel_jumps, hold_quoted_prices
 
 DEFAULT_A = 10.0
@@ -146,6 +163,18 @@ def check_bounds(
         )
 
 
+_GRID = ("p_min_cents", "p_max_cents")
+
+
+def check_grid(bounds: Mapping[str, int], run: RunRow) -> None:
+    """Each of `bounds` a multiple of `run`'s Prijsstap, or 422 naming it (B-07 SD1)."""
+    step = step_cents(Params.from_dict(run.params).step_quant)
+    faults = grid_faults(bounds, step, loc=("body",))
+    if faults:
+        message = " ".join(str(f["msg"]) for f in faults)
+        raise InvalidConfig(message, extra={"faults": list[JsonValue](faults)})
+
+
 def _bar_price(body: DrinkCreate) -> int:
     return body.p0_cents if body.bar_price_cents is None else body.bar_price_cents
 
@@ -176,6 +205,7 @@ async def add_draft_drink(
         run = readable(await get_run(conn, run_id, lock=True))
         if run.status != "draft":
             raise RunNotDraft(f"run {run_id} is {run.status}, and not live in this process")
+        check_grid({f: getattr(body, f) for f in _GRID}, run)
         drink_id = await _insert(conn, run_id, body)
         return CreatedDrink(
             drink_id=drink_id, revision=await append_revision(conn, run, author=author)
@@ -194,6 +224,7 @@ async def add_live_drink(
         now_ms = commit_stamp_ms(clock, view)
         async with engine.begin() as conn:
             run = readable(await get_run(conn, run_id, lock=True))
+            check_grid({f: getattr(body, f) for f in _GRID}, run)
             drink_id = await _insert(conn, run_id, body)
             spec, drink_ids = spec_from_rows(await all_drinks(conn, run_id), view.spec.params)
             assert drink_ids == (*view.drink_ids, drink_id)
@@ -276,6 +307,7 @@ async def _edit(
     drinks = await all_drinks(conn, run.run_id)
     row = _active_row(drinks, run.run_id, drink_id)
     edited = _edited(row, patch)
+    check_grid({f: getattr(patch, f) for f in _GRID if f in patch.model_fields_set}, run)
     if edited is None:
         return None
     await update_drink(conn, run.run_id, edited)

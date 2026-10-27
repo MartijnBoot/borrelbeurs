@@ -8,6 +8,10 @@ news and config revision 1, and the new `run_id` is printed. Exit status:
 0 on success, 2 on bad input, 1 on a database (or configuration) error; on 1
 and 2 nothing is written. The import never touches an existing run and never
 goes live (SD6).
+
+A bound off the Prijsstap grid is stored moved inward (B-07 SD7). After the
+write, each move is one line on stderr, "import_v1: Bier: p_min 1,24 → 1,30",
+so stdout stays the bare `run_id`.
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ from app.db.mapping import params_to_json
 from app.db.news import create_news
 from app.db.runs import DuplicateDrinkName, add_drink, append_config_revision, create_draft_run
 from app.db.session import create_engine
+from app.runtime.price_grid import euro_text
 
 AUTHOR = "import_v1"
 
@@ -87,6 +92,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"import_v1: database error, nothing written: {error}", file=sys.stderr)
         return 1
 
+    for move in plan.moves:
+        old, new = euro_text(move.old_cents), euro_text(move.new_cents)
+        bound = move.field.removesuffix("_cents")
+        print(f"import_v1: {move.name}: {bound} {old} → {new}", file=sys.stderr)
     print(run_id)
     return 0
 

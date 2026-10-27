@@ -31,10 +31,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import insert, text, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from app.api.security import format_key, hash_secret, mint_secret
+from app.api.security import issue_key
 from app.core.config import Settings, get_settings
 from app.db import models
-from app.db.keys import create_key, set_secret_hash
 from app.db.runs import add_drink, create_draft_run, go_live
 from app.db.session import create_engine
 from app.main import create_app
@@ -122,11 +121,9 @@ async def _seed(engine: AsyncEngine) -> tuple[int, int, str]:
         )
         for slot, name in enumerate(("Bier", "Wijn", "Fris")):
             await _drink(conn, live, name, slot)
-        key_id = await create_key(conn, label="timing", role="bar", secret_hash="pending")
-        secret = mint_secret()
-        await set_secret_hash(conn, key_id, hash_secret(secret))
+        issued = await issue_key(conn, role="bar", label="timing")
     await go_live(engine, live, now_ms=now)
-    return live, ended, format_key(key_id, secret)
+    return live, ended, issued.key
 
 
 async def _queue_export(engine: AsyncEngine, run_id: int) -> int:

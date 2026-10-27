@@ -7,7 +7,9 @@ The image under test boots against its own throwaway Postgres (`conftest.py`):
 - **AC7:** the frontend it carries references nothing off-origin
   (`scripts/check_built_assets.py` on its own `/app/web/dist`);
 - **AC9, new image on the old schema:** a database at `head-1`, migrated by the
-  image's own alembic, is migrated at boot and passes smoke;
+  image's own alembic, is migrated at boot and passes smoke. The smoke key is minted
+  after boot: the image's CLI writes for its own schema, and a migration may revoke
+  older keys (B-08 `0015`);
 - **AC9, old image on the new schema** (PD3): no SD3 image older than this one exists
   yet, so the *database* is made one contract-free revision ahead -- stamped
   `ci_ahead_fixture` with the floor left at `0011` -- and the same image must log
@@ -15,7 +17,8 @@ The image under test boots against its own throwaway Postgres (`conftest.py`):
 - **AC10:** with the floor raised to `ci_ahead_fixture` it refuses: non-zero exit,
   `boot_failed` / `schema ahead of image`, `alembic_version` unchanged;
 - with `--previous-image`, that image boots against head too (unused in CI until a
-  second SD3 image exists in GHCR, R3).
+  second SD3 image exists in GHCR, R3), with a key minted by its own CLI: an image
+  older than B-08 reads only the long keys it mints (B-08 SD6).
 """
 
 from __future__ import annotations
@@ -57,9 +60,9 @@ def _image_build_sha(image: str) -> str:
     return sha
 
 
-def _admin_key(stack: Stack) -> str:
+def _admin_key(stack: Stack, image: str | None = None) -> str:
     created = stack.run_cli(
-        "python", "-m", "app.cli.keys", "create", "--role", "admin", "--label", "drill"
+        "python", "-m", "app.cli.keys", "create", "--role", "admin", "--label", "drill", image=image
     )
     assert created.returncode == 0, created.stderr
     return created.stdout.strip()
@@ -111,12 +114,11 @@ def test_a_database_one_revision_behind_is_migrated_at_boot(stack: Stack) -> Non
     """AC9, new image on the previous release's schema."""
     head, previous = _head_and_previous()
     _migrate(stack, previous)
-    key = _admin_key(stack)
     app = stack.start_app()
     app.wait_ready()
 
     assert stack.psql("SELECT version_num FROM alembic_version") == head
-    result = _smoke(app, key)
+    result = _smoke(app, _admin_key(stack))
     assert result.returncode == 0, result.stdout + result.stderr
 
 
@@ -158,7 +160,7 @@ def test_the_previous_image_boots_against_head(
     if not previous:
         pytest.skip("no --previous-image given; CI passes one once GHCR holds an SD3 image")
     _migrate(stack, "head")
-    key = _admin_key(stack)
+    key = _admin_key(stack, image=previous)
     app = stack.start_app(image=previous, name="previous")
     app.wait_ready()
 

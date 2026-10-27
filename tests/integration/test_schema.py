@@ -336,7 +336,7 @@ async def _auth_key(connection: AsyncConnection, *, role: str = "bar", label: st
     result = await connection.execute(
         text(
             "INSERT INTO auth_key (label, role, secret_hash) "
-            "VALUES (:label, :role, '$argon2id$x') RETURNING key_id"
+            "VALUES (:label, :role, '$argon2id$' || gen_random_uuid()) RETURNING key_id"
         ),
         {"label": label, "role": role},
     )

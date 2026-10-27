@@ -2,6 +2,10 @@
 
 AC19, AC20; AC10, AC15, AC16 end to end; SD5, SD6, SD15.
 
+B-07 T6 (AC14 end to end): an off-grid bound is stored moved, the move on
+stderr and stdout the bare `run_id`; a collision exits 2 writing nothing; the
+real file imports with no move.
+
 `main` reads its database from the environment through `get_settings()`, as
 it does in production, so each test points `DATABASE_URL` at the scratch
 database and clears the settings cache on both sides.
@@ -323,3 +327,51 @@ def test_an_import_gives_every_drink_a_product(
     )
     assert [drink for drink, _ in rows] == _live()["names"]
     assert [product for _, product in rows] == [drink for drink, _ in rows]
+
+
+# --- B-07 T6: bounds on the Prijsstap grid (AC14; SD7, PD7) -------------------
+
+
+def test_an_off_grid_bound_is_stored_moved_and_reported_on_stderr(
+    scratch: str, settings: Settings, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    live = _live()
+    live["p_min"][0] = 1.24
+
+    assert main(["--config", str(_write(tmp_path / "config.json", live))]) == 0
+
+    out, err = capsys.readouterr()
+    run_id = int(out)
+    assert out == f"{run_id}\n"
+    assert err == "import_v1: Bier: p_min 1,24 \u2192 1,30\n"
+    drinks, _, _ = _drinks_and_news(settings, scratch, run_id)
+    assert drinks[0].p_min_cents == 130
+    ((config,),) = _query(
+        settings, scratch, "SELECT config FROM run_config_revision WHERE run_id = :r", r=run_id
+    )
+    assert config["drinks"][0]["p_min_cents"] == 130
+
+
+def test_a_collision_exits_2_naming_the_drink_and_writes_nothing(
+    scratch: str, settings: Settings, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    live = _live()
+    live["params"]["step_quant"] = 2.0
+    before = _counts(settings, scratch)
+
+    assert main(["--config", str(_write(tmp_path / "config.json", live))]) == 2
+
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert err.startswith("import_v1: invalid input: Past niet bij Stelz: ")
+    assert _counts(settings, scratch) == before
+
+
+def test_the_real_v1_file_imports_with_no_move(
+    scratch: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["--config", str(LIVE_CONFIG_PATH)]) == 0
+
+    out, err = capsys.readouterr()
+    assert err == ""
+    assert int(out) > 0

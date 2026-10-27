@@ -1,10 +1,9 @@
 """AC32 (Phase 8 T9, D-42): a v1 key grants nothing in v2.
 
 v1 keys are free strings of 1-256 characters (v1 `backend/auth.py:40-48`, tag v2-rebuild-complete),
-and `borrelbeurs-v1` published some. v2 parses a key as `bb_<key_id>_<secret>`
-before it looks anything up or hashes anything (Phase 3 SD7), so every v1-shaped
-key is a 401 having cost no database lookup and no argon2 verify. No production
-code changes here: this pins that behaviour.
+and `borrelbeurs-v1` published some. v2 reads a key as exactly 9 Crockford
+symbols before it hashes or looks anything up (B-08 SD2, SD3), so every
+v1-shaped key below is a 401 having cost no argon2 hash and no database lookup.
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ from fastapi.testclient import TestClient
 
 import app.api.auth as auth_module
 from app.api import security
-from app.db.keys import get_key
+from app.db.keys import get_key_by_hash
 
 V1_SHAPED_KEYS = [
     pytest.param("TestTest", id="word"),
@@ -38,43 +37,43 @@ class Counter:
         self.calls += 1
         return await self._real(*args)
 
-    def verify(self, *args: Any) -> bool:
+    def hash(self, *args: Any) -> str:
         self.calls += 1
-        result: bool = self._real(*args)
+        result: str = self._real(*args)
         return result
 
 
 @pytest.fixture
 def lookups(monkeypatch: pytest.MonkeyPatch) -> Iterator[Counter]:
-    counter = Counter(get_key)
-    monkeypatch.setattr(auth_module, "get_key", counter.lookup)
+    counter = Counter(get_key_by_hash)
+    monkeypatch.setattr(auth_module, "get_key_by_hash", counter.lookup)
     yield counter
 
 
 @pytest.fixture
-def verifies(monkeypatch: pytest.MonkeyPatch) -> Iterator[Counter]:
-    counter = Counter(security.verify_secret)
-    monkeypatch.setattr(security, "verify_secret", counter.verify)
+def hashes(monkeypatch: pytest.MonkeyPatch) -> Iterator[Counter]:
+    counter = Counter(security.key_hash)
+    monkeypatch.setattr(security, "key_hash", counter.hash)
     yield counter
 
 
 @pytest.mark.parametrize("key", V1_SHAPED_KEYS)
-def test_a_v1_shaped_key_is_401_with_no_lookup_and_no_verify(
-    client: TestClient, lookups: Counter, verifies: Counter, key: str
+def test_a_v1_shaped_key_is_401_with_no_lookup_and_no_hash(
+    client: TestClient, lookups: Counter, hashes: Counter, key: str
 ) -> None:
     response = client.post("/api/auth/login", json={"key": key})
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "unauthenticated"
     assert "set-cookie" not in response.headers
-    assert (lookups.calls, verifies.calls) == (0, 0)
+    assert (lookups.calls, hashes.calls) == (0, 0)
 
 
 def test_the_counters_see_a_v2_shaped_key(
-    client: TestClient, lookups: Counter, verifies: Counter
+    client: TestClient, lookups: Counter, hashes: Counter
 ) -> None:
-    """Anti-vacuity: a well-formed `bb_` key does reach the lookup."""
-    response = client.post("/api/auth/login", json={"key": "bb_999999_" + "x" * 43})
+    """Anti-vacuity: a well-formed 9-symbol key does reach the hash and the lookup."""
+    response = client.post("/api/auth/login", json={"key": "K7M-4QX-9PR"})
 
     assert response.status_code == 401
-    assert lookups.calls == 1
+    assert (lookups.calls, hashes.calls) == (1, 1)

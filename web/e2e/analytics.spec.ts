@@ -86,7 +86,7 @@ async function createKey(page: Page, role: 'Scherm' | 'Bar', label: string): Pro
   await keys.getByLabel('Label').fill(label)
   await keys.getByRole('button', { name: 'Nieuwe sleutel' }).click()
   const key = (await keys.locator('code').textContent()) ?? ''
-  expect(key).toMatch(/^bb_/)
+  expect(key).toMatch(/^[0-9A-HJKMNP-TV-Z]{3}(-[0-9A-HJKMNP-TV-Z]{3}){2}$/)
   await keys.getByRole('button', { name: 'Sluiten' }).click()
   return key
 }

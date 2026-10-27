@@ -64,6 +64,7 @@ export function LoginPage() {
           type="text"
           autoComplete="off"
           autoCorrect="off"
+          autoCapitalize="characters"
           spellCheck={false}
           value={key}
           onChange={(event) => setKey(event.target.value)}

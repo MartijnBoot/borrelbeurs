@@ -24,9 +24,9 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from app.api.security import issue_key
 from app.core.config import Settings
 from app.db import wallets
-from app.db.keys import create_key
 from app.db.session import create_engine
 from app.runtime import wallets as actions
 
@@ -142,7 +142,7 @@ def test_a_random_concurrent_sequence_keeps_every_balance_at_or_above_zero(
         topups: list[int] = []
         try:
             async with engine.begin() as conn:
-                key_id = await create_key(conn, label="Kassa", role="kassa", secret_hash="x")
+                key_id = (await issue_key(conn, role="kassa", label="Kassa")).key_id
             actor = actions.Actor(key_id=key_id, label="Kassa")
             for batch in range(OPERATIONS // BATCH):
                 for _ in range(POOL - len(await _live(engine))):

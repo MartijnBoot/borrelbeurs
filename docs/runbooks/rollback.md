@@ -14,6 +14,12 @@ that introduced `0011` was the first to serve a real database. Once a later migr
 step older images cannot read, the way out past it is a newer image or a restore of the last
 dump taken before that step (`restore.md`).
 
+**Past B-08.** Rolling back to an image older than B-08 still boots (migration `0015` keeps
+the compatibility revision), but no key works: B-08 revoked the old long keys, and the old
+image cannot read a short one. The way back in is a long key minted with that image's own CLI
+(`python -m app.cli.keys create --role admin --label <who>`, in the Render shell or with
+`docker compose ... run --rm --no-deps app` at the venue).
+
 ## Render
 
 1. Find the previous good SHA: the last green **deploy** run, or `git log` on `main`.

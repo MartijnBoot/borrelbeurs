@@ -140,7 +140,7 @@ test('a player signs up, the kassa tops up, reverses and moves, admin sees the t
   await keys.getByRole('button', { name: 'Nieuwe sleutel' }).click()
   await expect(keys.getByText('Wordt maar één keer getoond')).toBeVisible()
   kassaKey = (await keys.locator('code').textContent()) ?? ''
-  expect(kassaKey).toMatch(/^bb_/)
+  expect(kassaKey).toMatch(/^[0-9A-HJKMNP-TV-Z]{3}(-[0-9A-HJKMNP-TV-Z]{3}){2}$/)
   await keys.getByRole('button', { name: 'Sluiten' }).click()
 
   // 2. Player A at `/`: "Speler", then the poster's link, signs up as "Jan" (AC1, AC3).

@@ -1,7 +1,7 @@
 """AC32 (Phase 8 T9, D-42, PD15): no v1 key has a way into v2.
 
 v1's access keys are free strings in `config/keys.json`, and the `borrelbeurs-v1`
-repository published them. v2 keys are `bb_<key_id>_<secret>`, minted by
+repository published them. v2 keys are 9 Crockford symbols (B-08), minted by
 `issue_key` and stored only as an argon2id hash, so a v1 key cannot log in
 (`tests/api/test_v1_keys.py`). This guards the other half: that nothing under
 `app/`, `db/` or `scripts/` ever learns to import one.
@@ -9,9 +9,9 @@ repository published them. v2 keys are `bb_<key_id>_<secret>`, minted by
 - No file names `keys.json` -- except the image check, whose denylist names it to forbid it.
 - No `ADMIN_TOKEN` (v1's shared admin secret; Phase 3 removed it, AC6d).
 - A key row is created only by `issue_key` (`app/api/security.py`): `insert(AuthKey)`
-  lives in `app/db/keys.py: create_key`, and `create_key`, `set_secret_hash` and
-  `hash_secret` are called only inside `issue_key` -- and `hash_secret` also by
-  `dummy_hash`, which builds a hash no secret matches and stores nothing.
+  lives in `app/db/keys.py: insert_key`, and `insert_key` and `key_hash` are
+  called only inside `issue_key`. Login passes `key_hash` to `find_login` by
+  reference; it never calls it by name.
 
 Read by AST, like the other meta guards; nothing is imported or run.
 """
@@ -29,11 +29,10 @@ KEYS_REPO = Path("app") / "db" / "keys.py"
 
 # Function -> the (file, enclosing function) pairs allowed to call it.
 ALLOWED_CALLERS: dict[str, frozenset[tuple[Path, str]]] = {
-    "create_key": frozenset({(SECURITY, "issue_key")}),
-    "set_secret_hash": frozenset({(SECURITY, "issue_key")}),
-    "hash_secret": frozenset({(SECURITY, "issue_key"), (SECURITY, "dummy_hash")}),
+    "insert_key": frozenset({(SECURITY, "issue_key")}),
+    "key_hash": frozenset({(SECURITY, "issue_key")}),
 }
-INSERT_ALLOWED = frozenset({(KEYS_REPO, "create_key")})
+INSERT_ALLOWED = frozenset({(KEYS_REPO, "insert_key")})
 
 # Files that name `keys.json` in order to forbid it: the image check's denylist (T11).
 KEYS_JSON_NAMED_TO_FORBID = frozenset({Path("scripts") / "ci" / "check_image.py"})
@@ -81,7 +80,7 @@ def find_v1_key_paths(source: str, path: Path) -> list[Finding]:
                 and _name(node.args[0]) == "AuthKey"
                 and (path, function) not in INSERT_ALLOWED
             ):
-                found.append(Finding(path, node.lineno, "`insert(AuthKey)` outside `create_key`"))
+                found.append(Finding(path, node.lineno, "`insert(AuthKey)` outside `insert_key`"))
         for child in ast.iter_child_nodes(node):
             visit(child, function)
 
@@ -138,24 +137,24 @@ def test_hashing_or_inserting_a_key_outside_issue_key_is_found() -> None:
     source = (
         "async def import_v1(conn, keys):\n"
         "    for key in keys:\n"
-        "        await create_key(conn, label=key, role='bar', secret_hash=hash_secret(key))\n"
+        "        await insert_key(conn, label=key, role='bar', secret_hash=key_hash(key))\n"
         "        await conn.execute(insert(AuthKey).values(label=key))\n"
     )
 
     details = [f.detail for f in find_v1_key_paths(source, Path("app") / "cli" / "v1.py")]
 
     assert details == [
-        "`create_key(...)` outside `issue_key`",
-        "`hash_secret(...)` outside `issue_key`",
-        "`insert(AuthKey)` outside `create_key`",
+        "`insert_key(...)` outside `issue_key`",
+        "`key_hash(...)` outside `issue_key`",
+        "`insert(AuthKey)` outside `insert_key`",
     ]
 
 
 def test_issue_key_itself_is_allowed() -> None:
     source = (
         "async def issue_key(conn, *, role, label):\n"
-        "    key_id = await create_key(conn, label=label, role=role, secret_hash='pending')\n"
-        "    await set_secret_hash(conn, key_id, hash_secret('s'))\n"
+        "    symbols = new_key_symbols()\n"
+        "    await insert_key(conn, label=label, role=role, secret_hash=key_hash(symbols))\n"
     )
 
     assert find_v1_key_paths(source, SECURITY) == []

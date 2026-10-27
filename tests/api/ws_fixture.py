@@ -46,9 +46,8 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
-from app.api.security import format_key, hash_secret, mint_secret
+from app.api.security import issue_key
 from app.core.config import Settings, get_settings
-from app.db.keys import create_key, set_secret_hash
 from app.db.runs import add_drink, create_draft_run, go_live
 from app.db.session import create_engine
 from app.main import create_app
@@ -125,11 +124,9 @@ def _seed(settings: Settings, url: str) -> str:
                         c=0.1,
                         bar_price_cents=260,
                     )
-                key_id = await create_key(conn, label="fixture", role="admin", secret_hash="-")
-                secret = mint_secret()
-                await set_secret_hash(conn, key_id, hash_secret(secret))
+                issued = await issue_key(conn, role="admin", label="fixture")
             await go_live(engine, run_id, now_ms=T0)
-            return format_key(key_id, secret)
+            return issued.key
         finally:
             await engine.dispose()
 

@@ -134,7 +134,10 @@ class Market:
 
 
 @asynccontextmanager
-async def _live(settings: Settings, url: str) -> AsyncIterator[Market]:
+async def _live(
+    settings: Settings, url: str, *, p_max_cents: Sequence[int] = (500, 500, 500)
+) -> AsyncIterator[Market]:
+    """`p_max_cents` per slot is stored as given, off the grid included (a pre-B-07 row)."""
     engine = create_engine(settings.model_copy(update={"database_url": url}))
     try:
         async with engine.begin() as conn:
@@ -147,7 +150,7 @@ async def _live(settings: Settings, url: str) -> AsyncIterator[Market]:
                     slot=slot,
                     p_min_cents=150,
                     p0_cents=260 + 30 * slot,
-                    p_max_cents=500,
+                    p_max_cents=p_max_cents[slot],
                     a=10.0,
                     d=0.6,
                     s0=8.0,
@@ -307,19 +310,22 @@ def test_a_bound_change_holds_the_quote_and_cancels_that_drinks_jump(
     """AC8, AC10: clamped and re-quantised; others' `y` bitwise; the jump gone in that version."""
 
     async def scenario() -> None:
-        async with _live(settings, database_url) as market:
+        # B-07 refuses an off-grid bound on an edit (its plan PD12), so the R6 case
+        # comes from a Maximumprijs of 3.28 stored before B-07, and the edit is p_min.
+        async with _live(settings, database_url, p_max_cents=(328, 500, 500)) as market:
             bier, wijn, _ = market.holder.drink_ids
-            await schedule(market.holder, bier, 480, 20_000, clock=market.clock)
+            await schedule(market.holder, bier, 328, 20_000, clock=market.clock)
             await schedule(market.holder, wijn, 450, 120_000, clock=market.clock)
             for _ in range(12):
                 await market.tick()
             before = market.state
-            assert market.quoted()[bier] > 330
+            # Near 3.28 the quote rounds to 3.30, past the stored bound.
+            assert market.quoted()[bier] == 330
             assert sorted(j.i for j in before.jumps) == [0, 1]  # both still running
 
-            # 3.25 is half a 0.10 step off the grid: clamped, it would round to 3.30,
-            # outside the bound, so the hold steps back to 3.20 (AC8, R6).
-            await _edit(market, bier, p_max_cents=325)
+            # Clamped to 3.28, the held price rounds to 3.30, outside the bound,
+            # so the hold steps back to 3.20 (AC8, R6).
+            await _edit(market, bier, p_min_cents=160)
 
             after = market.state
             assert after.version == before.version + 1

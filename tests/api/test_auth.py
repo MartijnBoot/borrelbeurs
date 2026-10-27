@@ -1,4 +1,8 @@
-"""Login, logout and /me over HTTP (Phase 3 T17: SD1, SD2, SD6-SD9; AC5, AC6, AC6a, AC6b, AC6e)."""
+"""Login, logout and /me over HTTP (Phase 3 T17: SD1, SD2, SD6-SD9; AC5, AC6, AC6a, AC6b, AC6e).
+
+B-08 (AC2, AC4, AC5, AC7): a key is read forgivingly, and any well-formed one
+costs exactly one hash, counted through `security.key_hash`.
+"""
 
 from __future__ import annotations
 
@@ -10,35 +14,32 @@ from fastapi.testclient import TestClient
 from starlette.middleware.cors import CORSMiddleware
 
 from app.api import security
-from app.api.security import format_key, mint_secret
 from app.cli.keys import main as keys_main
 from app.core.config import Settings
 from app.db.session import create_engine
-from tests.api.conftest import BASE_URL, Login, MintKey
+from tests.api.conftest import BASE_URL, IssueKey, Login, MintKey
 from tests.support.clock import FakeClock
 
 
-class CountingVerifier:
+class CountingHasher:
     def __init__(self) -> None:
         self.calls = 0
-        self._real = security.verify_secret
+        self._real = security.key_hash
 
-    def __call__(self, secret_hash: str, secret: str) -> bool:
+    def __call__(self, symbols: str) -> str:
         self.calls += 1
-        return self._real(secret_hash, secret)
+        return self._real(symbols)
 
 
 @pytest.fixture
-def verifier(monkeypatch: pytest.MonkeyPatch) -> Iterator[CountingVerifier]:
-    counting = CountingVerifier()
-    monkeypatch.setattr(security, "verify_secret", counting)
+def hasher(monkeypatch: pytest.MonkeyPatch) -> Iterator[CountingHasher]:
+    counting = CountingHasher()
+    monkeypatch.setattr(security, "key_hash", counting)
     yield counting
 
 
-def _key_id(raw: str) -> int:
-    parsed = security.parse_key(raw)
-    assert parsed is not None
-    return parsed.key_id
+def _unknown_key() -> str:
+    return security.display_key(security.new_key_symbols())
 
 
 def test_login_sets_a_secure_httponly_samesite_strict_cookie(
@@ -100,24 +101,21 @@ def test_logout_clears_the_cookie(login: Login) -> None:
     assert client.get("/api/auth/me").status_code == 401
 
 
-def test_the_eleventh_login_is_429_with_retry_after_and_costs_no_verify(
-    client: TestClient, verifier: CountingVerifier
+def test_the_eleventh_login_is_429_with_retry_after_and_costs_no_hash(
+    client: TestClient, hasher: CountingHasher
 ) -> None:
-    """AC5: ten attempts (malformed ones count too), then 429 before any parsing or hashing."""
+    """AC5, B-08 AC7: ten attempts (malformed ones count too), then 429 before any hashing."""
     for _ in range(9):
         assert client.post("/api/auth/login", json={"key": "nonsense"}).status_code == 401
-    assert (
-        client.post("/api/auth/login", json={"key": format_key(9_999, mint_secret())}).status_code
-        == 401
-    )
-    assert verifier.calls == 1
+    assert client.post("/api/auth/login", json={"key": _unknown_key()}).status_code == 401
+    assert hasher.calls == 1
 
-    response = client.post("/api/auth/login", json={"key": format_key(9_999, mint_secret())})
+    response = client.post("/api/auth/login", json={"key": _unknown_key()})
 
     assert response.status_code == 429
     assert response.json()["error"]["code"] == "rate_limited"
     assert int(response.headers["retry-after"]) == 60
-    assert verifier.calls == 1
+    assert hasher.calls == 1
 
 
 def test_the_login_window_rolls_on_the_injected_clock(
@@ -132,29 +130,60 @@ def test_the_login_window_rolls_on_the_injected_clock(
     assert client.post("/api/auth/login", json={"key": "nonsense"}).status_code == 401
 
 
-def test_exactly_one_verify_per_well_formed_login_and_none_for_malformed(
-    client: TestClient, mint_key: MintKey, verifier: CountingVerifier
+def test_exactly_one_hash_per_well_formed_login_and_none_for_malformed(
+    client: TestClient, issued_key: IssueKey, hasher: CountingHasher
 ) -> None:
-    """AC6: unknown, revoked, wrong secret and valid each cost one verify; malformed costs none."""
-    valid = mint_key("bar")
-    revoked = mint_key("bar")
-    assert keys_main(["revoke", str(_key_id(revoked))]) == 0
+    """B-08 AC4, AC5: unknown, revoked and valid each cost one hash; malformed costs none."""
+    valid = issued_key("bar")
+    revoked = issued_key("bar")
+    assert keys_main(["revoke", str(revoked.key_id)]) == 0
+    symbols = security.normalise_key(valid.key)
+    assert symbols is not None
     cases = {
         "malformed": ("bb_not_a_key!", 0, 401),
-        "unknown": (format_key(9_999, mint_secret()), 1, 401),
-        "revoked": (revoked, 1, 401),
-        "wrong-secret": (format_key(_key_id(valid), mint_secret()), 1, 401),
-        "valid": (valid, 1, 200),
+        "long-key": ("bb_1_" + "x" * 43, 0, 401),
+        "8-symbols": (symbols[:8], 0, 401),
+        "10-symbols": (symbols + "0", 0, 401),
+        "unknown": (_unknown_key(), 1, 401),
+        "revoked": (revoked.key, 1, 401),
+        "valid": (valid.key, 1, 200),
     }
-    for name, (raw, verifies, status) in cases.items():
-        before = verifier.calls
+    bodies: dict[str, bytes] = {}
+    for name, (raw, hashes, status) in cases.items():
+        client.cookies.clear()
+        before = hasher.calls
         response = client.post("/api/auth/login", json={"key": raw})
         assert response.status_code == status, name
-        assert verifier.calls - before == verifies, name
+        assert hasher.calls - before == hashes, name
+        bodies[name] = response.content
+
+    assert bodies["unknown"] == bodies["revoked"]
+
+
+def test_every_forgiving_spelling_of_a_key_logs_in(
+    client: TestClient, mint_key: MintKey, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B-08 AC2: case, spaces, dashes, whitespace and O/I/L for 0/1/1 all read as the key."""
+    monkeypatch.setattr(security, "new_key_symbols", lambda: "K7M4QX901")
+    key = mint_key("bar")
+    assert key == "K7M-4QX-901"
+
+    for spelling in (
+        "k7m-4qx-901",
+        "K7M 4QX 901",
+        "K7M4QX901",
+        " K7M-4QX-901\n",
+        "K 7 M-4Q X901",
+        "K7M-4QX-9OL",
+        "k7m4qx9oi",
+    ):
+        client.cookies.clear()
+        response = client.post("/api/auth/login", json={"key": spelling})
+        assert response.status_code == 200, spelling
 
 
 def test_a_rejected_login_never_echoes_the_key(client: TestClient) -> None:
-    raw = format_key(1, mint_secret())
+    raw = _unknown_key()
 
     for body in ({"key": raw}, {"key": raw, "extra": 1}, {"key": 5}):
         assert raw not in client.post("/api/auth/login", json=body).text
@@ -180,14 +209,14 @@ def test_login_updates_last_used_at(
 
 
 def test_revoking_a_key_ends_its_session_on_the_next_request(
-    client: TestClient, mint_key: MintKey
+    client: TestClient, issued_key: IssueKey
 ) -> None:
     """AC6e: the row is loaded per request, so revoke takes effect before expiry."""
-    raw = mint_key("admin")
-    assert client.post("/api/auth/login", json={"key": raw}).status_code == 200
+    issued = issued_key("admin")
+    assert client.post("/api/auth/login", json={"key": issued.key}).status_code == 200
     assert client.get("/api/auth/me").status_code == 200
 
-    assert keys_main(["revoke", str(_key_id(raw))]) == 0
+    assert keys_main(["revoke", str(issued.key_id)]) == 0
 
     response = client.get("/api/auth/me")
     assert response.status_code == 401

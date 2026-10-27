@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import asyncio
 import base64
 import json
-import threading
-from datetime import UTC, datetime
 
 import jwt
 import pytest
@@ -17,21 +14,15 @@ from app.api.security import (
     Claims,
     LoginLimiter,
     cookie_kwargs,
-    format_key,
-    hash_secret,
     issue_session,
-    mint_secret,
     read_session,
     same_origin,
-    verify_login,
 )
 from app.core.config import Settings
-from app.db.keys import AuthKeyRow
 from tests.support.clock import FakeClock
 
 T0 = 1_759_312_800_000
 SECRET = "0123456789abcdef0123456789abcdef"
-NOW = datetime(2026, 10, 1, tzinfo=UTC)
 
 
 def test_the_role_route_table_is_sd2s() -> None:
@@ -182,124 +173,6 @@ def test_the_limiter_forgets_idle_ips() -> None:
 )
 def test_same_origin(origin: str | None, host: str | None, same: bool) -> None:
     assert same_origin(origin, host) is same
-
-
-# --- verify_login (SD6, AC6) -------------------------------------------------------
-
-
-def _row(key_id: int, secret: str, *, revoked: bool = False) -> AuthKeyRow:
-    return AuthKeyRow(
-        key_id=key_id,
-        label=f"key {key_id}",
-        role="bar",
-        secret_hash=hash_secret(secret),
-        created_at=NOW,
-        revoked_at=NOW if revoked else None,
-        last_used_at=None,
-    )
-
-
-class CountingVerifier:
-    def __init__(self) -> None:
-        self.calls: list[tuple[str, int]] = []
-
-    def __call__(self, secret_hash: str, secret: str) -> bool:
-        self.calls.append((secret_hash, threading.get_ident()))
-        from app.api.security import verify_secret
-
-        return verify_secret(secret_hash, secret)
-
-
-@pytest.mark.parametrize("population", [1, 50])
-def test_exactly_one_verify_off_the_loop_for_every_well_formed_key(population: int) -> None:
-    """AC6: unknown, revoked, wrong secret and valid all cost one verify, in a worker thread."""
-    secrets = {n: mint_secret() for n in range(1, population + 1)}
-    rows = {n: _row(n, s, revoked=(n == 1 and population > 1)) for n, s in secrets.items()}
-
-    async def lookup(key_id: int) -> AuthKeyRow | None:
-        return rows.get(key_id)
-
-    async def scenario() -> list[tuple[str, int, bool, int]]:
-        loop_thread = threading.get_ident()
-        results = []
-        cases = {
-            "unknown": format_key(9_999, mint_secret()),
-            "wrong-secret": format_key(population, mint_secret()),
-            "valid": format_key(population, secrets[population]),
-        }
-        if population > 1:
-            cases["revoked"] = format_key(1, secrets[1])
-        for name, raw in cases.items():
-            verifier = CountingVerifier()
-            found = await verify_login(raw, lookup, verifier=verifier)
-            (call,) = verifier.calls
-            results.append(
-                (name, len(verifier.calls), found is not None, int(call[1] != loop_thread))
-            )
-        return results
-
-    for name, calls, found, off_loop in asyncio.run(scenario()):
-        assert calls == 1, name
-        assert off_loop == 1, f"{name}: the verify ran on the event loop thread"
-        assert found is (name == "valid"), name
-
-
-@pytest.mark.parametrize("raw", ["", "bb_", "bb_12", "xx_1_abc", "bb_abc_def", "bb_1_" + "a" * 200])
-def test_a_malformed_key_costs_no_verify_and_no_lookup(raw: str) -> None:
-    looked_up: list[int] = []
-
-    async def lookup(key_id: int) -> AuthKeyRow | None:
-        looked_up.append(key_id)
-        return None
-
-    verifier = CountingVerifier()
-
-    assert asyncio.run(verify_login(raw, lookup, verifier=verifier)) is None
-    assert verifier.calls == []
-    assert looked_up == []
-
-
-def test_an_unknown_key_is_verified_against_the_dummy_hash() -> None:
-    from app.api.security import dummy_hash
-
-    async def lookup(key_id: int) -> AuthKeyRow | None:
-        return None
-
-    verifier = CountingVerifier()
-    asyncio.run(verify_login(format_key(5, mint_secret()), lookup, verifier=verifier))
-
-    assert [h for h, _ in verifier.calls] == [dummy_hash()]
-
-
-def test_the_first_unknown_key_builds_the_dummy_hash_off_the_loop(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """AC6: the lazily built dummy hash is a full argon2 hash; it must not stall the loop."""
-    from app.api import security
-
-    real_hash = security.hash_secret
-    hashed_on: list[int] = []
-
-    def spy(secret: str) -> str:
-        hashed_on.append(threading.get_ident())
-        return real_hash(secret)
-
-    async def lookup(key_id: int) -> AuthKeyRow | None:
-        return None
-
-    async def scenario() -> int:
-        await verify_login(format_key(5, mint_secret()), lookup, verifier=CountingVerifier())
-        return threading.get_ident()
-
-    monkeypatch.setattr(security, "hash_secret", spy)
-    security.dummy_hash.cache_clear()
-    try:
-        loop_thread = asyncio.run(scenario())
-    finally:
-        security.dummy_hash.cache_clear()
-
-    assert len(hashed_on) == 1
-    assert hashed_on[0] != loop_thread
 
 
 # --- the cookie (SD8, AC6a) --------------------------------------------------------
