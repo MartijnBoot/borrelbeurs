@@ -6,6 +6,11 @@
  * row's changed bounds -- or nothing, "Niets te wijzigen". `p_min < p0 < p_max`
  * is checked here first; the server's 422 shows under the field it names. On the
  * live run the server holds each affected quoted price (SD9).
+ *
+ * B-07 (SD1, SD6, SD10; PD9): a Minimumprijs or Maximumprijs the save would send
+ * must be a multiple of the Prijsstap, else SD1's message shows under it and
+ * nothing is sent. A stored bound off the grid shows "Niet op de Prijsstap: kies
+ * x of y." while it is untouched; it is never sent, so the row still saves.
  */
 import { type FormEvent, useId, useMemo, useState } from 'react'
 import { Button } from '../../components/ui/Button'
@@ -15,6 +20,7 @@ import { request } from '../../lib/http'
 import { useEditableRecord } from '../../lib/useEditableRecord'
 import explanations from './explanations.json'
 import styles from './settings.module.css'
+import { gridMessage, offGridHint, onGrid, stepCents } from './grid'
 import { faultsOf, Revision, type RunConfig, useRunConfig } from './useRunConfig'
 
 type Drink = RunConfig['drinks'][number]
@@ -26,6 +32,7 @@ interface Bounds {
 }
 
 const FIELDS = ['p_min_cents', 'p0_cents', 'p_max_cents'] as const
+const GRID = ['p_min_cents', 'p_max_cents'] as const
 
 export function BoundsSection() {
   const { config, failed, reload } = useRunConfig()
@@ -37,7 +44,13 @@ export function BoundsSection() {
       {config.drinks
         .filter((drink) => drink.active)
         .map((drink) => (
-          <BoundsRow key={drink.drink_id} runId={config.run.run_id} drink={drink} onDone={reload} />
+          <BoundsRow
+            key={drink.drink_id}
+            runId={config.run.run_id}
+            drink={drink}
+            step={stepCents(config.params.step_quant)}
+            onDone={reload}
+          />
         ))}
     </>
   )
@@ -46,10 +59,12 @@ export function BoundsSection() {
 function BoundsRow({
   runId,
   drink,
+  step,
   onDone,
 }: {
   runId: number
   drink: Drink
+  step: number
   onDone: () => Promise<void>
 }) {
   const server = useMemo<Bounds>(
@@ -81,6 +96,18 @@ function BoundsRow({
         mid < high
       if (!ordered && record.dirty) {
         setError('Minimumprijs < Startprijs < Maximumprijs')
+        return
+      }
+      const offGrid: Record<string, string> = {}
+      for (const field of GRID) {
+        const sent = record.patch[field]
+        if (typeof sent === 'number' && !onGrid(sent, step)) {
+          offGrid[field] = gridMessage(sent, step)
+        }
+      }
+      if (Object.keys(offGrid).length > 0) {
+        setFaults(offGrid)
+        setError(null)
         return
       }
     }
@@ -126,6 +153,13 @@ function BoundsRow({
             info={explanations[field]}
             cents={values?.[field] ?? null}
             onChange={(value) => record.set(field, value)}
+            hint={
+              field !== 'p0_cents' &&
+              values?.[field] === drink[field] &&
+              !onGrid(drink[field], step)
+                ? offGridHint(drink[field], step)
+                : undefined
+            }
             error={faults[field]}
           />
         ))}

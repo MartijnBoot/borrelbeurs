@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 // Drankjes beheren (Phase 6 T26: SD13, SD25; AC4, AC17, AC21, AC39): add with
 // blank optionals omitted, rename and bar price dirty-only, remove behind a dialog.
+// B-07 T9 (AC4): a bound off the Prijsstap blocks the add, its message under it.
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectExplained } from '../../components/ui/infoTesting'
@@ -166,6 +167,22 @@ describe('DrinksSection', () => {
       bar_price_cents: 220,
       a: 1.5,
     })
+  })
+
+  it('an add with a bound off the Prijsstap shows SD1 under it and sends nothing (B-07 AC4)', async () => {
+    await open()
+    const form = addForm()
+    type(form, 'Naam', 'Cola')
+    type(form, 'Minimumprijs (€)', '1')
+    type(form, 'Startprijs (€)', '2')
+    type(form, 'Maximumprijs (€)', '4,75')
+    fireEvent.click(form.getByRole('button', { name: 'Toevoegen' }))
+    await settle()
+    expect(writes()).toEqual([])
+    expect(
+      form.getByText('Moet een veelvoud van de Prijsstap (0,10) zijn: 4,70 of 4,80.'),
+    ).toBeTruthy()
+    expect(form.getByLabelText('Maximumprijs (€)').getAttribute('aria-invalid')).toBe('true')
   })
 
   const ADD_KEYS = [
