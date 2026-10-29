@@ -1,10 +1,33 @@
 #!/usr/bin/env bash
-# BorrelBeurs -- the gate (AC4, plan T9).
+# BorrelBeurs -- the gate (AC4, plan T9; B-11 three stages).
 #
-# Every check this repository has, in one place, fastest first (way-of-working
-# 7.3:1179), stopping at the first failure. CI runs this script verbatim (T11)
-# rather than restating its steps in YAML, so "green locally" and "green in CI"
-# are the same claim.
+# Every check this repository has, in one place. CI runs this script verbatim
+# (T11) rather than restating its steps in YAML, so "green locally" and "green
+# in CI" are the same claim. Three stages; "stop at the first failure" holds
+# between them:
+#
+#   1. Static, one after another, stopping at the first failure: ruff format,
+#      ruff check, web format, web lint, mypy, tsc, API-types drift, web build,
+#      built-output references.
+#   2. Side by side: pytest unit/meta/engine, vitest, the database tests that
+#      are not `serial` across worker processes, and web e2e. Each writes its
+#      whole output to its own log under the OS temp directory; the terminal
+#      shows a line when a step starts and one when it ends. A failed step does
+#      not stop its siblings; afterwards every failed step is named and its log
+#      printed, and stage 3 does not start. Green removes the log directory,
+#      red keeps it and prints its path last.
+#   3. Alone, last: the `serial` database tests (they assert real elapsed time
+#      or start a real app, B-11 SD3) in one plain process.
+#
+# While stage 2 runs, a holder process keeps the shared run lock on the
+# Postgres server (tests/support/pg_gate.py), and stage 2's children skip taking
+# it themselves (BB_GATE_LOCK_HELD, set only for them). Stage 3 takes the lock
+# exclusive, so it waits for any other run's database tests and no other run
+# starts them meanwhile; it says so when it waits. Two gates, or a gate and a
+# targeted `uv run pytest tests/api/...`, may therefore run at the same time.
+#
+# BB_GATE_WORKERS lowers the number of database-test workers for one run; it
+# can never raise it above the cap below.
 #
 # "web api types drift" (Phase 4 T11) regenerates web/src/api/generated from
 # the app's OpenAPI schema (scripts/gen_api_types.sh) and fails on any diff:
@@ -21,8 +44,8 @@
 # Postgres the integration step uses. Needs Playwright's Chromium, which
 # scripts/setup.sh installs.
 #
-# Needs a running Postgres for the last two steps: locally the compose `db` that
-# scripts/setup.sh starts, in CI a service container. The environment comes
+# Needs a running Postgres for the database steps: locally the compose `db`
+# that scripts/setup.sh starts, in CI a service container. The environment comes
 # from .env.local when it exists (local), and from the process otherwise (CI).
 #
 # Git Bash only (plan R2).
@@ -31,6 +54,45 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
+
+# Never inherited: this script is the one that decides who holds the run lock,
+# and it hands the variable only to the stage-2 children (never exported).
+unset BB_GATE_LOCK_HELD
+
+# The most database-test workers a gate may use, so that two full gates together
+# stay at or below 80 of Postgres's 100 connections (B-11 SD2): 40 each.
+# Measured 2026-10-27 (T9), peak client connections sampled once a second:
+#   not-serial database tests, 2 / 4 / 8 workers: 19 / 22 / 30
+#     = about 15 fixed + 1.8 per worker (controller, maintenance connections)
+#   web e2e (the shared and the --empty server): 15; the stage-2 holder: 1
+#   serial stage, alone: 11
+# Stage 2 peak = 15 + 1.8 * workers + 15 + 1 <= 40  ->  4 workers (38 measured).
+CAP=4
+
+fail_early() {
+  echo "scripts/check.sh: $*" >&2
+  exit 1
+}
+
+CORES="$(nproc 2>/dev/null || echo 1)"
+WORKERS="$CORES"
+WORKERS_FROM="the logical cores"
+if [ "$CAP" -lt "$WORKERS" ]; then
+  WORKERS="$CAP"
+  WORKERS_FROM="the cap"
+fi
+if [ -n "${BB_GATE_WORKERS+x}" ]; then
+  if ! [[ "$BB_GATE_WORKERS" =~ ^[1-9][0-9]{0,5}$ ]]; then
+    fail_early "BB_GATE_WORKERS must be a positive integer, got '${BB_GATE_WORKERS}'"
+  fi
+  if [ "$BB_GATE_WORKERS" -gt "$CAP" ]; then
+    fail_early "BB_GATE_WORKERS=${BB_GATE_WORKERS} is above the cap of ${CAP} workers"
+  fi
+  if [ "$BB_GATE_WORKERS" -lt "$WORKERS" ]; then
+    WORKERS="$BB_GATE_WORKERS"
+    WORKERS_FROM="BB_GATE_WORKERS"
+  fi
+fi
 
 require() {
   local tool="$1" hint="$2"
@@ -53,16 +115,16 @@ if [ -f .env.local ]; then
   set +a
 fi
 
-TOTAL=13
+STAGE1_TOTAL=9
 STEP=0
 
 step() {
   local name="$1"
   shift
   STEP=$((STEP + 1))
-  printf '\n==> [%d/%d] %s\n' "$STEP" "$TOTAL" "$name"
+  printf '\n==> [%d/%d] %s\n' "$STEP" "$STAGE1_TOTAL" "$name"
   if ! "$@"; then
-    printf '\nscripts/check.sh: FAILED at step %d/%d (%s)\n' "$STEP" "$TOTAL" "$name" >&2
+    printf '\nscripts/check.sh: FAILED at step %d/%d (%s)\n' "$STEP" "$STAGE1_TOTAL" "$name" >&2
     exit 1
   fi
 }
@@ -96,11 +158,22 @@ pytest_each() {
   done
 }
 
+# One invocation over both database directories: each xdist worker has its own
+# scratch databases, owned and swept by owner (tests/support/pg_gate.py).
+pytest_database_parallel() {
+  uv run pytest tests/integration tests/api -n "$WORKERS" --dist loadgroup -m "not serial"
+}
+
 api_types_drift() {
   ./scripts/gen_api_types.sh
   git diff --exit-code -- web/src/api/generated
 }
 
+# --- stage 1: static, in order ------------------------------------------------
+
+printf 'scripts/check.sh: database tests on %d worker(s) (from %s; cap %d)\n' \
+  "$WORKERS" "$WORKERS_FROM" "$CAP"
+printf '\n=== stage 1: static checks ===\n'
 step "ruff format --check" uv run ruff format --check .
 step "ruff check" uv run ruff check .
 step "web format:check" pnpm --dir web format:check
@@ -110,11 +183,121 @@ step "web tsc -b" pnpm --dir web exec tsc -b
 step "web api types drift" api_types_drift
 step "web build" pnpm --dir web build
 step "built output references" uv run python scripts/check_built_assets.py web/dist
-step "pytest tests/unit tests/meta tests/engine" pytest_each tests/unit tests/meta tests/engine
-# `run test`, not `test`: pnpm's `test` shorthand parses `--run` as its own
-# option and rejects it; `run <script>` passes it through to vitest.
-step "web test" pnpm --dir web run test --run
-step "pytest tests/integration tests/api" pytest_each tests/integration tests/api
-step "web e2e" web_e2e
 
-printf '\nscripts/check.sh: all %d steps passed\n' "$TOTAL"
+# --- stage 2: side by side ----------------------------------------------------
+
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+LOG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/bb-gate-${STAMP}-$$-XXXXXX")"
+HOLDER_PID=""
+STEP_PIDS=()
+STEP_NAMES=()
+STEP_LOGS=()
+
+# Stop a process and what it started, as far as Git Bash can reach: on Windows
+# MSYS signals do not cross into `uv` -> `python` or `pnpm` -> `node` ->
+# Chromium, so go through taskkill on the Windows pid.
+kill_tree() {
+  local pid="$1" winpid
+  if command -v taskkill >/dev/null 2>&1; then
+    winpid="$(cat "/proc/${pid}/winpid" 2>/dev/null || echo "$pid")"
+    taskkill //F //T //PID "$winpid" >/dev/null 2>&1 || true
+  fi
+  kill -- "-${pid}" 2>/dev/null || true
+  kill "$pid" 2>/dev/null || true
+}
+
+on_interrupt() {
+  trap - INT TERM
+  printf '\nscripts/check.sh: INTERRUPTED -- stopping stage 2\n' >&2
+  local pid
+  for pid in ${STEP_PIDS[@]+"${STEP_PIDS[@]}"} $HOLDER_PID; do
+    [ -n "$pid" ] && kill_tree "$pid"
+  done
+  # A dead connection releases its locks, so what survives blocks no later run.
+  printf 'scripts/check.sh: logs kept in %s\n' "$LOG_DIR" >&2
+  exit 130
+}
+trap on_interrupt INT TERM
+
+release_holder() {
+  if [ -n "$HOLDER_PID" ]; then
+    eval "exec ${HOLDER[1]}>&-" 2>/dev/null || true
+    wait "$HOLDER_PID" 2>/dev/null || true
+    HOLDER_PID=""
+  fi
+}
+
+printf '\n=== stage 2: unit, web, database tests, e2e -- side by side ===\n'
+printf 'scripts/check.sh: taking the shared run lock\n'
+coproc HOLDER { exec uv run python -m tests.support.pg_gate hold shared; }
+held_line=""
+read -r -t 900 -u "${HOLDER[0]}" held_line || true
+held_line="${held_line%$'\r'}" # Windows Python ends its lines with CR LF
+if [ "$held_line" != "held" ]; then
+  printf '\nscripts/check.sh: FAILED to take the shared run lock (is the database up?)\n' >&2
+  release_holder
+  exit 1
+fi
+
+launch() {
+  local slug="$1" name="$2"
+  shift 2
+  local log="${LOG_DIR}/${slug}.log"
+  (
+    # Only stage 2's children are covered by the holder; stage 3 and any
+    # targeted run take the lock themselves.
+    export BB_GATE_LOCK_HELD=1
+    # Scratch databases are released, not dropped, while other steps write: a drop
+    # waits on a checkpoint for up to half a minute. Stage 3's sweep removes them.
+    export BB_GATE_DEFER_DROPS=1
+    started=$SECONDS
+    printf '  start  %s\n' "$name"
+    if "$@" >"$log" 2>&1; then
+      printf '  passed %s (%ds)\n' "$name" $((SECONDS - started))
+    else
+      printf '  FAILED %s (%ds)\n' "$name" $((SECONDS - started))
+      exit 1
+    fi
+  ) &
+  STEP_PIDS+=("$!")
+  STEP_NAMES+=("$name")
+  STEP_LOGS+=("$log")
+}
+
+launch unit "pytest tests/unit tests/meta tests/engine" pytest_each tests/unit tests/meta tests/engine
+launch web-test "web test" pnpm --dir web run test --run
+launch database "pytest tests/integration tests/api (not serial, ${WORKERS} workers)" pytest_database_parallel
+launch e2e "web e2e" web_e2e
+
+FAILED=()
+for i in "${!STEP_PIDS[@]}"; do
+  if ! wait "${STEP_PIDS[$i]}"; then
+    FAILED+=("$i")
+  fi
+done
+release_holder
+
+if [ "${#FAILED[@]}" -gt 0 ]; then
+  printf '\nscripts/check.sh: stage 2 FAILED -- %d step(s):\n' "${#FAILED[@]}" >&2
+  for i in "${FAILED[@]}"; do
+    printf '  - %s\n' "${STEP_NAMES[$i]}" >&2
+  done
+  for i in "${FAILED[@]}"; do
+    printf '\n----- %s: %s -----\n' "${STEP_NAMES[$i]}" "${STEP_LOGS[$i]}" >&2
+    cat "${STEP_LOGS[$i]}" >&2
+  done
+  printf '\nscripts/check.sh: stage 3 not run; logs kept in %s\n' "$LOG_DIR" >&2
+  exit 1
+fi
+
+# --- stage 3: serial, alone ---------------------------------------------------
+
+printf '\n=== stage 3: serial database tests ===\n'
+if ! uv run pytest tests/integration tests/api -m serial; then
+  printf '\nscripts/check.sh: FAILED in stage 3 (serial tests)\n' >&2
+  printf 'scripts/check.sh: stage-2 logs kept in %s\n' "$LOG_DIR" >&2
+  exit 1
+fi
+
+rm -rf "$LOG_DIR"
+printf '\nscripts/check.sh: all stages passed\n'

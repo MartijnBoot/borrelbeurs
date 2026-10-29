@@ -25,11 +25,15 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+import pytest
 from sqlalchemy import pool, text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.db import wallets
 from tests.integration.realapp.harness import Client, mint_key, seed_live_run, start_app
+
+# Serial (SD3): starts a real app.
+pytestmark = pytest.mark.serial
 
 KEY = "k-restart-replay-0001"
 PAID_KEY = "k-restart-paid-0001"

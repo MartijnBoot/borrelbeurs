@@ -20,6 +20,9 @@ import pytest
 
 from tests.integration.realapp.harness import Client, start_app
 
+# Serial (SD3): starts a real app.
+pytestmark = pytest.mark.serial
+
 RATE = 10
 NOT_A_KEY = "bb_1_not-a-real-secret"
 

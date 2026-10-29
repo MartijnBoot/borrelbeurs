@@ -9,7 +9,7 @@
  */
 import { test as base, expect, type Browser, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
-import { startServer, stopServer, type ServerProcess } from './serverProcess'
+import { startServer, STOP_HOOK_TIMEOUT_MS, stopServer, type ServerProcess } from './serverProcess'
 
 const TILE = '[class^="_tile_"]' // see board.spec.ts
 const CUSTOM_BG = '#123456'
@@ -48,6 +48,7 @@ test.beforeAll(async () => {
 })
 
 test.afterAll(async () => {
+  test.setTimeout(STOP_HOOK_TIMEOUT_MS)
   await stopServer(server?.child)
 })
 

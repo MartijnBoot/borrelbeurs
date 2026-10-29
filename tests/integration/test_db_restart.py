@@ -32,17 +32,22 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from tests.integration.realapp.harness import (
     AppProcess,
     Client,
-    free_port,
+    claim_free_port,
     mint_key,
     order_until_acked,
     seed_live_run,
     spawn_app,
     start_app,
 )
+from tests.support import pg_gate
 from tests.support.proxy import BlackholeProxy, proxied
+
+# Serial (SD3): starts a real app, and asserts it ready within 60 s.
+pytestmark = pytest.mark.serial
 
 READY_AFTER_RESTORE_S = 60.0  # AC18
 BACKOFF_CAP_S = 5.0
+PORT_LOSSES_ALLOWED = 5
 
 T = TypeVar("T")
 
@@ -120,7 +125,8 @@ def test_a_database_outage_is_recovered_by_restarting_the_app(
     seed_live_run(database_url)
     key = mint_key(database_url, "bar")
     stderr = tmp_path / "app.stderr"
-    port = free_port()
+    port = claim_free_port()  # held for the whole test, so no other run is handed it (B-11 SD14)
+    port_losses = 0
     app = start_app(proxy.url, stderr)
     exits: list[int] = []
     try:
@@ -142,7 +148,16 @@ def test_a_database_outage_is_recovered_by_restarting_the_app(
             if restored_at is not None:
                 assert time.monotonic() - restored_at < READY_AFTER_RESTORE_S, app.stderr()
             if app.proc.poll() is not None:
-                exits.append(app.wait(timeout=5))  # and cancels its watchdog timer
+                code = app.wait(timeout=5)  # and cancels its watchdog timer
+                if app.lost_port():  # something outside the harness took the port: not an outage
+                    port_losses += 1
+                    assert port_losses <= PORT_LOSSES_ALLOWED, app.own_log()
+                    if pg_gate.has_connection():
+                        pg_gate.release_port(port)
+                    port = claim_free_port()
+                    app = spawn_app(proxy.url, stderr, port=port)
+                    continue
+                exits.append(code)
                 if restored_at is None:
                     asyncio.run(_end_other_sessions(database_url))
                     proxy.restore()
@@ -156,6 +171,8 @@ def test_a_database_outage_is_recovered_by_restarting_the_app(
     finally:
         if app.proc.poll() is None:
             app.kill()
+        if pg_gate.has_connection():
+            pg_gate.release_port(port)
 
     assert all(code != 0 for code in exits), exits
     stored = asyncio.run(_order_ids(database_url))

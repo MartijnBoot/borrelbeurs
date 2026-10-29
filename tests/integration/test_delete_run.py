@@ -298,6 +298,8 @@ def test_a_refused_delete_removes_nothing(
     assert after == before
 
 
+# Serial (SD3): asserts elapsed time, `elapsed < 5.0`.
+@pytest.mark.serial
 def test_a_thirty_thousand_order_run_deletes_within_the_live_timeout(
     settings: Settings, database_url: str
 ) -> None:

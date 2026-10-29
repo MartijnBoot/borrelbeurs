@@ -16,7 +16,7 @@ import {
   type Page,
 } from '@playwright/test'
 import { readFileSync, statSync } from 'node:fs'
-import { startServer, stopServer, type ServerProcess } from './serverProcess'
+import { startServer, STOP_HOOK_TIMEOUT_MS, stopServer, type ServerProcess } from './serverProcess'
 
 const TILE = '[class^="_tile_"]' // see board.spec.ts
 const DRINKS = [
@@ -49,6 +49,7 @@ test.beforeAll(async () => {
 })
 
 test.afterAll(async () => {
+  test.setTimeout(STOP_HOOK_TIMEOUT_MS)
   await stopServer(server?.child)
 })
 

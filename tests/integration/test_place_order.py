@@ -707,6 +707,8 @@ def test_every_statement_of_a_wallet_order_is_covered(
     ] == list(WALLET_ORDER_STATEMENTS)
 
 
+# Serial (SD3): asserts elapsed time, `1.5 <= waited < 5.0`.
+@pytest.mark.serial
 def test_a_wallet_held_elsewhere_is_a_503_within_the_lock_timeout(
     settings: Settings, database_url: str
 ) -> None:

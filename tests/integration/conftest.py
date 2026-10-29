@@ -4,9 +4,14 @@
 in a database this module creates, named `bb_test_<hex>`, on the server
 `DATABASE_URL` names (the compose `db` locally, the service container in CI,
 SD16). The configured database is only ever used for the `CREATE DATABASE` and
-`DROP DATABASE` statements themselves, on an AUTOCOMMIT connection. A run that
-was killed before its teardown leaves a `bb_test_*` behind; the next session
-sweeps those first.
+`DROP DATABASE` statements themselves, on an AUTOCOMMIT connection, and for the
+advisory locks `tests/support/pg_gate.py` holds there (B-11 SD5, SD6).
+
+**Owned, so runs can share a server.** Every scratch database is owned -- its
+ownership lock taken before it is created -- for as long as its run lives. A run
+that was killed before its teardown leaves a `bb_test_*` behind, which no live
+process owns; the next session's sweep drops exactly those, and never another
+live run's (an xdist worker's, another gate's, a targeted run beside a gate).
 
 **Why migrations run in a subprocess with `DATABASE_URL` overridden.**
 `db/migrations/env.py` takes its URL from `get_settings()`, which is cached for
@@ -45,9 +50,11 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import Settings
 from app.db.models import Base
+from tests.support import pg_gate
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRATCH_PREFIX = "bb_test_"
+DEFER_DROPS_ENV = "BB_GATE_DEFER_DROPS"
 
 RunAlembic = Callable[..., subprocess.CompletedProcess[str]]
 
@@ -72,24 +79,23 @@ async def _admin(base_url: str, *statements: str) -> list[str]:
 
 
 def _drop(base_url: str, database: str) -> None:
-    asyncio.run(_admin(base_url, f'DROP DATABASE IF EXISTS "{database}" WITH (FORCE)'))
+    """Drop `database`, then give up its ownership, so a sweeper never sees it unowned.
 
-
-def _sweep_leftovers(base_url: str) -> None:
-    """Drop every `bb_test_*` a killed run left behind."""
-    leftovers = asyncio.run(
-        _admin(
-            base_url,
-            f"SELECT datname FROM pg_database WHERE datname LIKE '{SCRATCH_PREFIX}%'",
-        )
-    )
-    for database in leftovers:
-        _drop(base_url, database)
+    Under the gate (`BB_GATE_DEFER_DROPS`, set by `check.sh` for stage 2 only) the
+    drop is left to the sweep that stage 3 starts with: `DROP DATABASE` forces a
+    checkpoint, which takes 3-35 s while other workers write, and each of e2e's
+    eight server stops waited for one (B-11 T10). The database is released, so the
+    sweep finds an owner-less one and drops it when the server is quiet.
+    """
+    if not os.environ.get(DEFER_DROPS_ENV):
+        asyncio.run(_admin(base_url, f'DROP DATABASE IF EXISTS "{database}" WITH (FORCE)'))
+    pg_gate.release(database)
 
 
 def _create(base_url: str) -> tuple[str, str]:
-    """Create an empty scratch database; return its name and URL."""
+    """Own, then create, an empty scratch database; return its name and URL."""
     database = f"{SCRATCH_PREFIX}{secrets.token_hex(6)}"
+    pg_gate.own(base_url, database)
     asyncio.run(_admin(base_url, f'CREATE DATABASE "{database}"'))
     return database, scratch_url(base_url, database)
 
@@ -120,7 +126,7 @@ def run_alembic(url: str, *args: str) -> subprocess.CompletedProcess[str]:
 @pytest.fixture(scope="session")
 def scratch_database(settings: Settings) -> Iterator[str]:
     """A freshly migrated `bb_test_<hex>` for this session; dropped afterwards."""
-    _sweep_leftovers(settings.database_url)
+    pg_gate.sweep(settings.database_url)
     database, url = _create(settings.database_url)
     try:
         migrated = run_alembic(url, "upgrade", "head")

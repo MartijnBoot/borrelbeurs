@@ -40,6 +40,9 @@ from app.main import create_app
 from app.runtime.clock import RealClock
 from exchange import Params
 
+# Serial (SD3): asserts tick gaps and p95 order latency on the real clock.
+pytestmark = pytest.mark.serial
+
 BASE_URL = "https://testserver"
 RATE_HZ = 20
 BASELINE_S = 4.0

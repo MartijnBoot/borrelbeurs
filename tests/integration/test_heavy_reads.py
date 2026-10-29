@@ -45,6 +45,9 @@ from app.main import create_app
 from exchange import Params
 from tests.support.clock import FakeClock
 
+# Serial (SD3): asserts elapsed-time bounds on the heavy reads (60 s, 10 s, 60 s).
+pytestmark = pytest.mark.serial
+
 BASE_URL = "https://testserver"
 T0 = 1_759_312_800_000
 ORDERS: Final = 30_000

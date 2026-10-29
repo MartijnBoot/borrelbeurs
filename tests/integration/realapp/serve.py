@@ -6,8 +6,10 @@ Playwright's global setup runs this; it is not a pytest module. On the server
 `DATABASE_URL` names (the compose `db` locally, the service container in CI;
 use `127.0.0.1`, not `localhost`, on Windows), it:
 
-1. drops every `borrelbeurs_e2e_*` a killed run left behind, then creates
-   `borrelbeurs_e2e_<pid>` and migrates it, in a child process
+1. takes the shared run lock (B-11 SD5; skipped when `check.sh`'s stage-2
+   holder covers it, `BB_GATE_LOCK_HELD`), drops every `borrelbeurs_e2e_*`
+   whose owner is dead (SD6; a live run's is never touched), then owns and
+   creates `borrelbeurs_e2e_<pid>` and migrates it, in a child process
    (`tests/integration/conftest.py`'s reasons);
 2. seeds v1's live run and mints a display, a bar and an admin key, through
    the CLIs (`harness.py`);
@@ -25,8 +27,14 @@ advisory lock. A runner that dies closes the pipe too.
 
 **`--empty` (Phase 6 PD15)** seeds no run and mints only an admin key, for
 `web/e2e/admin.spec.ts`, which builds a borrel from nothing on a second server
-beside the shared one. It skips step 1's sweep: the shared server's database
-is a `borrelbeurs_e2e_*` too, and the shared launcher has already swept.
+beside the shared one. It skips step 1's sweep, which is now harmless either
+way (an owned database is never dropped by a sweeper), but the shared launcher
+has already swept. Its database is owned like any other.
+
+Outside the gate, a standalone `pnpm --dir web run e2e` takes the shared lock
+twice, once per server. The second request can queue behind another gate's
+waiting serial stage and miss Playwright's 120 s ready timeout; the gate itself
+never waits, since its holder is taken before stage 2 starts.
 
 Nothing here is `TestClient` or `curl`: the browser drives the real process.
 The login rate limit is raised for this server only, since the suite logs in
@@ -46,6 +54,7 @@ from pathlib import Path
 
 from tests.integration.conftest import _admin, _drop, run_alembic, scratch_url
 from tests.integration.realapp.harness import mint_key, seed_live_run, start_app
+from tests.support import pg_gate
 
 ROLES = ("display", "bar", "admin")
 E2E_PREFIX = "borrelbeurs_e2e_"
@@ -66,17 +75,15 @@ def main(argv: Sequence[str]) -> int:
         )
         return 2
 
+    pg_gate.acquire_run_lock(base_url, "shared")
     if not empty:
-        leftovers = asyncio.run(
-            _admin(base_url, f"SELECT datname FROM pg_database WHERE datname LIKE '{E2E_PREFIX}%'")
-        )
-        for leftover in leftovers:
-            _drop(base_url, leftover)
+        pg_gate.sweep(base_url)
 
     database = f"{E2E_PREFIX}{os.getpid()}"
     url = scratch_url(base_url, database)
-    drop = f'DROP DATABASE IF EXISTS "{database}" WITH (FORCE)'
-    asyncio.run(_admin(base_url, drop, f'CREATE DATABASE "{database}"'))
+    pg_gate.own(base_url, database)
+    asyncio.run(_admin(base_url, f'DROP DATABASE IF EXISTS "{database}" WITH (FORCE)'))
+    asyncio.run(_admin(base_url, f'CREATE DATABASE "{database}"'))
     try:
         migrated = run_alembic(url, "upgrade", "head")
         if migrated.returncode != 0:
@@ -101,7 +108,8 @@ def main(argv: Sequence[str]) -> int:
             app.kill()
             out.unlink(missing_ok=True)
     finally:
-        asyncio.run(_admin(base_url, drop))
+        _drop(base_url, database)
+        pg_gate.release_run_lock()
     return 0
 
 
