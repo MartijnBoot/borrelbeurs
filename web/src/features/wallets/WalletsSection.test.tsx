@@ -1,11 +1,31 @@
 // @vitest-environment jsdom
 // The Wallets section (B-05 SD6, SD15, SD16; AC30, AC33, AC34; PD2, PD12, PD20).
 // B-06 SD20, PD10, PD18: "Tegoed" and "Rood", payments per borrel, debt (AC25, AC30).
+// B-09: the confirm before printed codes break, the QR preview and its downloads.
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import jsQR from 'jsqr'
+import { encode } from 'uqr'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { pngBlob, saveFile, svgDocument } from '../../components/qr/qrFiles'
 import { formatBalance, formatEuro } from '../../lib/format'
 import { formatDayMonth } from '../../lib/time'
+import { SIGNUP_QR, signupLink } from './signupQr'
 import { WalletsSection } from './WalletsSection'
+
+// jsdom's own address is http://localhost:3000, a loopback host (PD8): a test that needs the
+// buttons enabled sets `address`; null keeps the page's real one.
+const page = vi.hoisted(() => ({
+  address: null as { origin: string; host: string; hostname: string } | null,
+}))
+vi.mock('./signupQr', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./signupQr')>()
+  return { ...actual, pageAddress: () => page.address ?? actual.pageAddress() }
+})
+vi.mock('../../components/qr/qrFiles', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../components/qr/qrFiles')>()),
+  pngBlob: vi.fn(),
+  saveFile: vi.fn(),
+}))
 
 const OVERVIEW = {
   positive_balance_cents: 5000,
@@ -203,6 +223,152 @@ describe('Confirm before printed codes break (B-09 SD7, SD9)', () => {
     expect(puts()).toEqual([
       { signup_code: button === 'Wissen' ? null : typed, unfunded_days: 30, inactive_months: 12 },
     ])
+  })
+})
+
+describe('The QR preview and its downloads (B-09 SD1–SD6, SD8, SD10)', () => {
+  const LAN = { origin: 'http://192.168.8.10', host: '192.168.8.10', hostname: '192.168.8.10' }
+  const LOOPBACK = {
+    origin: 'http://localhost:3000',
+    host: 'localhost:3000',
+    hostname: 'localhost',
+  }
+  const HINT =
+    'Open deze pagina via het netwerkadres (bijv. http://192.168.8.10/) om de QR-code te downloaden.'
+
+  beforeEach(() => {
+    page.address = LAN
+    vi.mocked(pngBlob).mockReset()
+    vi.mocked(saveFile).mockReset()
+  })
+  afterEach(() => {
+    page.address = null
+  })
+
+  const preview = () =>
+    within(region('Aanmeldcode')).queryByRole('img', { name: 'Aanmeld-QR-code' })
+  const button = (name: string) =>
+    within(region('Aanmeldcode')).queryByRole('button', { name }) as HTMLButtonElement | null
+  const cells = (svg: Element) =>
+    Array.from(svg.querySelectorAll('rect'), (r) => `${r.getAttribute('x')},${r.getAttribute('y')}`)
+  const expectedCells = (code: string) =>
+    encode(signupLink(LAN.origin, code), SIGNUP_QR).data.flatMap((row, y) =>
+      row.flatMap((dark, x) => (dark ? [`${x},${y}`] : [])),
+    )
+
+  // The preview rendered to pixels, as a camera would see it, then read with jsqr.
+  function readPreview(svg: Element, k = 6) {
+    const [, , n] = svg.getAttribute('viewBox')!.split(' ').map(Number)
+    const width = n * k
+    const data = new Uint8ClampedArray(width * width * 4).fill(255)
+    for (const rect of Array.from(svg.querySelectorAll('rect'))) {
+      const [x, y] = [Number(rect.getAttribute('x')), Number(rect.getAttribute('y'))]
+      for (let py = y * k; py < (y + 1) * k; py++) {
+        for (let px = x * k; px < (x + 1) * k; px++)
+          data.fill(0, (py * width + px) * 4, (py * width + px) * 4 + 3)
+      }
+    }
+    return jsQR(data, width, width, { inversionAttempts: 'dontInvert' })?.data
+  }
+
+  it('a saved code shows the link, the preview and both buttons, enabled (AC1)', async () => {
+    await open()
+    expect(
+      within(region('Aanmeldcode')).getByText(`${LAN.origin}/speler?code=Borrel2026`),
+    ).toBeTruthy()
+    expect(preview()).not.toBeNull()
+    expect(button('Download PNG')?.disabled).toBe(false)
+    expect(button('Download SVG')?.disabled).toBe(false)
+  })
+
+  it('no code saved: closed, no preview and no buttons (AC2)', async () => {
+    stored = { signup_code: null, unfunded_days: 30, inactive_months: 12 }
+    await open()
+    expect(within(region('Aanmeldcode')).getByText('Aanmelden is gesloten.')).toBeTruthy()
+    expect(preview()).toBeNull()
+    expect(button('Download PNG')).toBeNull()
+    expect(button('Download SVG')).toBeNull()
+  })
+
+  it('typing does not change the preview; the save does, to the code the server returns (AC3)', async () => {
+    await open()
+    expect(cells(preview()!)).toEqual(expectedCells('Borrel2026'))
+
+    fireEvent.change(within(region('Aanmeldcode')).getByLabelText('Aanmeldcode'), {
+      target: { value: '  Nieuw  ' },
+    })
+    expect(cells(preview()!)).toEqual(expectedCells('Borrel2026'))
+
+    await click(region('Aanmeldcode'), 'Opslaan')
+    await click(screen.getByRole('dialog'), 'Wijzigen')
+    expect(cells(preview()!)).toEqual(expectedCells('Nieuw'))
+  })
+
+  it.each(['Borrel2026', 'a b&c#é'])(
+    'the preview decodes to the link shown for %j (AC4)',
+    async (code) => {
+      stored = { ...STORED, signup_code: code }
+      await open()
+      const link = `${LAN.origin}/speler?code=${encodeURIComponent(code)}`
+      expect(within(region('Aanmeldcode')).getByText(link)).toBeTruthy()
+      expect(readPreview(preview()!)).toBe(link)
+    },
+  )
+
+  it('the preview draws Q with a 4-module quiet zone (AC5)', async () => {
+    await open()
+    const modules = encode(signupLink(LAN.origin, 'Borrel2026'), SIGNUP_QR).data
+    expect(preview()!.getAttribute('viewBox')).toBe(`0 0 ${modules.length} ${modules.length}`)
+    expect(cells(preview()!)).toEqual(expectedCells('Borrel2026'))
+  })
+
+  it('"Download PNG" saves the PNG of the same modules under the SD8 name', async () => {
+    const png = new Blob(['png'], { type: 'image/png' })
+    vi.mocked(pngBlob).mockResolvedValue(png)
+    await open()
+    await click(region('Aanmeldcode'), 'Download PNG')
+
+    expect(vi.mocked(pngBlob).mock.calls[0][0]).toEqual(
+      encode(signupLink(LAN.origin, 'Borrel2026'), SIGNUP_QR).data,
+    )
+    expect(vi.mocked(saveFile).mock.calls).toEqual([[png, 'aanmelden-192.168.8.10-Borrel2026.png']])
+  })
+
+  it('"Download SVG" saves the SVG document under the SD8 name', async () => {
+    await open()
+    await click(region('Aanmeldcode'), 'Download SVG')
+
+    const [[blob, name]] = vi.mocked(saveFile).mock.calls
+    expect(name).toBe('aanmelden-192.168.8.10-Borrel2026.svg')
+    expect(blob.type).toBe('image/svg+xml')
+    expect(await blob.text()).toBe(
+      svgDocument(encode(signupLink(LAN.origin, 'Borrel2026'), SIGNUP_QR).data),
+    )
+  })
+
+  it('a PNG that cannot be made says so and throws nothing (PD9)', async () => {
+    vi.mocked(pngBlob).mockRejectedValue(new Error('no 2d canvas'))
+    await open()
+    await click(region('Aanmeldcode'), 'Download PNG')
+
+    expect(within(region('Aanmeldcode')).getByRole('alert').textContent).toBe(
+      'Downloaden lukt niet. Probeer opnieuw.',
+    )
+    expect(saveFile).not.toHaveBeenCalled()
+  })
+
+  it('at a loopback host the buttons are disabled and the hint shows, with the preview (AC10)', async () => {
+    page.address = LOOPBACK
+    await open()
+    expect(preview()).not.toBeNull()
+    expect(button('Download PNG')?.disabled).toBe(true)
+    expect(button('Download SVG')?.disabled).toBe(true)
+    expect(within(region('Aanmeldcode')).getByText(HINT)).toBeTruthy()
+  })
+
+  it('at a LAN host there is no hint (AC10)', async () => {
+    await open()
+    expect(within(region('Aanmeldcode')).queryByText(HINT)).toBeNull()
   })
 })
 

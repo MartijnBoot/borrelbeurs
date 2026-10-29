@@ -3,8 +3,10 @@
  *
  * - **Aanmeldcode:** change or clear the sign-up code. Set, it shows the
  *   poster's link `<origin>/speler?code=<code>` (PD20); cleared, sign-up is
- *   closed. Replacing or clearing a saved code asks first, since printed QR
- *   codes stop working (B-09 SD7).
+ *   closed. Set, it also shows the link's QR code with "Download PNG" and
+ *   "Download SVG", disabled at a loopback address, where the printed link
+ *   would point at the phone itself (B-09 SD2–SD5). Replacing or clearing a
+ *   saved code asks first, since printed QR codes stop working (B-09 SD7).
  * - **Bewaartermijnen:** the two retention periods, whole days and months.
  * - **Totalen:** "Tegoed", what the association still owes in drinks, and
  *   "Rood", what players owe, never netted (B-06 SD20, PD10); per borrel the
@@ -14,7 +16,10 @@
  *   "Verwijderen" behind a confirm naming the balance that is lost, or the
  *   debt that is written off (B-06 SD8, PD18).
  */
-import { type FormEvent, useCallback, useEffect, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { encode } from 'uqr'
+import { pngBlob, saveFile, svgDocument } from '../../components/qr/qrFiles'
+import { QrSvg } from '../../components/qr/QrSvg'
 import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Field } from '../../components/ui/Field'
@@ -32,10 +37,14 @@ import {
   type WalletSettings,
 } from './api'
 import { breaksPrinted } from './signupCode'
+import { isLoopbackHost, pageAddress, SIGNUP_QR, signupFileName, signupLink } from './signupQr'
 import styles from './WalletsSection.module.css'
 
 const NETWORK = 'Verbindingsfout. Probeer opnieuw.'
 const PERIODS = 'Kies 1–365 dagen en 1–60 maanden.'
+const DOWNLOAD = 'Downloaden lukt niet. Probeer opnieuw.'
+const LOOPBACK =
+  'Open deze pagina via het netwerkadres (bijv. http://192.168.8.10/) om de QR-code te downloaden.'
 
 function deleteQuestion(wallet: ListedWallet): string {
   const question = `Wallet '${wallet.name}' verwijderen?`
@@ -47,10 +56,6 @@ function deleteQuestion(wallet: ListedWallet): string {
 function codeQuestion(kind: 'change' | 'clear', saved: string): string {
   const question = kind === 'clear' ? 'Aanmelden sluiten?' : 'Aanmeldcode wijzigen?'
   return `${question} Geprinte QR-codes met '${saved}' werken dan niet meer.`
-}
-
-function signupLink(code: string): string {
-  return `${window.location.origin}/speler?code=${encodeURIComponent(code)}`
 }
 
 export function WalletsSection() {
@@ -69,6 +74,15 @@ export function WalletsSection() {
     kind: 'change' | 'clear'
   } | null>(null)
   const [busy, setBusy] = useState(false)
+
+  // The QR code is the saved code's, never the field's (SD6): one matrix for
+  // the preview and both files, so they hold the same modules (AC5).
+  const { origin, host, hostname } = pageAddress()
+  const saved = settings?.signup_code ?? null
+  const modules = useMemo(
+    () => (saved === null ? null : encode(signupLink(origin, saved), SIGNUP_QR).data),
+    [origin, saved],
+  )
 
   const show = useCallback((stored: WalletSettings) => {
     setSettings(stored)
@@ -122,6 +136,20 @@ export function WalletsSection() {
     )
   }
 
+  async function download(ext: 'png' | 'svg') {
+    if (modules === null || saved === null) return
+    try {
+      const blob =
+        ext === 'png'
+          ? await pngBlob(modules)
+          : new Blob([svgDocument(modules)], { type: 'image/svg+xml' })
+      saveFile(blob, signupFileName(host, saved, ext))
+      setCodeError(null)
+    } catch {
+      setCodeError(DOWNLOAD)
+    }
+  }
+
   function savePeriods(event: FormEvent) {
     event.preventDefault()
     if (settings === null) return
@@ -169,10 +197,22 @@ export function WalletsSection() {
             Wissen
           </Button>
         </form>
-        {settings.signup_code === null ? (
+        {saved === null || modules === null ? (
           <p className={styles.muted}>Aanmelden is gesloten.</p>
         ) : (
-          <p className={styles.link}>{signupLink(settings.signup_code)}</p>
+          <>
+            <p className={styles.link}>{signupLink(origin, saved)}</p>
+            <QrSvg modules={modules} label="Aanmeld-QR-code" className={styles.qr} />
+            <div className={styles.row}>
+              <Button disabled={isLoopbackHost(hostname)} onClick={() => void download('png')}>
+                Download PNG
+              </Button>
+              <Button disabled={isLoopbackHost(hostname)} onClick={() => void download('svg')}>
+                Download SVG
+              </Button>
+            </div>
+            {isLoopbackHost(hostname) && <p className={styles.muted}>{LOOPBACK}</p>}
+          </>
         )}
         {codeError !== null && (
           <p className={styles.error} role="alert">
