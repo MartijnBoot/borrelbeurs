@@ -15,8 +15,7 @@ Top is next. Every item that is not `specced` or `dropped` appears here exactly 
 
 | # | ID | Feature | Size | Status |
 |---|---|---|---|---|
-| 1 | B-09 | Download the sign-up QR code | S | idea |
-| 2 | B-10 | Sign-up QR code on the koers screen | S | idea |
+| 1 | B-10 | Sign-up QR code on the koers screen | S | idea |
 
 ## Items
 
@@ -329,7 +328,7 @@ decisions, not an ADR. Probably no migration. Not the engine.
 
 ### B-09 — Download the sign-up QR code
 
-- **Status:** idea
+- **Status:** specced → `docs/specs/phase-b-09-signup-qr.md`
 - **Added:** 2026-10-27
 - **Size:** S (a day or less) — a guess
 
