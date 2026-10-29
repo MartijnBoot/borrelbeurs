@@ -95,6 +95,7 @@ describe('Aanmeldcode (SD6, PD12, PD20)', () => {
     const code = region('Aanmeldcode')
     fireEvent.change(within(code).getByLabelText('Aanmeldcode'), { target: { value: 'Nieuw' } })
     await click(code, 'Opslaan')
+    await click(screen.getByRole('dialog'), 'Wijzigen')
     expect(puts()).toEqual([{ signup_code: 'Nieuw', unfunded_days: 30, inactive_months: 12 }])
     expect(within(code).getByText(`${window.location.origin}/speler?code=Nieuw`)).toBeTruthy()
   })
@@ -103,6 +104,7 @@ describe('Aanmeldcode (SD6, PD12, PD20)', () => {
     await open()
     const code = region('Aanmeldcode')
     await click(code, 'Wissen')
+    await click(screen.getByRole('dialog'), 'Wissen')
     expect(puts()).toEqual([{ signup_code: null, unfunded_days: 30, inactive_months: 12 }])
     expect(within(code).getByText('Aanmelden is gesloten.')).toBeTruthy()
     expect((within(code).getByLabelText('Aanmeldcode') as HTMLInputElement).value).toBe('')
@@ -112,6 +114,95 @@ describe('Aanmeldcode (SD6, PD12, PD20)', () => {
     stored = { signup_code: null, unfunded_days: 30, inactive_months: 12 }
     await open()
     expect(within(region('Aanmeldcode')).getByText('Aanmelden is gesloten.')).toBeTruthy()
+  })
+})
+
+describe('Confirm before printed codes break (B-09 SD7, SD9)', () => {
+  const CHANGE = "Aanmeldcode wijzigen? Geprinte QR-codes met 'Borrel2026' werken dan niet meer."
+  const CLEAR = "Aanmelden sluiten? Geprinte QR-codes met 'Borrel2026' werken dan niet meer."
+
+  const field = () =>
+    within(region('Aanmeldcode')).getByLabelText('Aanmeldcode') as HTMLInputElement
+  const type = (value: string) => fireEvent.change(field(), { target: { value } })
+  const dialogButtons = () =>
+    within(screen.getByRole('dialog'))
+      .getAllByRole('button')
+      .map((button) => button.textContent)
+
+  it('a different code asks first, and "Wijzigen" saves it once (AC11)', async () => {
+    await open()
+    type('Anders')
+    await click(region('Aanmeldcode'), 'Opslaan')
+    expect(screen.getByRole('dialog').textContent).toContain(CHANGE)
+    expect(dialogButtons()).toEqual(['Wijzigen', 'Annuleren'])
+    expect(puts()).toEqual([])
+
+    await click(screen.getByRole('dialog'), 'Wijzigen')
+    expect(puts()).toEqual([{ signup_code: 'Anders', unfunded_days: 30, inactive_months: 12 }])
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('"Wissen" asks to close sign-up, and its "Wissen" sends null (AC12)', async () => {
+    await open()
+    await click(region('Aanmeldcode'), 'Wissen')
+    expect(screen.getByRole('dialog').textContent).toContain(CLEAR)
+    expect(dialogButtons()).toEqual(['Wissen', 'Annuleren'])
+    expect(puts()).toEqual([])
+
+    await click(screen.getByRole('dialog'), 'Wissen')
+    expect(puts()).toEqual([{ signup_code: null, unfunded_days: 30, inactive_months: 12 }])
+    expect(within(region('Aanmeldcode')).getByText('Aanmelden is gesloten.')).toBeTruthy()
+  })
+
+  it('"Opslaan" over a whitespace-only field asks to close sign-up too (AC12)', async () => {
+    await open()
+    type('   ')
+    await click(region('Aanmeldcode'), 'Opslaan')
+    expect(screen.getByRole('dialog').textContent).toContain(CLEAR)
+    expect(puts()).toEqual([])
+
+    await click(screen.getByRole('dialog'), 'Wissen')
+    expect(puts()).toEqual([{ signup_code: '   ', unfunded_days: 30, inactive_months: 12 }])
+    expect(within(region('Aanmeldcode')).getByText('Aanmelden is gesloten.')).toBeTruthy()
+  })
+
+  it.each([
+    ['a change', 'Anders', 'Opslaan'],
+    ['a clear', 'Getypt', 'Wissen'],
+  ])(
+    '"Annuleren" after %s saves nothing and keeps the typed text (AC13)',
+    async (_, typed, button) => {
+      await open()
+      type(typed)
+      await click(region('Aanmeldcode'), button)
+      await click(screen.getByRole('dialog'), 'Annuleren')
+
+      expect(puts()).toEqual([])
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(field().value).toBe(typed)
+      const code = region('Aanmeldcode')
+      expect(
+        within(code).getByText(`${window.location.origin}/speler?code=Borrel2026`),
+      ).toBeTruthy()
+      expect(within(code).queryByText('Aanmelden is gesloten.')).toBeNull()
+    },
+  )
+
+  it.each([
+    ['a case-only change', 'BORREL', 'borrel', 'Opslaan'],
+    ['the same code with spaces', 'BORREL', ' BORREL ', 'Opslaan'],
+    ['a first code', null, 'Nieuw', 'Opslaan'],
+    ['"Wissen" with none saved', null, '', 'Wissen'],
+  ])('%s saves at once with no dialog (AC14)', async (_, saved, typed, button) => {
+    stored = { signup_code: saved as never, unfunded_days: 30, inactive_months: 12 }
+    await open()
+    type(typed)
+    await click(region('Aanmeldcode'), button)
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(puts()).toEqual([
+      { signup_code: button === 'Wissen' ? null : typed, unfunded_days: 30, inactive_months: 12 },
+    ])
   })
 })
 

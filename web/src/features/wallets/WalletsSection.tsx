@@ -3,7 +3,8 @@
  *
  * - **Aanmeldcode:** change or clear the sign-up code. Set, it shows the
  *   poster's link `<origin>/speler?code=<code>` (PD20); cleared, sign-up is
- *   closed.
+ *   closed. Replacing or clearing a saved code asks first, since printed QR
+ *   codes stop working (B-09 SD7).
  * - **Bewaartermijnen:** the two retention periods, whole days and months.
  * - **Totalen:** "Tegoed", what the association still owes in drinks, and
  *   "Rood", what players owe, never netted (B-06 SD20, PD10); per borrel the
@@ -30,6 +31,7 @@ import {
   putSettings,
   type WalletSettings,
 } from './api'
+import { breaksPrinted } from './signupCode'
 import styles from './WalletsSection.module.css'
 
 const NETWORK = 'Verbindingsfout. Probeer opnieuw.'
@@ -40,6 +42,11 @@ function deleteQuestion(wallet: ListedWallet): string {
   return wallet.balance_cents < 0
     ? `${question} De schuld van ${formatEuro(-wallet.balance_cents)} vervalt.`
     : `${question} Het saldo van ${formatEuro(wallet.balance_cents)} vervalt.`
+}
+
+function codeQuestion(kind: 'change' | 'clear', saved: string): string {
+  const question = kind === 'clear' ? 'Aanmelden sluiten?' : 'Aanmeldcode wijzigen?'
+  return `${question} Geprinte QR-codes met '${saved}' werken dan niet meer.`
 }
 
 function signupLink(code: string): string {
@@ -57,6 +64,10 @@ export function WalletsSection() {
   const [periodError, setPeriodError] = useState<string | null>(null)
   const [listError, setListError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<ListedWallet | null>(null)
+  const [pending, setPending] = useState<{
+    signupCode: string | null
+    kind: 'change' | 'clear'
+  } | null>(null)
   const [busy, setBusy] = useState(false)
 
   const show = useCallback((stored: WalletSettings) => {
@@ -98,6 +109,13 @@ export function WalletsSection() {
 
   function saveCode(event: FormEvent, signupCode: string | null) {
     event.preventDefault()
+    if (settings === null) return
+    const kind = breaksPrinted(settings.signup_code, signupCode)
+    if (kind === null) storeCode(signupCode)
+    else setPending({ signupCode, kind })
+  }
+
+  function storeCode(signupCode: string | null) {
     if (settings === null) return
     void save({ ...settings, signup_code: signupCode }, (text) =>
       setCodeError(text === PERIODS ? 'Kies een code van hoogstens 40 tekens.' : text),
@@ -253,6 +271,18 @@ export function WalletsSection() {
         cancelLabel="Annuleren"
         onConfirm={() => deleting !== null && void remove(deleting)}
         onCancel={() => setDeleting(null)}
+      />
+      <ConfirmDialog
+        open={pending !== null}
+        message={pending === null ? '' : codeQuestion(pending.kind, settings.signup_code ?? '')}
+        confirmLabel={pending?.kind === 'clear' ? 'Wissen' : 'Wijzigen'}
+        cancelLabel="Annuleren"
+        onConfirm={() => {
+          if (pending === null) return
+          setPending(null)
+          storeCode(pending.signupCode)
+        }}
+        onCancel={() => setPending(null)}
       />
     </>
   )
