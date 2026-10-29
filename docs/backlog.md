@@ -18,6 +18,8 @@ Top is next. Every item that is not `specced` or `dropped` appears here exactly 
 | 1 | B-11 | A faster gate | M | idea |
 | 2 | B-09 | Download the sign-up QR code | S | idea |
 | 3 | B-10 | Sign-up QR code on the koers screen | S | idea |
+| 4 | B-12 | Settings on separate pages per kind of work | M | idea |
+| 5 | B-13 | A role for the drinks and the look of the night | M | idea |
 
 ## Items
 
@@ -441,6 +443,85 @@ a timing test that fails only under load, so that a red gate is no longer believ
 **Touches.** (A guess.) `scripts/check.sh`, `tests/integration/conftest.py`,
 `tests/api/conftest.py`, `pyproject.toml` and `uv.lock`, the timing-sensitive test modules,
 perhaps the vitest config, and CLAUDE.md's "13 steps" text. Not the engine, no ADR.
+
+### B-12 — Settings on separate pages per kind of work
+
+- **Status:** idea
+- **Added:** 2026-10-27
+- **Size:** M (a few tasks) — a guess
+
+**Problem.** `/settings` is one long page of 11 sections in v1's sidebar order (Phase 6 SD25).
+What steers a night (drinks, prices, looks) sits mixed in with what runs the system (engine,
+keys, system actions). It is too crowded: someone else — a partner, a host — cannot tell what
+matters for the night and what for the system, and it is hard to explain what does what.
+
+**Idea.** One Instellingen button opens a main settings page, which leads to separate
+sub-pages, one per kind of work (a guess: Drankjes & avond, Wallets, Engine, Systeem).
+Globale instellingen, 18 fields in one grid today, splits into labelled groups (a guess):
+Prijzen (Prijsstap, beside Min/Max/Startprijs); Hoe bestellingen de prijs bewegen (Beweging per
+bestelling, Drukdrempel, Concurrentie, Trek naar gemiddelde prijs, Nawerking, Geheugen, Ritme
+stille drankjes); Willekeurige ruis (the switch, its five fields hidden while it is off);
+Koersbord (Grafiekgeschiedenis, Kaarsbreedte); Betalen (Wallet verplicht, Rood staan tot, beside
+the other wallet settings). No tick boxes: every on/off is a switch. `/manipulation` stays its
+own page, as it is now.
+
+**Why it matters.** The owner's partner can run the system without the owner on location as a
+technician, and each page shows only what one person needs, so it is easy to explain.
+
+**Not this.** (A guess, not contradicted.) No change to the pricing maths or to what any setting
+does; B-01's names and explanations stay. No new role — that is B-13. A failure, even if it
+works: a setting gets lost in the move, or can no longer be found.
+
+**Open questions.**
+- Which sections go on which sub-page — in particular Borrel (start and close), Profielen (a
+  saved set of engine settings, B-04) and Min/Max/Startprijs?
+- What the main settings page shows: links only, or status too?
+- Sub-page addresses: `docs/design/frontend-architecture.md:64` keeps v1's routes, so changing
+  them changes `docs/design/` — the owner's call.
+- Does the Vraag/Aanbod section fold into the engine group?
+- Idle's per-drink tick boxes on `/manipulation`: do they go too, though the page stays?
+- Narrow screens: what replaces `MobileSectionNav` across sub-pages?
+- The home tile's text ("Globale instellingen, grenzen, vraag/aanbod, drankjes, afsluiten").
+
+**Touches.** (A guess.) `web/src/app/pages/SettingsPage.tsx`, `features/settings`,
+`features/wallets`, `features/keys`, `app/routes.tsx`, `features/home/HomePage.tsx`,
+`components/ui/Switch.tsx`. Reverses Phase 6 SD25 — a spec decision, not an ADR. Not the engine.
+
+### B-13 — A role for the drinks and the look of the night
+
+- **Status:** idea
+- **Added:** 2026-10-27
+- **Size:** M (a few tasks) — a guess
+
+**Problem.** Kassa runs the bank and wallets, bar handles the bar and orders. Whoever looks
+after the list of drinks, the looks (colours, images), profiles and events has no role of their
+own: drinks, colours, images and profiles are admin-only, so they need the admin key, which also
+opens the engine's advanced settings and creating keys. And kassa cannot reach the wallet
+settings, which sit on `/settings`.
+
+**Idea.** A new role (name to be decided) whose key opens B-12's drinks-and-looks sub-page and
+events, but not the engine, keys or system actions. The kassa key also opens the wallet
+sub-page. Creating keys stays admin-only; admin keeps everything.
+
+**Why it matters.** The host of the event can do the basic tasks for the night without the
+owner there, while the admin key stays with few people.
+
+**Not this.** No usernames or passwords. Bar and display keep what they can do now (bar keeps
+`/manipulation`). A failure, even if it works (a guess): the new role can change an engine
+setting or create a key — the server must refuse it, hiding a button is not enough.
+
+**Open questions.**
+- The role's name, and which pages it opens: `/manipulation`, `/koers`, `/bar`, `/analytics`,
+  home?
+- May it load a Profiel, given that a profile sets engine settings?
+- Min/Max/Startprijs: the drinks person's, or admin's (they are prices)?
+- Which wallet settings kassa gets: Aanmeldcode, Bewaartermijnen, Wallet verplicht, Rood staan
+  tot?
+- Which admin-only API endpoints need opening to the new role, and to kassa.
+
+**Touches.** (A guess.) `ROLE_ROUTES` in `app/api/security.py` and the admin-only endpoints in
+`app/api`, `app.cli.keys --role`, the Toegangssleutels page, B-12's sub-pages. Changes Phase 3
+and Phase 6 role decisions — spec decisions, not an ADR (a guess). Depends on B-12.
 
 ## Deferred work
 
