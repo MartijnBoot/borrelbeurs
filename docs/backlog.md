@@ -15,16 +15,11 @@ Top is next. Every item that is not `specced` or `dropped` appears here exactly 
 
 | # | ID | Feature | Size | Status |
 |---|---|---|---|---|
-<<<<<<< Updated upstream
 | 1 | B-11 | A faster gate | M | idea |
 | 2 | B-09 | Download the sign-up QR code | S | idea |
 | 3 | B-10 | Sign-up QR code on the koers screen | S | idea |
-=======
-| 1 | B-09 | Download the sign-up QR code | S | idea |
-| 2 | B-10 | Sign-up QR code on the koers screen | S | idea |
-| 3 | B-12 | Settings on separate pages per kind of work | M | idea |
-| 4 | B-13 | A role for the drinks and the look of the night | M | idea |
->>>>>>> Stashed changes
+| 4 | B-12 | Settings on separate pages per kind of work | M | idea |
+| 5 | B-13 | A role for the drinks and the look of the night | M | idea |
 
 ## Items
 
