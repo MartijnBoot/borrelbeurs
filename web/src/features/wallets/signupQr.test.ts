@@ -15,8 +15,9 @@ describe('signupFileName (SD8, AC8)', () => {
     ['192.168.8.10', 'BORREL', 'png', 'aanmelden-192.168.8.10-BORREL.png'],
     ['signup.test:4173', 'Borrel 2026!', 'svg', 'aanmelden-signup.test-4173-Borrel-2026-.svg'],
     ['192.168.8.10', 'café', 'png', 'aanmelden-192.168.8.10-caf-.png'],
-    // An astral character is two UTF-16 halves, and still one dash.
-    ['192.168.8.10', 'bier🍺', 'png', 'aanmelden-192.168.8.10-bier-.png'],
+    // An astral character is two UTF-16 halves, and still one dash. Written as an
+    // escape, so this file passes `noEmoji.test.ts` (B-02 SD12).
+    ['192.168.8.10', 'bier\u{1F37A}', 'png', 'aanmelden-192.168.8.10-bier-.png'],
   ] as const)('%s and %j give %s', (host, code, ext, name) => {
     expect(signupFileName(host, code, ext)).toBe(name)
   })
