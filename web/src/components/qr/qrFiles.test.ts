@@ -227,7 +227,7 @@ describe('pngBlob', () => {
 })
 
 describe('saveFile', () => {
-  it('clicks a download anchor for a blob URL and revokes it afterwards', async () => {
+  it('clicks a download anchor for a blob URL and revokes it 40 s later', async () => {
     // jsdom has neither function, so they are put on URL for this test and taken off again.
     const { createObjectURL, revokeObjectURL } = URL
     const create = vi.fn(() => 'blob:http://signup.test/1')
@@ -250,8 +250,11 @@ describe('saveFile', () => {
       expect(clicks).toHaveLength(1)
       expect(clicks[0].download).toBe('aanmelden-signup.test-BORREL.svg')
       expect(clicks[0].getAttribute('href')).toBe('blob:http://signup.test/1')
+      // WebKit may still be reading the blob after the click: revoked too soon,
+      // the download fails on iOS Safari.
+      vi.advanceTimersByTime(39_999)
       expect(revoke).not.toHaveBeenCalled()
-      vi.runAllTimers()
+      vi.advanceTimersByTime(1)
       expect(revoke).toHaveBeenCalledWith('blob:http://signup.test/1')
     } finally {
       vi.useRealTimers()

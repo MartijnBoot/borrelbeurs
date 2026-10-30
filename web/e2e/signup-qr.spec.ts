@@ -107,6 +107,11 @@ test.beforeAll(async () => {
   await closeSignup()
 })
 
+// The server is shared: a failure midway must not leave a code saved (PD7).
+test.afterAll(async () => {
+  await closeSignup()
+})
+
 test('the sign-up QR code downloads, decodes and survives code changes, over plain HTTP', async ({
   browser,
 }) => {

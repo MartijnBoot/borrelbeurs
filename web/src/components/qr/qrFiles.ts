@@ -60,6 +60,8 @@ export function pngBlob(modules: Modules): Promise<Blob> {
 /**
  * Hands the browser a file through a blob URL and `<a download>`: both work over
  * plain HTTP at the venue, where the File System Access API and sharing do not (AC9).
+ * The URL is revoked only after 40 s, as FileSaver.js does: WebKit may still be
+ * reading the blob after the click, and the file is a few kB.
  */
 export function saveFile(blob: Blob, name: string): void {
   const url = URL.createObjectURL(blob)
@@ -67,5 +69,5 @@ export function saveFile(blob: Blob, name: string): void {
   anchor.href = url
   anchor.download = name
   anchor.click()
-  setTimeout(() => URL.revokeObjectURL(url), 0)
+  setTimeout(() => URL.revokeObjectURL(url), 40_000)
 }
