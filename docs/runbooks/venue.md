@@ -32,6 +32,12 @@
 2. DHCP reservation: the laptop's MAC gets one fixed IP, `192.168.8.10` unless you chose
    another. Put that in `BB_PUBLIC_URL`.
 3. Make a QR code of `http://192.168.8.10/` and print it. Check a phone joins and loads it.
+4. The sign-up poster. With the laptop on the router and `start.cmd` running, log in as admin
+   at `http://192.168.8.10/` -- not on Render, and not at `http://localhost/`, where the
+   download buttons are disabled. Under Instellingen → Wallets → Aanmeldcode, save the code and
+   press "Download PNG". Print it, and check that a phone on the venue Wi-Fi scans it and opens
+   the player page with the code filled in. Changing or clearing the code later breaks every
+   printed copy: the page asks first, and you print again.
 
 ## During
 

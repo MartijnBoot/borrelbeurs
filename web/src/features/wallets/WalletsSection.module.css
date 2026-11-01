@@ -53,3 +53,12 @@
 .error {
   color: var(--danger);
 }
+
+/* The sign-up QR preview (B-09 SD5): black on white whatever the theme, as the player's. */
+.qr {
+  display: block;
+  width: 160px;
+  height: 160px;
+  margin-top: 8px;
+  background: #fff;
+}

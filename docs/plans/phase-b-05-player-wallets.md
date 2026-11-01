@@ -62,7 +62,7 @@ Rows marked **Owner** are spec ambiguities with two user-visible readings (CLAUD
 | PD17 | The kassa search (SD11, AC25) | `GET /api/kassa/wallets?name=<text>` (the spec's name), 1–40 characters:<br>• every non-deleted wallet whose `name_key` contains `casefold(text)` (`LIKE` with `%`/`_`/`\` escaped);<br>• plus, if `normalise_short_code(text)` matches one, that wallet first.<br>Each row: `wallet_id`, `name`, `created_at`, `balance_cents`, `last_topup_at`. The page drops the open wallet from the list ("every *other*"). | One box, as SD11 describes. |
 | PD18 | Per-borrel order and "last activity" (SD16) | Borrels are ordered by `run.started_at DESC`. Only a live run is ever recorded, so every recorded run has `started_at`. The row label is the run's name. "Last activity" is the newest entry's `created_at`, or `created_at` of the wallet when it has none, the same rule the clean-up uses (SD15). Lists are sorted in Python by `(name_key, wallet_id)`, as B-04 PD6. | One definition, two users. |
 | PD19 | Retention arithmetic | Unfunded: no entry and `created_at < now - unfunded_days days`. Inactive: `coalesce(max(entry.created_at), wallet.created_at) < now - inactive_months months` (Postgres `make_interval(months => …)` on the app-clock `now` passed in). | Calendar months, as the setting is in months. |
-| PD20 | The poster QR | Not built. The owner makes the poster from the link `/speler?code=<code>` with any QR maker. The Wallets section shows that link as text beside the code (read-only). **Confirm** | SD6 names the link, and no AC asks the app to draw the poster. Showing the link costs one line and avoids a typo on the poster. |
+| PD20 | The poster QR | Not built. The owner makes the poster from the link `/speler?code=<code>` with any QR maker. The Wallets section shows that link as text beside the code (read-only). **Confirm**<br>*Amended by B-09:* the Wallets section draws the QR code and downloads it as PNG or SVG ([spec](../specs/phase-b-09-signup-qr.md)). | SD6 names the link, and no AC asks the app to draw the poster. Showing the link costs one line and avoids a typo on the poster. |
 
 ---
 
@@ -800,7 +800,8 @@ T14 fills this in. No page shows the icon (T20) before it holds "go".
 
 As the spec, plus:
 - Fixing D-49 (`useBarController.ts:76`), D5 (clipboard over HTTP) or D6 (the section select). This plan only reports D5 and D6.
-- Drawing the poster QR in the app (PD20 shows the link only).
+- Drawing the poster QR in the app (PD20 shows the link only). *Amended by B-09:* the Wallets
+  section draws the QR code and downloads it as PNG or SVG ([spec](../specs/phase-b-09-signup-qr.md)).
 - An explanation `(i)` for the Wallets section.
 - The stale parts of `frontend-architecture.md` and the missing `schema_compat` row in `data-model.md`.
 - `ALL_ROLES`'s other inline role checks beyond what a kassa test proves (T2's note).
