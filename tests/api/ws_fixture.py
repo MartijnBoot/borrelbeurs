@@ -26,6 +26,11 @@ is recorded by handing a `ConfigChanged` -- the run as booted, with `Fris`
 marked removed -- to a `Publisher` on the app's own hub, on the app's loop:
 the frame the holder's sink would broadcast, built by the same code.
 
+**`signup`** is the handshake's catch-up after `theme`, from a settings row seeded
+before boot with the switch on and a code, and `BB_PUBLIC_URL` set for the
+recording. It is not provoked by a `PUT` mid-session: that broadcast would move
+`seq` for every later frame.
+
 **`run_closed`** is recorded last, after `resync` (whose resync metadata it
 clears), until Phase 7 T6's close route exists: the hub releases the run and
 broadcasts the frame, on the app's loop, as the close does after its commit.
@@ -48,8 +53,10 @@ from fastapi.testclient import TestClient
 
 from app.api.security import issue_key
 from app.core.config import Settings, get_settings
+from app.db import wallets
 from app.db.runs import add_drink, create_draft_run, go_live
 from app.db.session import create_engine
+from app.db.wallets import WalletSettingsRow
 from app.main import create_app
 from app.realtime.messages import Envelope, RunClosedData
 from app.realtime.publish import Publisher, active_drink_ids, seeded_book
@@ -63,6 +70,7 @@ FIXTURE = REPO_ROOT / "web/src/features/exchange/model/__fixtures__/ws-messages.
 BASE_URL = "https://testserver"
 T0 = 1_759_312_800_000
 BOOT_ID = "BOOT"
+PUBLIC_URL = "http://192.168.8.10"
 # Long enough that the resync snapshot still carries the event, then it ends.
 EVENT_MS = 3_000
 MAX_FRAMES = 20
@@ -71,18 +79,19 @@ Frame = dict[str, Any]
 
 
 @contextmanager
-def _database_env(url: str) -> Iterator[None]:
-    """Point the app's settings at `url` for the recording, then restore them."""
-    previous = os.environ.get("DATABASE_URL")
-    os.environ["DATABASE_URL"] = url
+def _environment(**values: str) -> Iterator[None]:
+    """Set the app's settings' variables for the recording, then restore them."""
+    previous = {name: os.environ.get(name) for name in values}
+    os.environ.update(values)
     get_settings.cache_clear()
     try:
         yield
     finally:
-        if previous is None:
-            del os.environ["DATABASE_URL"]
-        else:
-            os.environ["DATABASE_URL"] = previous
+        for name, value in previous.items():
+            if value is None:
+                del os.environ[name]
+            else:
+                os.environ[name] = value
         get_settings.cache_clear()
 
 
@@ -100,7 +109,8 @@ def _scratch_database(settings: Settings) -> Iterator[str]:
 
 
 def _seed(settings: Settings, url: str) -> str:
-    """The `tests/api/conftest.py` live run of three drinks, plus an admin key; the raw key."""
+    """The `tests/api/conftest.py` live run of three drinks, an admin key and a sign-up
+    code shown on the screen; the raw key."""
 
     async def scenario() -> str:
         engine = create_engine(settings.model_copy(update={"database_url": url}))
@@ -125,6 +135,7 @@ def _seed(settings: Settings, url: str) -> str:
                         bar_price_cents=260,
                     )
                 issued = await issue_key(conn, role="admin", label="fixture")
+                await wallets.put_settings(conn, WalletSettingsRow("BORREL", 30, 12, True))
             await go_live(engine, run_id, now_ms=T0)
             return issued.key
         finally:
@@ -165,6 +176,7 @@ def _drive(client: TestClient, clock: FakeClock, key: str) -> dict[str, Frame]:
         s.send({"type": "hello", "boot_id": "not-this-boot", "last_seq": 0})
         s.until("snapshot")
         frames["theme"] = s.until("theme")
+        frames["signup"] = s.until("signup")
         s.send({"type": "ping"})
         frames["pong"] = s.until("pong")
         s.send("state")
@@ -259,7 +271,10 @@ async def _publish_config(client: TestClient) -> None:
 
 def record(settings: Settings) -> dict[str, Frame]:
     """One frame per server message type, from a fresh database and a fake clock."""
-    with _scratch_database(settings) as url, _database_env(url):
+    with (
+        _scratch_database(settings) as url,
+        _environment(DATABASE_URL=url, BB_PUBLIC_URL=PUBLIC_URL),
+    ):
         key = _seed(settings, url)
         clock = FakeClock(T0)
         app = create_app(clock=clock, run_migrations=False)

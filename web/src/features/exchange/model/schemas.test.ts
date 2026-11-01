@@ -29,6 +29,20 @@ describe('ServerMessage', () => {
     expect(ServerMessage.safeParse(frame).success).toBe(false)
   })
 
+  it('records the sign-up state with the switch on, a code and an address (B-10 AC7)', () => {
+    expect(fixture.signup.data).toEqual({
+      show_on_screen: true,
+      signup_code: 'BORREL',
+      public_url: 'http://192.168.8.10',
+    })
+    expect(fixture.signup.version).toBeNull()
+  })
+
+  it('rejects a stray field on the sign-up state', () => {
+    const frame = { ...fixture.signup, data: { ...fixture.signup.data, link: 'http://x' } }
+    expect(ServerMessage.safeParse(frame).success).toBe(false)
+  })
+
   it('rejects data of another type', () => {
     expect(ServerMessage.safeParse({ ...fixture.pong, type: 'tick' }).success).toBe(false)
   })

@@ -2,6 +2,7 @@
 // The Wallets section (B-05 SD6, SD15, SD16; AC30, AC33, AC34; PD2, PD12, PD20).
 // B-06 SD20, PD10, PD18: "Tegoed" and "Rood", payments per borrel, debt (AC25, AC30).
 // B-09: the confirm before printed codes break, the QR preview and its downloads.
+// B-10: the switch for the sign-up QR code on the koers screen (AC10).
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import jsQR from 'jsqr'
 import { encode } from 'uqr'
@@ -41,7 +42,12 @@ const OVERVIEW = {
     { wallet_id: 3, name: 'Gamma', balance_cents: -350, last_activity_at: '2026-10-25T20:00:00Z' },
   ],
 }
-const STORED = { signup_code: 'Borrel2026', unfunded_days: 30, inactive_months: 12 }
+const STORED = {
+  signup_code: 'Borrel2026',
+  unfunded_days: 30,
+  inactive_months: 12,
+  show_signup_on_screen: false,
+}
 
 const json = (status: number, body?: unknown) =>
   new Response(body === undefined ? null : JSON.stringify(body), {
@@ -50,7 +56,14 @@ const json = (status: number, body?: unknown) =>
   })
 
 let overview: typeof OVERVIEW
-let stored: typeof STORED | { signup_code: null; unfunded_days: number; inactive_months: number }
+let stored:
+  | typeof STORED
+  | {
+      signup_code: null
+      unfunded_days: number
+      inactive_months: number
+      show_signup_on_screen: boolean
+    }
 let putAnswer: ((body: typeof STORED) => Response) | null
 
 beforeEach(() => {
@@ -116,7 +129,14 @@ describe('Aanmeldcode (SD6, PD12, PD20)', () => {
     fireEvent.change(within(code).getByLabelText('Aanmeldcode'), { target: { value: 'Nieuw' } })
     await click(code, 'Opslaan')
     await click(screen.getByRole('dialog'), 'Wijzigen')
-    expect(puts()).toEqual([{ signup_code: 'Nieuw', unfunded_days: 30, inactive_months: 12 }])
+    expect(puts()).toEqual([
+      {
+        signup_code: 'Nieuw',
+        unfunded_days: 30,
+        inactive_months: 12,
+        show_signup_on_screen: false,
+      },
+    ])
     expect(within(code).getByText(`${window.location.origin}/speler?code=Nieuw`)).toBeTruthy()
   })
 
@@ -125,13 +145,20 @@ describe('Aanmeldcode (SD6, PD12, PD20)', () => {
     const code = region('Aanmeldcode')
     await click(code, 'Wissen')
     await click(screen.getByRole('dialog'), 'Wissen')
-    expect(puts()).toEqual([{ signup_code: null, unfunded_days: 30, inactive_months: 12 }])
+    expect(puts()).toEqual([
+      { signup_code: null, unfunded_days: 30, inactive_months: 12, show_signup_on_screen: false },
+    ])
     expect(within(code).getByText('Aanmelden is gesloten.')).toBeTruthy()
     expect((within(code).getByLabelText('Aanmeldcode') as HTMLInputElement).value).toBe('')
   })
 
   it('no code set says sign-up is closed', async () => {
-    stored = { signup_code: null, unfunded_days: 30, inactive_months: 12 }
+    stored = {
+      signup_code: null,
+      unfunded_days: 30,
+      inactive_months: 12,
+      show_signup_on_screen: false,
+    }
     await open()
     expect(within(region('Aanmeldcode')).getByText('Aanmelden is gesloten.')).toBeTruthy()
   })
@@ -158,7 +185,14 @@ describe('Confirm before printed codes break (B-09 SD7, SD9)', () => {
     expect(puts()).toEqual([])
 
     await click(screen.getByRole('dialog'), 'Wijzigen')
-    expect(puts()).toEqual([{ signup_code: 'Anders', unfunded_days: 30, inactive_months: 12 }])
+    expect(puts()).toEqual([
+      {
+        signup_code: 'Anders',
+        unfunded_days: 30,
+        inactive_months: 12,
+        show_signup_on_screen: false,
+      },
+    ])
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
@@ -170,7 +204,9 @@ describe('Confirm before printed codes break (B-09 SD7, SD9)', () => {
     expect(puts()).toEqual([])
 
     await click(screen.getByRole('dialog'), 'Wissen')
-    expect(puts()).toEqual([{ signup_code: null, unfunded_days: 30, inactive_months: 12 }])
+    expect(puts()).toEqual([
+      { signup_code: null, unfunded_days: 30, inactive_months: 12, show_signup_on_screen: false },
+    ])
     expect(within(region('Aanmeldcode')).getByText('Aanmelden is gesloten.')).toBeTruthy()
   })
 
@@ -182,7 +218,9 @@ describe('Confirm before printed codes break (B-09 SD7, SD9)', () => {
     expect(puts()).toEqual([])
 
     await click(screen.getByRole('dialog'), 'Wissen')
-    expect(puts()).toEqual([{ signup_code: '   ', unfunded_days: 30, inactive_months: 12 }])
+    expect(puts()).toEqual([
+      { signup_code: '   ', unfunded_days: 30, inactive_months: 12, show_signup_on_screen: false },
+    ])
     expect(within(region('Aanmeldcode')).getByText('Aanmelden is gesloten.')).toBeTruthy()
   })
 
@@ -214,14 +252,24 @@ describe('Confirm before printed codes break (B-09 SD7, SD9)', () => {
     ['a first code', null, 'Nieuw', 'Opslaan'],
     ['"Wissen" with none saved', null, '', 'Wissen'],
   ])('%s saves at once with no dialog (AC14)', async (_, saved, typed, button) => {
-    stored = { signup_code: saved as never, unfunded_days: 30, inactive_months: 12 }
+    stored = {
+      signup_code: saved as never,
+      unfunded_days: 30,
+      inactive_months: 12,
+      show_signup_on_screen: false,
+    }
     await open()
     type(typed)
     await click(region('Aanmeldcode'), button)
 
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(puts()).toEqual([
-      { signup_code: button === 'Wissen' ? null : typed, unfunded_days: 30, inactive_months: 12 },
+      {
+        signup_code: button === 'Wissen' ? null : typed,
+        unfunded_days: 30,
+        inactive_months: 12,
+        show_signup_on_screen: false,
+      },
     ])
   })
 })
@@ -282,7 +330,12 @@ describe('The QR preview and its downloads (B-09 SD1–SD6, SD8, SD10)', () => {
   })
 
   it('no code saved: closed, no preview and no buttons (AC2)', async () => {
-    stored = { signup_code: null, unfunded_days: 30, inactive_months: 12 }
+    stored = {
+      signup_code: null,
+      unfunded_days: 30,
+      inactive_months: 12,
+      show_signup_on_screen: false,
+    }
     await open()
     expect(within(region('Aanmeldcode')).getByText('Aanmelden is gesloten.')).toBeTruthy()
     expect(preview()).toBeNull()
@@ -379,7 +432,14 @@ describe('Bewaartermijnen (AC33)', () => {
     fireEvent.change(within(periods).getByLabelText(/dagen/), { target: { value: '7' } })
     fireEvent.change(within(periods).getByLabelText(/maanden/), { target: { value: '3' } })
     await click(periods, 'Opslaan')
-    expect(puts()).toEqual([{ signup_code: 'Borrel2026', unfunded_days: 7, inactive_months: 3 }])
+    expect(puts()).toEqual([
+      {
+        signup_code: 'Borrel2026',
+        unfunded_days: 7,
+        inactive_months: 3,
+        show_signup_on_screen: false,
+      },
+    ])
   })
 
   it('a 422 names the ranges', async () => {
@@ -488,5 +548,73 @@ describe('a failed load', () => {
     vi.mocked(fetch).mockRejectedValue(new TypeError('offline'))
     await open()
     expect(screen.getByText('Verbindingsfout. Probeer opnieuw.')).toBeTruthy()
+  })
+})
+
+describe('"QR-code op het scherm" (B-10 SD5; AC10)', () => {
+  const box = () =>
+    within(region('Aanmeldcode')).getByRole('checkbox', {
+      name: 'QR-code op het scherm',
+    }) as HTMLInputElement
+
+  async function toggle() {
+    fireEvent.click(box())
+    await act(async () => {})
+  }
+
+  it('shows the stored switch', async () => {
+    await open()
+    expect(box().checked).toBe(false)
+    cleanup()
+
+    stored = { ...STORED, show_signup_on_screen: true }
+    await open()
+    expect(box().checked).toBe(true)
+  })
+
+  it('toggling sends one PUT with the switch flipped and the rest as stored, and asks nothing', async () => {
+    await open()
+    // Unsaved text in the code field is not sent with the switch.
+    fireEvent.change(within(region('Aanmeldcode')).getByLabelText('Aanmeldcode'), {
+      target: { value: 'Getypt' },
+    })
+    await toggle()
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(puts()).toEqual([{ ...STORED, show_signup_on_screen: true }])
+    expect(box().checked).toBe(true)
+
+    await toggle()
+    expect(puts()).toEqual([
+      { ...STORED, show_signup_on_screen: true },
+      { ...STORED, show_signup_on_screen: false },
+    ])
+    expect(box().checked).toBe(false)
+  })
+
+  it('changing the code still asks first, and keeps the switch as stored', async () => {
+    stored = { ...STORED, show_signup_on_screen: true }
+    await open()
+    fireEvent.change(within(region('Aanmeldcode')).getByLabelText('Aanmeldcode'), {
+      target: { value: 'Anders' },
+    })
+    await click(region('Aanmeldcode'), 'Opslaan')
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    await click(screen.getByRole('dialog'), 'Wijzigen')
+
+    expect(puts()).toEqual([{ ...STORED, signup_code: 'Anders', show_signup_on_screen: true }])
+  })
+
+  it('a failed save says so and leaves the box as stored', async () => {
+    await open()
+    putAnswer = () => {
+      throw new TypeError('offline')
+    }
+    await toggle()
+
+    expect(within(region('Aanmeldcode')).getByRole('alert').textContent).toBe(
+      'Verbindingsfout. Probeer opnieuw.',
+    )
+    expect(box().checked).toBe(false)
   })
 })

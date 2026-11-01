@@ -34,6 +34,12 @@ the client holds no preset table (SD6). It carries no prices: `version` is
 **`run_closed` (Phase 7 SD2)** is broadcast once a close has committed and the
 holder is empty. It carries no prices either (`version` is `None`); the client
 applies it outside the seq rule, as it does `theme` (PD5).
+
+**`signup` (B-10 SD3)** is the sign-up state the koers screen draws its QR code
+from: the switch, the code and the server's public address. Like `theme` it is
+broadcast on every save of the wallet settings, with or without a live run, to
+every role (SD4), and sent as a catch-up after every handshake. It carries no
+prices: `version` is `None`, and the latest one received wins.
 """
 
 from __future__ import annotations
@@ -47,11 +53,13 @@ from pydantic import (
     JsonValue,
     StrictBool,
     StrictInt,
+    StrictStr,
     TypeAdapter,
     field_validator,
     model_validator,
 )
 
+from app.db.wallets import WalletSettingsRow
 from app.runtime.theme import TOKEN_NAMES, PresetName, Theme, image_url
 
 PROTOCOL_VERSION: Final = 1
@@ -238,6 +246,26 @@ def theme_data(theme: Theme) -> ThemeData:
     )
 
 
+class SignupData(_Closed):
+    """The koers screen's sign-up block (B-10 SD3): the whole state, never a delta.
+
+    `public_url` is `BB_PUBLIC_URL` (SD1), null when unset; the screen then uses
+    the address it is open at (SD2).
+    """
+
+    show_on_screen: StrictBool
+    signup_code: StrictStr | None
+    public_url: StrictStr | None
+
+
+def signup_data(row: WalletSettingsRow, public_url: str | None) -> SignupData:
+    return SignupData(
+        show_on_screen=row.show_signup_on_screen,
+        signup_code=row.signup_code,
+        public_url=public_url,
+    )
+
+
 class RunClosedData(_Closed):
     """The live run was closed (Phase 7 SD2): no run is live until the next go-live."""
 
@@ -280,6 +308,7 @@ ServerMessageType = Literal[
     "theme",
     "config",
     "run_closed",
+    "signup",
 ]
 
 SERVER_MESSAGE_MODELS: Final[dict[str, type[_Closed]]] = {
@@ -295,6 +324,7 @@ SERVER_MESSAGE_MODELS: Final[dict[str, type[_Closed]]] = {
     "theme": ThemeData,
     "config": ConfigData,
     "run_closed": RunClosedData,
+    "signup": SignupData,
 }
 
 ServerData = (
@@ -310,6 +340,7 @@ ServerData = (
     | ThemeData
     | ConfigData
     | RunClosedData
+    | SignupData
 )
 
 

@@ -580,3 +580,51 @@ def test_0014_downgrade_refuses_while_a_payment_exists(
 
     _in_transaction(empty_database, read)
     assert columns == []
+
+
+def test_0016_gives_the_existing_settings_row_the_screen_switch_off(
+    empty_database: str, alembic: RunAlembic
+) -> None:
+    """B-10 T2 (SD5, AC9): a settings row that exists when 0016 runs gets the switch
+    off, so a deploy shows nothing new on a screen; the downgrade drops the column."""
+    assert alembic(empty_database, "upgrade", "0015").returncode == 0
+
+    async def old_row(connection: AsyncConnection) -> None:
+        await connection.execute(
+            text(
+                "INSERT INTO wallet_settings (signup_code, unfunded_days, inactive_months) "
+                "VALUES ('BORREL', 30, 12)"
+            )
+        )
+
+    _in_transaction(empty_database, old_row)
+    step = alembic(empty_database, "upgrade", "head")
+    assert step.returncode == 0, step.stderr
+
+    found: list[tuple[str, bool]] = []
+
+    async def read(connection: AsyncConnection) -> None:
+        result = await connection.execute(
+            text("SELECT signup_code, show_signup_on_screen FROM wallet_settings")
+        )
+        found.extend((str(row[0]), bool(row[1])) for row in result)
+
+    _in_transaction(empty_database, read)
+    assert found == [("BORREL", False)]
+
+    step = alembic(empty_database, "downgrade", "0015")
+    assert step.returncode == 0, step.stderr
+
+    columns: list[str] = []
+
+    async def read_columns(connection: AsyncConnection) -> None:
+        result = await connection.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'wallet_settings' AND column_name = 'show_signup_on_screen'"
+            )
+        )
+        columns.extend(str(row[0]) for row in result)
+
+    _in_transaction(empty_database, read_columns)
+    assert columns == []

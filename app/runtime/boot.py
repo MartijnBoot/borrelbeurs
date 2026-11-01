@@ -17,7 +17,8 @@ Startup, in this order, and nothing is served until the end:
    is when it declares this image compatible (`schema_ahead`), and refused with
    `BootFailure("schema ahead of image")`, having written nothing, when not;
 4. **the theme** (Phase 4 PD5): the stored row, or Blauw at revision 0, with
-   or without a live run;
+   or without a live run; and the screen's sign-up state (B-10 SD3), the stored
+   wallet settings with `BB_PUBLIC_URL`, and the lock its saves take;
 5. **rehydrate** the live run (with the gap rule), or an empty holder (SD16);
    a wall clock behind its last commit raises the app clock to it (Phase 8 SD15);
 6. the hub and the publisher (the holder's sink);
@@ -53,6 +54,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from app.core.config import Settings
+from app.db import wallets
 from app.db.advisory_lock import acquire, release, watchdog
 from app.db.exports import interrupt_unfinished
 from app.db.models import Run
@@ -61,6 +63,7 @@ from app.db.session import create_engine, create_heavy_read_engine
 from app.db.theme import get_theme
 from app.jobs.export_xlsx import run_worker
 from app.realtime.hub import Hub
+from app.realtime.messages import SignupData, signup_data
 from app.realtime.publish import Publisher, active_drink_ids, seeded_book
 from app.runtime.clock import AppClock
 from app.runtime.holder import DomainEvent, MarketHolder
@@ -158,6 +161,13 @@ async def _stored_theme(engine: AsyncEngine) -> Theme:
     return resolve(row.preset, row.revision, custom=row.custom, images=row.images)
 
 
+async def _stored_signup(engine: AsyncEngine, public_url: str | None) -> SignupData:
+    """The stored sign-up state for the screen, or the defaults when none was stored."""
+    async with engine.connect() as conn:
+        row = await wallets.get_settings(conn)
+    return signup_data(row, public_url)
+
+
 class _LateSink:
     """The holder needs its sink at construction; the publisher needs the holder."""
 
@@ -195,6 +205,9 @@ async def _boot(
         await migrate(engine)
 
     app.state.theme = await _stored_theme(engine)
+    app.state.signup = await _stored_signup(engine, settings.public_url)
+    # A save stores and broadcasts under it, so memory and the last broadcast agree (B-10 PD2).
+    app.state.signup_lock = asyncio.Lock()
 
     sink = _LateSink()
     # Room for a statement to hit the engine's own timeout and report it first.

@@ -35,6 +35,7 @@ export const WalletSettings: z.ZodType<Schemas['WalletSettingsData']> = z.object
   signup_code: z.string().nullable(),
   unfunded_days: z.number().int(),
   inactive_months: z.number().int(),
+  show_signup_on_screen: z.boolean(),
 })
 export type WalletSettings = z.infer<typeof WalletSettings>
 

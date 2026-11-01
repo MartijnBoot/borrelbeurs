@@ -188,7 +188,12 @@ const SERVED: Readonly<Record<string, unknown>> = {
     per_borrel: [],
     wallets: [],
   },
-  '/api/admin/wallet-settings': { signup_code: null, unfunded_days: 30, inactive_months: 12 },
+  '/api/admin/wallet-settings': {
+    signup_code: null,
+    unfunded_days: 30,
+    inactive_months: 12,
+    show_signup_on_screen: false,
+  },
 }
 
 const NAMES = new Set(Object.values(explanations).map((entry) => entry.name))

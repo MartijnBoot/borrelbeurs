@@ -10,14 +10,27 @@
  *
  * While the theme has a promo image (Phase 6 PD9), v1's promo tile sits beside
  * the board and the container takes v1's `has-promo` grid.
+ *
+ * The marquees sit in a band with the sign-up block at its left (B-10 SD7),
+ * shown with or without a live run, through any market event (SD6). With
+ * neither the block nor the marquees there is no band at all.
  */
-import { selectActiveDrinks, selectClosedRun, selectEmpty, useExchange } from '../exchange'
+import { pageAddress } from '../../components/qr/signupLink'
+import {
+  selectActiveDrinks,
+  selectClosedRun,
+  selectEmpty,
+  selectSignup,
+  useExchange,
+} from '../exchange'
 import { HeaderClock } from './HeaderClock'
 import styles from './KoersPage.module.css'
 import { isAnimated, newsRate, useActiveMarketEvent } from './marketEvent'
 import { MarketEventLayer } from './MarketEventLayer'
 import { NewsMarquee } from './NewsMarquee'
 import { PriceMarquee } from './PriceMarquee'
+import { SignupBlock } from './SignupBlock'
+import { signupBlockLink } from './signupBlockLink'
 import { Tile } from './Tile'
 
 export function KoersPage() {
@@ -30,14 +43,23 @@ export function KoersPage() {
   )
   const event = useActiveMarketEvent()
   const promo = useExchange((s) => s.theme?.images.promo ?? null)
+  // The same block for every role: the page reads no role (B-10 SD11).
+  const signup = useExchange(selectSignup)
+  const { origin, hostname } = pageAddress()
+  const signupLink = signupBlockLink(signup, origin, hostname)
 
   return (
     <div className={styles.page}>
-      {!empty && (
-        <>
-          <PriceMarquee />
-          <NewsMarquee playbackRate={newsRate(event)} />
-        </>
+      {(signupLink !== null || !empty) && (
+        <div className={styles.band}>
+          {signupLink !== null && <SignupBlock link={signupLink} />}
+          {!empty && (
+            <div className={styles.marquees}>
+              <PriceMarquee />
+              <NewsMarquee playbackRate={newsRate(event)} />
+            </div>
+          )}
+        </div>
       )}
       <div className={promo === null ? styles.container : `${styles.container} has-promo`}>
         <div className={styles.board}>

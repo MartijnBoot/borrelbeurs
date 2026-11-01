@@ -7,6 +7,8 @@
  *   "Download SVG", disabled at a loopback address, where the printed link
  *   would point at the phone itself (B-09 SD2–SD5). Replacing or clearing a
  *   saved code asks first, since printed QR codes stop working (B-09 SD7).
+ *   "QR-code op het scherm" shows the code on the koers screen (B-10 SD5);
+ *   it saves at once, with no confirm: nothing printed breaks.
  * - **Bewaartermijnen:** the two retention periods, whole days and months.
  * - **Totalen:** "Tegoed", what the association still owes in drinks, and
  *   "Rood", what players owe, never netted (B-06 SD20, PD10); per borrel the
@@ -136,6 +138,12 @@ export function WalletsSection() {
     )
   }
 
+  // The stored settings with the switch flipped; never the code field's unsaved text.
+  function storeOnScreen(show: boolean) {
+    if (settings === null) return
+    void save({ ...settings, show_signup_on_screen: show }, setCodeError)
+  }
+
   async function download(ext: 'png' | 'svg') {
     if (modules === null || saved === null) return
     try {
@@ -197,6 +205,15 @@ export function WalletsSection() {
             Wissen
           </Button>
         </form>
+        <label className={styles.row}>
+          <input
+            type="checkbox"
+            checked={settings.show_signup_on_screen}
+            disabled={busy}
+            onChange={(event) => storeOnScreen(event.target.checked)}
+          />
+          QR-code op het scherm
+        </label>
         {saved === null || modules === null ? (
           <p className={styles.muted}>Aanmelden is gesloten.</p>
         ) : (

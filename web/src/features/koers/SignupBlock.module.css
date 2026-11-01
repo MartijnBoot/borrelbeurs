@@ -1,0 +1,40 @@
+/* The sign-up block (B-10 SD7, PD8): black on white whatever the theme, as the
+   player's wallet code (PlayerPage.module.css). Above the market-event glow
+   (z 100, styles/keyframes.css), so a crash or bubble never tints the code, and
+   below the event banner (z 200). */
+
+.card {
+  position: relative;
+  z-index: 150;
+  flex: none;
+  margin: 10px 0 0 18px;
+  padding: 6px;
+  border-radius: 8px;
+  background: #fff;
+  color: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+/* About 14% of the viewport height, never under 96 px (SD7, AC12). */
+.qr {
+  display: block;
+  width: max(96px, 14vh);
+  height: max(96px, 14vh);
+  background: #fff;
+}
+
+.caption {
+  font-size: max(13px, 1.6vh);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* The koers page's phone layout: a phone does not scan itself (SD9, AC15). */
+@media (max-width: 700px) {
+  .card {
+    display: none;
+  }
+}

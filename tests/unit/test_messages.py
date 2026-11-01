@@ -9,6 +9,7 @@ import pytest
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from app.db.mapping import params_to_json
+from app.db.wallets import WalletSettingsRow
 from app.realtime.messages import (
     PROTOCOL_VERSION,
     SERVER_MESSAGE_MODELS,
@@ -37,11 +38,13 @@ from app.realtime.messages import (
     RunInfo,
     ServerData,
     ServerMessageType,
+    SignupData,
     Snapshot,
     ThemeData,
     TickData,
     TickDrink,
     parse_client_message,
+    signup_data,
     theme_data,
 )
 from app.runtime.theme import TOKEN_NAMES, resolve
@@ -204,6 +207,7 @@ def test_a_float_price_is_rejected() -> None:
         Pong,
         ErrorData,
         ThemeData,
+        SignupData,
     ],
 )
 def test_extra_keys_are_rejected(model: type[BaseModel]) -> None:
@@ -287,6 +291,9 @@ def test_every_server_type_round_trips() -> None:
             params=params_to_json(Params()),
         ),
         "run_closed": RunClosedData(run_id=1, name="Borrel", ended_at_ms=TS),
+        "signup": SignupData(
+            show_on_screen=True, signup_code="BORREL", public_url="http://192.168.8.10"
+        ),
     }
     assert set(samples) == set(SERVER_MESSAGE_MODELS)
     for kind, data in samples.items():
@@ -424,3 +431,33 @@ def test_theme_preset_and_revision_are_constrained(field: str, value: object) ->
 
 def test_hello_carries_a_theme() -> None:
     assert Hello.model_fields["theme"].annotation is ThemeData
+
+
+# --- B-10: the sign-up state for the koers screen (SD3; AC7) -----------------------------
+
+
+def test_signup_data_is_the_stored_switch_and_code_with_the_public_url() -> None:
+    row = WalletSettingsRow("BORREL", 30, 12, True)
+
+    assert signup_data(row, "http://192.168.8.10") == SignupData(
+        show_on_screen=True, signup_code="BORREL", public_url="http://192.168.8.10"
+    )
+    assert signup_data(WalletSettingsRow(), None) == SignupData(
+        show_on_screen=False, signup_code=None, public_url=None
+    )
+
+
+def test_a_signup_envelope_validates_only_signup_data() -> None:
+    """`type="signup"` validates `data` as `SignupData`, never the first union match."""
+    head = {"type": "signup", "seq": 3, "ts_ms": TS, "run_id": None, "version": None}
+    raw = {"show_on_screen": True, "signup_code": None, "public_url": None}
+
+    frame = Envelope.model_validate({**head, "data": raw})
+
+    assert frame.data == SignupData(show_on_screen=True, signup_code=None, public_url=None)
+    with pytest.raises(ValidationError, match="signup"):
+        Envelope.model_validate({**head, "data": Pong(server_ts_ms=TS)})
+    with pytest.raises(ValidationError):
+        Envelope.model_validate({**head, "data": {**raw, "show_on_screen": "yes"}})
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        Envelope.model_validate({**head, "data": {**raw, "url": "http://x"}})

@@ -101,6 +101,9 @@ def app_env(database_url: str, port: int) -> dict[str, str]:
         "APP_ENV": "ci",
         "SESSION_COOKIE_SECURE": "false",
         "LOG_LEVEL": "INFO",
+        # Empty is unset (B-10 SD1): a developer's own address must not reach the real app,
+        # whose koers screen then uses the page it is open at.
+        "BB_PUBLIC_URL": "",
     }
 
 

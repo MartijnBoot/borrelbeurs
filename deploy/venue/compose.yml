@@ -57,6 +57,8 @@ services:
       SESSION_COOKIE_SECURE: "false"
       EXPORT_DIR: /exports
       LOG_LEVEL: INFO
+      # The address in the screen's sign-up QR code (B-10 SD1); the TV shows `localhost`.
+      BB_PUBLIC_URL: ${BB_PUBLIC_URL:-}
     ports:
       - "${BB_HTTP_PORT:-80}:8000"
     volumes:

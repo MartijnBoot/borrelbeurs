@@ -58,7 +58,8 @@ class Settings(BaseSettings):
     """The complete set of environment variables this application understands.
 
     Field names map to their upper-case environment variable: `database_url`
-    reads `DATABASE_URL`.
+    reads `DATABASE_URL`. The one exception names its alias: `public_url` reads
+    `BB_PUBLIC_URL`.
 
     The two secret-bearing fields are declared `repr=False`, so neither
     `repr(settings)` nor `str(settings)` -- and therefore no `%s` in a log call
@@ -130,6 +131,13 @@ class Settings(BaseSettings):
     # 15-minute auto export (Phase 8 SD14). Unset means no host copy at all.
     export_dir: Path | None = None
 
+    # Optional. The address phones reach this app at (B-10 SD1), for the sign-up QR
+    # code on the screen; at the venue the screen itself is open at `localhost`.
+    # Read from `BB_PUBLIC_URL`, the venue `.env`'s own name, and held as
+    # `scheme://host[:port]` with no trailing slash. Unset means the screen uses
+    # the address it is open at.
+    public_url: str | None = Field(default=None, validation_alias="BB_PUBLIC_URL")
+
     @field_validator("log_level", mode="before")
     @classmethod
     def _normalise_log_level(cls, value: object) -> object:
@@ -161,6 +169,37 @@ class Settings(BaseSettings):
     def _empty_export_dir_is_none(cls, value: object) -> object:
         """`EXPORT_DIR=` means "no host copy", never `Path("")`, the working directory."""
         return None if isinstance(value, str) and not value.strip() else value
+
+    @field_validator("public_url", mode="before")
+    @classmethod
+    def _empty_public_url_is_none(cls, value: object) -> object:
+        """`BB_PUBLIC_URL=` is unset: compose passes `${BB_PUBLIC_URL:-}` as `""`."""
+        return None if isinstance(value, str) and not value.strip() else value
+
+    @field_validator("public_url")
+    @classmethod
+    def _check_public_url(cls, value: str | None) -> str | None:
+        """An absolute `http(s)` origin, normalised to `scheme://netloc` (AC1).
+
+        Refused: a path beyond `/`, a query, a fragment, and userinfo -- the
+        address is drawn on a screen, and `http://user:pw@host` must not be. The
+        message never quotes the value back.
+        """
+        if value is None:
+            return None
+        shape = "expected an absolute http(s) address such as http://192.168.8.10"
+        try:
+            parts = urlsplit(value.strip())
+            _port = parts.port  # read inside the `try`: urlsplit parses it lazily
+        except ValueError:
+            raise ValueError(f"is not a parseable URL; {shape}") from None
+        if parts.scheme not in ("http", "https") or not parts.hostname:
+            raise ValueError(shape)
+        if parts.username is not None or parts.password is not None:
+            raise ValueError(f"must not carry a user name or password; {shape}")
+        if parts.path not in ("", "/") or parts.query or parts.fragment:
+            raise ValueError(f"must have no path, query or fragment; {shape}")
+        return f"{parts.scheme}://{parts.netloc}"
 
     @field_validator("database_url")
     @classmethod

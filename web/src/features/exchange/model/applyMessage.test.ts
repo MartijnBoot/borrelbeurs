@@ -9,6 +9,7 @@ import {
   selectActiveDrinks,
   selectClosedRun,
   selectEarnings,
+  selectSignup,
   selectTotals,
 } from './selectors'
 
@@ -377,6 +378,73 @@ describe('run_closed (Phase 7 SD2, PD5)', () => {
 
   it('is ignored before any baseline', () => {
     expect(run(closed)).toEqual(unchanged(initialState, AT))
+  })
+})
+
+describe('signup (B-10 SD3, AC6, AC19; PD5)', () => {
+  const signup = frame('signup') as Of<'signup'>
+  const closed = frame('run_closed') as Of<'run_closed'>
+  const ANDERS = { show_on_screen: true, signup_code: 'ANDERS', public_url: null }
+  const held = apply(live, at(signup, S))
+
+  it('is null before the first message', () => {
+    expect(selectSignup(initialState)).toBeNull()
+    expect(selectSignup(live)).toBeNull()
+  })
+
+  it('the catch-up at the held seq applies without moving it', () => {
+    expect(selectSignup(held)).toEqual(signup.data)
+    expect(held.seq).toBe(S)
+  })
+
+  it('in line it takes its seq', () => {
+    const state = apply(held, at(signup, S + 1, ANDERS))
+    expect(selectSignup(state)).toEqual(ANDERS)
+    expect(state.seq).toBe(S + 1)
+  })
+
+  it('far ahead it applies and starts no resync, and leaves the seq', () => {
+    const state = apply(held, at(signup, S + 5, ANDERS))
+    expect(selectSignup(state)).toEqual(ANDERS)
+    expect(state.awaitingResync).toBe(false)
+    expect(state.seq).toBe(S)
+  })
+
+  it('during a resync it applies and the seq is not taken', () => {
+    const gapped = apply(held, at(tick, S + 3))
+    expect(gapped.awaitingResync).toBe(true)
+    const state = apply(gapped, at(signup, S + 1, ANDERS))
+    expect(selectSignup(state)).toEqual(ANDERS)
+    expect(state.awaitingResync).toBe(true)
+    expect(state.seq).toBe(S)
+  })
+
+  it('the later message received wins, whatever its seq', () => {
+    const later = { show_on_screen: false, signup_code: 'LATER', public_url: null }
+    const state = run(at(hello, S), snapshot, at(signup, S + 4, later), at(signup, S + 2, ANDERS))
+    expect(selectSignup(state)).toEqual(ANDERS)
+  })
+
+  it('a hello with a new boot_id keeps it until the catch-up replaces it', () => {
+    const state = apply(held, at(hello, 1, { boot_id: 'OTHER' }))
+    expect(state.bootId).toBe('OTHER')
+    expect(selectSignup(state)).toEqual(signup.data)
+    expect(selectSignup(apply(state, at(signup, 1, ANDERS)))).toEqual(ANDERS)
+  })
+
+  it('a run_closed keeps it', () => {
+    const state = apply(held, at(closed, S + 1))
+    expect(state.empty).toBe(true)
+    expect(selectSignup(state)).toEqual(signup.data)
+  })
+
+  it('a snapshot keeps it, and so does a polled one', () => {
+    expect(selectSignup(apply(held, at(snapshot, S + 2)))).toEqual(signup.data)
+    expect(selectSignup(applyPolledState(held, snapshot.data, AT))).toEqual(signup.data)
+  })
+
+  it('is ignored before any baseline', () => {
+    expect(run(signup)).toEqual(unchanged(initialState, AT))
   })
 })
 

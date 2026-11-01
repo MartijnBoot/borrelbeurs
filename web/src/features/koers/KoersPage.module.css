@@ -9,6 +9,19 @@
   flex-direction: column;
 }
 
+/* The marquees' band (B-10 SD7, PD8): the sign-up block at its left, the two
+   marquees filling the width to its right. No padding or gap of its own, so with
+   neither shown it takes no space, and the grid below takes what is left. */
+.band {
+  display: flex;
+  align-items: flex-start;
+}
+
+.marquees {
+  flex: 1;
+  min-width: 0;
+}
+
 .container {
   flex: 1;
   min-height: 0;

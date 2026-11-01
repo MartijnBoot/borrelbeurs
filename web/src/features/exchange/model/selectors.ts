@@ -43,6 +43,8 @@ export const selectEmpty = (state: ExchangeState) => state.empty
 export const selectEarnings = (state: ExchangeState) => state.earnings
 /** The run a `run_closed` just ended, until the next snapshot (Phase 7 PD5). */
 export const selectClosedRun = (state: ExchangeState) => state.closedRun
+/** The koers screen's sign-up state, `null` until the first `signup` (B-10 SD3). */
+export const selectSignup = (state: ExchangeState) => state.signup
 
 /** The panel's totals (SD15): sums of the server's per-drink numbers, nothing derived. */
 export function selectTotals(state: ExchangeState): { revenueCents: number; qty: number } {

@@ -42,10 +42,17 @@
  *
  * **Run closed (Phase 7 PD5).** A `run_closed` applies outside the seq rule,
  * like `theme`: with no live run the server has no snapshot to end a resync.
- * It clears live state as a new boot does (boot, theme and skew stay), takes
+ * It clears live state as a new boot does (boot, theme, sign-up and skew stay), takes
  * its seq as the new baseline, ends any pending resync and records
  * `closedRun`. A `snapshot` or a new `boot_id` clears `closedRun`; a same-boot
  * `hello` with no run keeps it, so koers goes on saying the borrel ended.
+ *
+ * **Sign-up (B-10 SD3, PD5).** A `signup` applies outside the seq rule, like
+ * `theme`, but with no revision to compare: the latest one received wins. It
+ * never starts or waits on a resync, and takes its seq only when next in line
+ * with no resync pending. A new `boot_id`, a `run_closed` and a snapshot keep
+ * it, so the koers screen's block does not flash off; the catch-up that
+ * follows every handshake replaces it.
  *
  * **Last frame (Phase 6 PD14).** Every frame, applied or dropped, stamps
  * `lastFrameAt` with its `receivedAt`: home shows the socket's age from it.
@@ -60,6 +67,7 @@ import type {
   NewsItem,
   RunInfo,
   ServerMessage,
+  SignupData,
   SnapshotData,
   ThemeData,
 } from './schemas'
@@ -105,6 +113,8 @@ export interface ExchangeState {
   lastFrameAt: number | null
   /** The run a `run_closed` ended, until a snapshot or a new boot (Phase 7 PD5). */
   closedRun: ClosedRun | null
+  /** The last `signup` received, `null` before the first (B-10 SD3). */
+  signup: SignupData | null
 }
 
 export interface ClosedRun {
@@ -137,6 +147,7 @@ export const initialState: ExchangeState = {
   lastOrderTsMs: null,
   lastFrameAt: null,
   closedRun: null,
+  signup: null,
 }
 
 const UNICAST: ReadonlySet<ServerMessage['type']> = new Set(['hello', 'snapshot', 'pong', 'error'])
@@ -167,6 +178,12 @@ function applyFrame(
     const next = applyTheme(state, message.data)
     const inLine = !state.awaitingResync && message.seq === state.seq + 1
     return inLine ? { ...next, seq: message.seq } : next
+  }
+  if (message.type === 'signup') {
+    // No revision: the latest received wins (AC6). Like `theme` it never starts or
+    // waits on a resync, and takes its seq only when next in line.
+    const inLine = !state.awaitingResync && message.seq === state.seq + 1
+    return { ...state, signup: message.data, ...(inLine ? { seq: message.seq } : {}) }
   }
   if (message.type === 'run_closed') return applyRunClosed(state, message)
   if (state.awaitingResync) return state
@@ -211,6 +228,7 @@ function applyBroadcast(
     case 'resync':
     case 'theme':
     case 'run_closed':
+    case 'signup':
       return state // handled before seq, in applyMessage
     default: {
       const unreachable: never = message
@@ -228,6 +246,7 @@ function applyHello(state: ExchangeState, message: Of<'hello'>): ExchangeState {
           ...initialState,
           status: state.status,
           theme: state.theme,
+          signup: state.signup,
           skewOffsetMs: state.skewOffsetMs,
           bootId: boot_id,
           seq: message.seq,
@@ -242,6 +261,7 @@ function applyRunClosed(state: ExchangeState, message: Of<'run_closed'>): Exchan
     status: state.status,
     bootId: state.bootId,
     theme: state.theme,
+    signup: state.signup,
     skewOffsetMs: state.skewOffsetMs,
     snapshotGen: state.snapshotGen,
     seq: message.seq,

@@ -1976,6 +1976,8 @@ export interface components {
         /**
          * WalletSettingsData
          * @description `signup_code` null is sign-up closed (SD6). A code is trimmed, and blank means null.
+         *     `show_signup_on_screen` is "QR-code op het scherm" (B-10 SD5); it has no default, so a
+         *     `PUT` is a full replace (B-10 PD3).
          */
         WalletSettingsData: {
             /** Signup Code */
@@ -1984,6 +1986,8 @@ export interface components {
             unfunded_days: number;
             /** Inactive Months */
             inactive_months: number;
+            /** Show Signup On Screen */
+            show_signup_on_screen: boolean;
         };
         /**
          * WalletsOverview

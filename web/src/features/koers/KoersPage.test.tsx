@@ -2,13 +2,32 @@
 // The board shows active drinks only (Phase 6 T36: SD18; AC23): a drink removed by
 // `config` loses its tile and its strip pill, and the other tiles are not remounted.
 // The chart is stubbed, and `animate` is a no-op stub (jsdom has none).
-import { act, cleanup, render } from '@testing-library/react'
+// B-10: the sign-up block at the top left of the band (SD6, SD7, SD10, SD11).
+import { act, cleanup, render, screen } from '@testing-library/react'
+import jsQR from 'jsqr'
+import { encode } from 'uqr'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { applyMessage, exchangeStore, type ServerMessage, type SnapshotData } from '../exchange'
+import {
+  applyMessage,
+  exchangeStore,
+  type ServerMessage,
+  type SignupData,
+  type SnapshotData,
+} from '../exchange'
 import { KoersPage } from './KoersPage'
 import styles from './KoersPage.module.css'
 
 vi.mock('./ui/DrinkChart', () => ({ DrinkChart: () => <div /> }))
+
+// jsdom's own address is http://localhost:3000, a loopback host: a test that needs a
+// page address the block can use sets `address`; null keeps the page's real one.
+const page = vi.hoisted(() => ({
+  address: null as { origin: string; host: string; hostname: string } | null,
+}))
+vi.mock('../../components/qr/signupLink', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../components/qr/signupLink')>()
+  return { ...actual, pageAddress: () => page.address ?? actual.pageAddress() }
+})
 
 const RUN = {
   run_id: 1,
@@ -79,6 +98,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   delete (Element.prototype as Partial<Element>).animate
+  page.address = null
 })
 
 /** The name nodes of the board's tiles, in order. */
@@ -180,5 +200,166 @@ describe('a closed run (Phase 7 T17: SD2, PD5; AC3)', () => {
     const { container } = render(<KoersPage />)
     expect(container.textContent).toContain('Geen actieve borrel')
     expect(container.textContent).not.toContain('Borrel afgelopen')
+  })
+})
+
+describe('the sign-up block (B-10 SD6, SD7, SD10, SD11; AC11-AC14, AC17, AC18)', () => {
+  const LAN = { origin: 'http://192.168.8.10', host: '192.168.8.10', hostname: '192.168.8.10' }
+  const ON: SignupData = { show_on_screen: true, signup_code: 'BORREL', public_url: null }
+  const signup = (data: SignupData) => dispatch('signup', data)
+  const block = () => screen.queryByRole('img', { name: 'Aanmeld-QR-code' })
+  const band = (root: HTMLElement) => root.querySelector(`.${styles.band}`)
+
+  // The QR code rendered to pixels, as a camera would see it, then read with jsqr.
+  function decode(svg: Element, k = 6) {
+    const [, , n] = svg.getAttribute('viewBox')!.split(' ').map(Number)
+    const width = n * k
+    const data = new Uint8ClampedArray(width * width * 4).fill(255)
+    for (const rect of Array.from(svg.querySelectorAll('rect'))) {
+      const [x, y] = [Number(rect.getAttribute('x')), Number(rect.getAttribute('y'))]
+      for (let py = y * k; py < (y + 1) * k; py++) {
+        for (let px = x * k; px < (x + 1) * k; px++)
+          data.fill(0, (py * width + px) * 4, (py * width + px) * 4 + 3)
+      }
+    }
+    return jsQR(data, width, width, { inversionAttempts: 'dontInvert' })?.data
+  }
+  const cells = (svg: Element) =>
+    Array.from(svg.querySelectorAll('rect'), (r) => `${r.getAttribute('x')},${r.getAttribute('y')}`)
+  const expectedCells = (link: string) =>
+    encode(link, { ecc: 'Q', border: 4 }).data.flatMap((row, y) =>
+      row.flatMap((dark, x) => (dark ? [`${x},${y}`] : [])),
+    )
+
+  beforeEach(() => {
+    page.address = LAN
+  })
+
+  const noRun = (role: 'display' | 'admin' = 'display') =>
+    dispatch('hello', {
+      boot_id: 'C',
+      run_id: null,
+      tick_interval_ms: 1000,
+      protocol: 1,
+      role,
+      theme: exchangeStore.getState().theme,
+    })
+
+  it('shows for the switch on, a code and an address, at the left of the marquees (AC11)', () => {
+    const { container } = render(<KoersPage />)
+    signup(ON)
+
+    expect(block()).not.toBeNull()
+    const row = band(container)!
+    expect(row.firstElementChild?.contains(block())).toBe(true)
+    expect(row.lastElementChild?.classList.contains(styles.marquees)).toBe(true)
+    expect(row.lastElementChild?.querySelector(`.${styles.tickName}`)).not.toBeNull()
+  })
+
+  it.each<[string, SignupData, typeof LAN | null]>([
+    ['the switch off', { ...ON, show_on_screen: false }, LAN],
+    ['no code', { ...ON, signup_code: null }, LAN],
+    ['a blank code', { ...ON, signup_code: '  ' }, LAN],
+    ['no address: a loopback page and no public_url (AC3)', ON, null],
+  ])('%s shows no block (AC13)', (_, data, address) => {
+    page.address = address
+    const { container } = render(<KoersPage />)
+    signup(data)
+
+    expect(block()).toBeNull()
+    expect(band(container)!.children).toHaveLength(1) // the marquees only
+  })
+
+  it('with no block and no marquees there is no band, so it takes no space (AC13, F9)', () => {
+    noRun()
+    const { container } = render(<KoersPage />)
+    signup({ ...ON, show_on_screen: false })
+
+    expect(band(container)).toBeNull()
+  })
+
+  it('before any signup message there is no block', () => {
+    render(<KoersPage />)
+    expect(block()).toBeNull()
+  })
+
+  it('with a public_url it shows at a loopback page, and links there (AC2)', () => {
+    page.address = null
+    render(<KoersPage />)
+    signup({ ...ON, public_url: 'http://192.168.8.10' })
+
+    expect(decode(block()!)).toBe('http://192.168.8.10/speler?code=BORREL')
+  })
+
+  it('decodes to the link, drawn at Q with a 4-module quiet zone, over "Meld je aan" (AC12)', () => {
+    const link = `${LAN.origin}/speler?code=${encodeURIComponent('a b&c#é')}`
+    render(<KoersPage />)
+    signup({ ...ON, signup_code: 'a b&c#é' })
+
+    const svg = block()!
+    expect(decode(svg)).toBe(link)
+    const modules = encode(link, { ecc: 'Q', border: 4 }).data
+    expect(svg.getAttribute('viewBox')).toBe(`0 0 ${modules.length} ${modules.length}`)
+    expect(cells(svg)).toEqual(expectedCells(link))
+    const card = svg.parentElement!
+    expect(card.textContent).toBe('Meld je aan')
+  })
+
+  it('shows alone with no live run, and after a close (AC14)', () => {
+    noRun()
+    const { container } = render(<KoersPage />)
+    signup(ON)
+    expect(block()).not.toBeNull()
+    expect(band(container)!.children).toHaveLength(1) // the block only
+
+    dispatch('snapshot', SNAPSHOT)
+    dispatch('run_closed', { run_id: 1, name: 'Vrijmibo', ended_at_ms: 0 })
+    expect(container.textContent).toContain('Borrel afgelopen')
+    expect(block()).not.toBeNull()
+  })
+
+  it.each(['crash', 'bubble', 'correction'])('stays through a %s (AC14)', (kind) => {
+    render(<KoersPage />)
+    signup(ON)
+    const before = block()
+    dispatch('market_event', {
+      op: 'start',
+      event_id: 1,
+      kind,
+      drink_ids: [1],
+      t_start_ms: 0,
+      t_end_ms: Date.now() + 60_000,
+    })
+
+    expect(document.querySelector('.market-banner')).not.toBeNull()
+    expect(block()).toBe(before)
+  })
+
+  it('a new code redraws it; a clear or the switch off removes it (AC18)', () => {
+    render(<KoersPage />)
+    signup(ON)
+    expect(decode(block()!)).toBe(`${LAN.origin}/speler?code=BORREL`)
+
+    signup({ ...ON, signup_code: 'ANDERS' })
+    expect(decode(block()!)).toBe(`${LAN.origin}/speler?code=ANDERS`)
+
+    signup({ ...ON, signup_code: null })
+    expect(block()).toBeNull()
+    signup(ON)
+    expect(block()).not.toBeNull()
+    signup({ ...ON, show_on_screen: false })
+    expect(block()).toBeNull()
+  })
+
+  it('admin sees the same block as a display key: the page does not read the role (AC17)', () => {
+    const shown = (role: 'display' | 'admin') => {
+      noRun(role)
+      signup(ON)
+      const { container } = render(<KoersPage />)
+      const html = band(container)!.outerHTML
+      cleanup()
+      return html
+    }
+    expect(shown('admin')).toBe(shown('display'))
   })
 })
