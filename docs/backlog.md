@@ -15,7 +15,6 @@ Top is next. Every item that is not `specced` or `dropped` appears here exactly 
 
 | # | ID | Feature | Size | Status |
 |---|---|---|---|---|
-| 1 | B-10 | Sign-up QR code on the koers screen | S | idea |
 
 ## Items
 
@@ -358,7 +357,7 @@ code changed.
 
 ### B-10 — Sign-up QR code on the koers screen
 
-- **Status:** idea
+- **Status:** specced → `docs/specs/phase-b-10-koers-signup-qr.md`
 - **Added:** 2026-10-27
 - **Size:** S (a day or less) — a guess; M if getting the code to the display is more than it
   looks
