@@ -2,6 +2,7 @@
 // The Wallets section (B-05 SD6, SD15, SD16; AC30, AC33, AC34; PD2, PD12, PD20).
 // B-06 SD20, PD10, PD18: "Tegoed" and "Rood", payments per borrel, debt (AC25, AC30).
 // B-09: the confirm before printed codes break, the QR preview and its downloads.
+// B-10: the switch for the sign-up QR code on the koers screen (AC10).
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import jsQR from 'jsqr'
 import { encode } from 'uqr'
@@ -547,5 +548,73 @@ describe('a failed load', () => {
     vi.mocked(fetch).mockRejectedValue(new TypeError('offline'))
     await open()
     expect(screen.getByText('Verbindingsfout. Probeer opnieuw.')).toBeTruthy()
+  })
+})
+
+describe('"QR-code op het scherm" (B-10 SD5; AC10)', () => {
+  const box = () =>
+    within(region('Aanmeldcode')).getByRole('checkbox', {
+      name: 'QR-code op het scherm',
+    }) as HTMLInputElement
+
+  async function toggle() {
+    fireEvent.click(box())
+    await act(async () => {})
+  }
+
+  it('shows the stored switch', async () => {
+    await open()
+    expect(box().checked).toBe(false)
+    cleanup()
+
+    stored = { ...STORED, show_signup_on_screen: true }
+    await open()
+    expect(box().checked).toBe(true)
+  })
+
+  it('toggling sends one PUT with the switch flipped and the rest as stored, and asks nothing', async () => {
+    await open()
+    // Unsaved text in the code field is not sent with the switch.
+    fireEvent.change(within(region('Aanmeldcode')).getByLabelText('Aanmeldcode'), {
+      target: { value: 'Getypt' },
+    })
+    await toggle()
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(puts()).toEqual([{ ...STORED, show_signup_on_screen: true }])
+    expect(box().checked).toBe(true)
+
+    await toggle()
+    expect(puts()).toEqual([
+      { ...STORED, show_signup_on_screen: true },
+      { ...STORED, show_signup_on_screen: false },
+    ])
+    expect(box().checked).toBe(false)
+  })
+
+  it('changing the code still asks first, and keeps the switch as stored', async () => {
+    stored = { ...STORED, show_signup_on_screen: true }
+    await open()
+    fireEvent.change(within(region('Aanmeldcode')).getByLabelText('Aanmeldcode'), {
+      target: { value: 'Anders' },
+    })
+    await click(region('Aanmeldcode'), 'Opslaan')
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    await click(screen.getByRole('dialog'), 'Wijzigen')
+
+    expect(puts()).toEqual([{ ...STORED, signup_code: 'Anders', show_signup_on_screen: true }])
+  })
+
+  it('a failed save says so and leaves the box as stored', async () => {
+    await open()
+    putAnswer = () => {
+      throw new TypeError('offline')
+    }
+    await toggle()
+
+    expect(within(region('Aanmeldcode')).getByRole('alert').textContent).toBe(
+      'Verbindingsfout. Probeer opnieuw.',
+    )
+    expect(box().checked).toBe(false)
   })
 })
