@@ -1,7 +1,7 @@
 // The koers screen's sign-up rule (B-10 SD2, SD6; AC2, AC3, AC13; PD7), as a table.
 import { describe, expect, it } from 'vitest'
 import type { SignupData } from '../exchange'
-import { signupBlockLink } from './signupBlock'
+import { signupBlockLink } from './signupBlockLink'
 
 const LAN = 'http://192.168.8.10'
 
