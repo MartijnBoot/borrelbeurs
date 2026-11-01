@@ -21,7 +21,9 @@ the run it was told is live (AC3).
 `hello` goes out before the connection joins the hub, a `theme` broadcast in
 between would reach nobody, and a `snapshot` carries no theme; so the handshake
 ends with a `theme` unicast, and so does every `resync_request`'s snapshot. The
-client applies a theme only when its revision is higher.
+client applies a theme only when its revision is higher. The sign-up state for
+the screen (B-10 SD3) follows the same path for the same reason: a `signup`
+unicast right after each `theme` one, and the client keeps the latest.
 
 **Client messages (SD30)** are parsed with the closed union: `ping` -> a JSON
 `pong` (AC24), `resync_request` -> a `snapshot`, anything else or invalid JSON
@@ -155,6 +157,12 @@ class _Session:
         envelope = self.envelope("theme", theme_data(self.app_state.theme))
         self.hub.unicast(self.connection, envelope.model_copy(update={"version": None}))
 
+    def send_signup(self) -> None:
+        """The current sign-up state, as a unicast that does not move `seq` (B-10 SD3)."""
+        assert self.connection is not None
+        envelope = self.envelope("signup", self.app_state.signup)
+        self.hub.unicast(self.connection, envelope.model_copy(update={"version": None}))
+
     def too_fast(self) -> bool:
         now = self.clock.monotonic()
         self._arrivals.append(now)
@@ -201,6 +209,7 @@ class _Session:
         else:
             self.send_snapshot()
             self.send_theme()
+            self.send_signup()
 
     async def run(self) -> None:
         hello = self.envelope(
@@ -250,6 +259,7 @@ class _Session:
                 # The run in our `hello` closed before this connection could hear it (AC3).
                 self.hub.unicast(self.connection, closed)
         self.send_theme()
+        self.send_signup()
         if first is not None and not isinstance(parsed, ClientHello):
             self.handle(first)
 

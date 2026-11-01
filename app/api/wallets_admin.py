@@ -7,7 +7,8 @@ without a run when either sum is not zero), and every live wallet by
 case-folded name. `DELETE /api/admin/wallets/{wallet_id}` deletes one as a player
 does (SD15), 204, or 404 `wallet_not_found`. `GET`/`PUT /api/admin/wallet-settings`
 read and replace the sign-up code, the two retention periods (PD12) and the switch
-for the code on the koers screen (B-10 SD5).
+for the code on the koers screen (B-10 SD5). Every successful `PUT` broadcasts the
+screen's `signup` state (B-10 SD3, PD4), as a theme save broadcasts `theme`.
 
 Admin only. The writes refuse while draining (Phase 6 PD19).
 """
@@ -30,7 +31,10 @@ from pydantic import (
 
 from app.api.deps import Principal, clock_of, db_engine, refuse_while_draining, require_role
 from app.db.wallets import WalletSettingsRow
+from app.realtime.hub import Hub
+from app.realtime.messages import Envelope, signup_data
 from app.runtime import wallets as actions
+from app.runtime.holder import MarketHolder
 
 router = APIRouter(prefix="/admin", tags=["wallets"])
 
@@ -97,6 +101,24 @@ def _settings(row: WalletSettingsRow) -> WalletSettingsData:
     )
 
 
+def _publish(request: Request, row: WalletSettingsRow) -> None:
+    """Adopt a stored row as the screen's sign-up state and broadcast it (B-10 SD3)."""
+    state = request.app.state
+    state.signup = signup_data(row, state.settings.public_url)
+    holder: MarketHolder = state.holder
+    hub: Hub = state.hub
+    hub.broadcast(
+        Envelope(
+            type="signup",
+            seq=0,  # the hub stamps the real one
+            ts_ms=clock_of(request).wall_ms(),
+            run_id=holder.run_id,
+            version=None,
+            data=state.signup,
+        )
+    )
+
+
 @router.get("/wallets")
 async def wallets_overview(request: Request, _: Admin) -> WalletsOverview:
     found = await actions.overview(db_engine(request))
@@ -146,13 +168,17 @@ async def get_wallet_settings(request: Request, _: Admin) -> WalletSettingsData:
 async def put_wallet_settings(
     body: WalletSettingsData, request: Request, _: Admin, __: Draining
 ) -> WalletSettingsData:
-    stored = await actions.put_settings(
-        db_engine(request),
-        WalletSettingsRow(
-            body.signup_code,
-            body.unfunded_days,
-            body.inactive_months,
-            body.show_signup_on_screen,
-        ),
-    )
+    # Two racing saves broadcast in the order they committed (B-10 PD2): the row has no
+    # revision for the client to compare, as `theme`'s has.
+    async with request.app.state.signup_lock:
+        stored = await actions.put_settings(
+            db_engine(request),
+            WalletSettingsRow(
+                body.signup_code,
+                body.unfunded_days,
+                body.inactive_months,
+                body.show_signup_on_screen,
+            ),
+        )
+        _publish(request, stored)
     return _settings(stored)

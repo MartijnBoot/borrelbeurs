@@ -72,6 +72,7 @@ def test_with_no_live_run_a_client_receives_the_put(client: TestClient, login: L
         _frame(ws)  # hello
         _hello(ws)
         catch_up = _frame(ws)
+        _frame(ws)  # the signup catch-up (B-10 SD3)
         response = admin.put("/api/theme", json={"preset": "paars"})
         broadcast = _frame(ws)
 
@@ -117,6 +118,7 @@ def test_a_resync_request_is_answered_by_a_snapshot_then_the_theme(
         _hello(ws)
         _frame(ws)  # snapshot
         _frame(ws)  # catch-up theme
+        _frame(ws)  # catch-up signup (B-10 SD3)
         ws.send_text(json.dumps({"type": "resync_request"}))
         replies = [_frame(ws), _frame(ws)]
 
@@ -132,6 +134,7 @@ def test_two_racing_puts_converge_on_the_last_committed(client: TestClient, logi
         _frame(ws)  # hello
         _hello(ws)
         _frame(ws)  # catch-up
+        _frame(ws)  # the signup catch-up (B-10 SD3)
         with ThreadPoolExecutor(max_workers=2) as pool:
             responses = list(
                 pool.map(
