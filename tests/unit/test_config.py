@@ -30,6 +30,7 @@ ENV_VARS = (
     "BUILD_SHA",
     "TRUSTED_PROXY_IPS",
     "EXPORT_DIR",
+    "BB_PUBLIC_URL",
 )
 
 ENV_EXAMPLE = Path(__file__).resolve().parents[2] / ".env.example"
@@ -502,7 +503,10 @@ def test_an_insecure_cookie_is_allowed_outside_production(
 def test_every_setting_is_cleared_between_tests_and_documented() -> None:
     """`ENV_VARS` is the isolation list above; a setting missing from it would leak a
     developer's own export into these tests. `.env.example` documents each one."""
-    fields = {name.upper() for name in Settings.model_fields}
+    # A field read under another name (`public_url` from `BB_PUBLIC_URL`) counts by that name.
+    fields = {
+        str(field.validation_alias or name).upper() for name, field in Settings.model_fields.items()
+    }
     # Set, or commented out where no example value is right (`# EXPORT_DIR=/exports`).
     documented = set(
         re.findall(r"^#? ?([A-Z_]+)=", ENV_EXAMPLE.read_text(encoding="utf-8"), re.MULTILINE)
@@ -583,3 +587,63 @@ def test_a_malformed_trusted_proxy_list_fails_naming_the_variable(
         get_settings()
 
     assert "TRUSTED_PROXY_IPS" in str(excinfo.value)
+
+
+# --- B-10: the public address (SD1, AC1) ---------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("http://192.168.8.10/", "http://192.168.8.10"),
+        ("http://192.168.8.10", "http://192.168.8.10"),
+        ("https://borrelbeurs.onrender.com", "https://borrelbeurs.onrender.com"),
+        ("http://192.168.8.10:8080/", "http://192.168.8.10:8080"),
+    ],
+)
+def test_the_public_url_is_held_without_a_trailing_slash(
+    monkeypatch: pytest.MonkeyPatch, value: str, expected: str
+) -> None:
+    """AC1: read from `BB_PUBLIC_URL`, the venue `.env`'s own name; the port is kept."""
+    _set_env(monkeypatch, BB_PUBLIC_URL=value)
+
+    assert get_settings().public_url == expected
+
+
+@pytest.mark.parametrize("value", [None, "", "  "])
+def test_an_unset_or_empty_public_url_is_none(
+    monkeypatch: pytest.MonkeyPatch, value: str | None
+) -> None:
+    """AC1: Render sets nothing, and compose passes `${BB_PUBLIC_URL:-}` as `""`."""
+    _set_env(monkeypatch, BB_PUBLIC_URL=value)
+
+    assert get_settings().public_url is None
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        pytest.param("192.168.8.10", id="no-scheme"),
+        pytest.param("ftp://x", id="not-http"),
+        pytest.param("http://", id="no-host"),
+        pytest.param("http://h/path", id="a-path"),
+        pytest.param("http://h/?q=1", id="a-query"),
+        pytest.param("http://h/#f", id="a-fragment"),
+        pytest.param("http://u:hunter2@h/", id="userinfo"),
+        pytest.param("http://h:banana/", id="non-numeric-port"),
+    ],
+)
+def test_a_malformed_public_url_fails_naming_the_variable(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    """AC1: the address goes into a QR code on the screen; a bad one fails the boot."""
+    _set_env(monkeypatch, BB_PUBLIC_URL=value)
+
+    with pytest.raises(ConfigError) as excinfo:
+        get_settings()
+
+    message = str(excinfo.value)
+    rendered = "".join(traceback.format_exception(excinfo.value))
+    assert "BB_PUBLIC_URL" in message
+    assert "hunter2" not in message
+    assert "hunter2" not in rendered
