@@ -11,6 +11,7 @@ export type {
   MarketEventInfo,
   NewsItem,
   ServerMessage,
+  SignupData,
   SnapshotData,
   ThemeData,
 } from './model/schemas'

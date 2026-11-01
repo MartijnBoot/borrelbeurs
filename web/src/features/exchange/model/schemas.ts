@@ -147,6 +147,16 @@ export const HelloData = z.strictObject({
   theme: ThemeData,
 })
 
+/**
+ * The koers screen's sign-up block (B-10 SD3): the whole state, the latest wins.
+ * `public_url` is the server's `BB_PUBLIC_URL`, null when unset.
+ */
+export const SignupData = z.strictObject({
+  show_on_screen: z.boolean(),
+  signup_code: z.string().nullable(),
+  public_url: z.string().nullable(),
+})
+
 /** The live run was closed (Phase 7 SD2): the market is empty from here on. */
 export const RunClosedData = z.strictObject({ run_id: Int, name: z.string(), ended_at_ms: Int })
 
@@ -182,6 +192,7 @@ export const ServerMessage = z.discriminatedUnion('type', [
   envelope('theme', ThemeData),
   envelope('config', ConfigData),
   envelope('run_closed', RunClosedData),
+  envelope('signup', SignupData),
 ])
 
 export type ServerMessage = z.infer<typeof ServerMessage>
@@ -211,3 +222,4 @@ export type MarketEventInfo = z.infer<typeof MarketEventInfo>
 export type SnapshotData = z.infer<typeof SnapshotData>
 export type ConfigData = z.infer<typeof ConfigData>
 export type ThemeData = z.infer<typeof ThemeData>
+export type SignupData = z.infer<typeof SignupData>

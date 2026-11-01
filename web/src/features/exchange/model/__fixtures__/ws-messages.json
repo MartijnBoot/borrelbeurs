@@ -96,6 +96,19 @@
       }
     }
   },
+  "signup": {
+    "v": 1,
+    "type": "signup",
+    "seq": 0,
+    "ts_ms": 1759312800000,
+    "run_id": 1,
+    "version": null,
+    "data": {
+      "show_on_screen": true,
+      "signup_code": "BORREL",
+      "public_url": "http://192.168.8.10"
+    }
+  },
   "pong": {
     "v": 1,
     "type": "pong",
