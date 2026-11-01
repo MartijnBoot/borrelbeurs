@@ -1,6 +1,6 @@
 # Plan: B-10 — Sign-up QR code on the koers screen
 
-Spec: [docs/specs/phase-b-10-koers-signup-qr.md](../specs/phase-b-10-koers-signup-qr.md) (the file's line 3 still reads `Status: Draft`; the owner approved it in the `/plan b-10` session on 2026-11-01, SD9–SD12 included) · Status: **Draft — awaiting audit**
+Spec: [docs/specs/phase-b-10-koers-signup-qr.md](../specs/phase-b-10-koers-signup-qr.md) (`Status: Approved`; the owner approved it in the `/plan b-10` session on 2026-11-01, SD9–SD12 included) · Status: **Audited — owner accepted 2026-11-01 (plan-auditor FAIL on F1–F3, fixed in the plan; see Audit)**
 Design: `docs/design/realtime-protocol.md` and `docs/design/data-model.md` change, as the spec's "In scope" says the owner approved at the interview (T9). Nothing else in `docs/design/` changes.
 ADRs honoured:
 - 0004, 0002: Postgres stays the only store; the one new column is additive and reversible. The pricing engine and the golden fixtures are not touched (AC21).
@@ -27,7 +27,7 @@ the `theme` branch). `signup` follows it step for step:
   `theme` catch-up in the same two places `theme` is (handshake and `resync_request`).
 - **Client:** a `signup` field in `ExchangeState`, written by the reducer outside the seq rule,
   taking its `seq` only when it is next in line and no resync is pending — the exact shape of
-  `applyFrame`'s `theme` branch (`applyMessage.ts:157-164`).
+  `applyFrame`'s `theme` branch (`applyMessage.ts:163-170`).
 
 **One decision rule, written once, tested as a table.** SD6 and SD2 (switch, code, address, loopback)
 become one pure function in `features/koers/signupBlock.ts`. The component only renders what it
@@ -60,16 +60,17 @@ spec or the code.
 
 | # | Question | Decision | Reason |
 |---|---|---|---|
-| PD1 | The environment variable's name (SD1) | `Settings.public_url: str \| None` with `validation_alias="BB_PUBLIC_URL"`. Without the alias pydantic would read `PUBLIC_URL` (fields map to their upper-case name, `config.py:57-`), and the venue's `.env` already says `BB_PUBLIC_URL`. A `field_validator(mode="before")` maps an empty or blank string to `None` (as `_empty_export_dir_is_none`, `config.py:136-139`), because compose will pass `BB_PUBLIC_URL: ${BB_PUBLIC_URL:-}`. A second validator parses with `urlsplit`: scheme `http`/`https`, a host, no userinfo, path `""` or `"/"`, no query or fragment; it stores `scheme://netloc` with no trailing slash. A bad value is a `ValueError`, so `_describe` names `BB_PUBLIC_URL` in the `ConfigError`. **Confirm** | AC1 names `BB_PUBLIC_URL` and the compose file already uses that name. The alias keeps one name end to end. Rejecting userinfo is mine: the link goes onto a screen, and `http://user:pw@host` must not. |
+| PD1 | The environment variable's name (SD1) | `Settings.public_url: str \| None` with `validation_alias="BB_PUBLIC_URL"`. Without the alias pydantic would read `PUBLIC_URL` (fields map to their upper-case name, `config.py:57-`), and the venue's `.env` already says `BB_PUBLIC_URL`. A `field_validator(mode="before")` maps an empty or blank string to `None` (as `_empty_export_dir_is_none`, `config.py:159-163`), because compose will pass `BB_PUBLIC_URL: ${BB_PUBLIC_URL:-}`. A second validator parses with `urlsplit`: scheme `http`/`https`, a host, no userinfo, path `""` or `"/"`, no query or fragment; it stores `scheme://netloc` with no trailing slash. A bad value is a `ValueError`, so `_describe` names `BB_PUBLIC_URL` in the `ConfigError`. **Confirm** | AC1 names `BB_PUBLIC_URL` and the compose file already uses that name. The alias keeps one name end to end. Rejecting userinfo is mine: the link goes onto a screen, and `http://user:pw@host` must not. |
 | PD2 | Where the screen's state lives and how a save publishes it | `SignupData(show_on_screen: StrictBool, signup_code: StrictStr \| None, public_url: StrictStr \| None)` in `app/realtime/messages.py`, with `signup_data(row, public_url)` beside `theme_data`. `boot.py` sets `app.state.signup` from `wallets.get_settings` and `settings.public_url`. `put_wallet_settings` stores, sets `app.state.signup`, and calls `hub.broadcast(Envelope(type="signup", seq=0, run_id=holder.run_id, version=None, …))`, as `api/theme.py:_publish` does. The store and the publish happen under one `asyncio.Lock` (`app.state.signup_lock`, made at boot), so two racing saves leave memory and broadcast in the order they committed. | Two admin saves racing is unlikely, but `wallet_settings` has no revision like `theme` has (`_publish` compares revisions). A lock is three lines and removes the doubt. |
 | PD3 | `show_signup_on_screen` in the admin body | A required `StrictBool` on `WalletSettingsData`, no default, so `PUT` is a full replace like its other fields. A non-boolean is 422 (AC9). The DB column is `boolean NOT NULL DEFAULT false`. `WalletSettingsRow` gets `show_signup_on_screen: bool = False` as its last field, so positional constructions in existing tests still work. **Confirm** | A default on the body would silently turn the screen off for any client that does not send it. The only client is the web build shipped with this change. |
 | PD4 | When the broadcast goes out | After **every** successful `PUT /api/admin/wallet-settings`, even a retention-periods-only save. | AC4: "when admin saves the wallet settings". The message is the whole state, so an unchanged repeat is harmless. |
-| PD5 | The client's state | `ExchangeState.signup: SignupData \| null`, `null` until the first message. It is kept by `applyHello` (also on a new `boot_id`), `applyRunClosed` and `applySnapshot`. The two builders at `applyMessage.ts:204-215` and `:224-237` rebuild from `initialState` and would otherwise drop it. The catch-up that follows every handshake replaces it. | SD6 (the block shows after a close) and AC19 (a dropped socket keeps the last state). The two `initialState` rebuilds are the trap. |
-| PD6 | Where B-09's link helpers live | New `web/src/components/qr/signupLink.ts` holds `signupLink`, `SIGNUP_QR` and `isLoopbackHost`, moved as written. `features/wallets/signupQr.ts` keeps `signupFileName` and `pageAddress` and re-exports the three, so `WalletsSection.tsx`, `signupQr.test.ts` and `WalletsSection.test.tsx` need no edit. | The boundaries rule forbids koers importing wallets. A re-export keeps B-09's tests unchanged (AC22). |
+| PD5 | The client's state | `ExchangeState.signup: SignupData \| null`, `null` until the first message. It is kept by `applyHello` (also on a new `boot_id`), `applyRunClosed` and `applySnapshot`. The two builders at `applyMessage.ts:222-236` (`applyHello`) and `:238-251` (`applyRunClosed`) rebuild from `initialState` and would otherwise drop it. The catch-up that follows every handshake replaces it. | SD6 (the block shows after a close) and AC19 (a dropped socket keeps the last state). The two `initialState` rebuilds are the trap. |
+| PD6 | Where B-09's link helpers live | New `web/src/components/qr/signupLink.ts` holds `signupLink`, `SIGNUP_QR`, `isLoopbackHost` and `pageAddress`, moved as written. `features/wallets/signupQr.ts` keeps `signupFileName` and re-exports the four, so `WalletsSection.tsx`, `signupQr.test.ts` and `WalletsSection.test.tsx` need no edit. | The boundaries rule forbids koers importing wallets. A re-export keeps B-09's tests unchanged (AC22). |
 | PD7 | The visibility rule | `features/koers/signupBlock.ts`: `signupBlockLink(signup: SignupData \| null, origin: string, hostname: string): string \| null`. `null` unless `signup?.show_on_screen` and a non-blank `signup_code`; `base = signup.public_url ?? (isLoopbackHost(hostname) ? null : origin)`; then `signupLink(base, signup_code)`. | AC2, AC3, AC13 in one function. `signup.public_url` wins even at `localhost` (AC2). |
-| PD8 | Layout and stacking (SD7, SD9) | In `KoersPage.tsx` a `.band` row holds `<SignupBlock/>` then a `.marquees` column (`flex: 1; min-width: 0`) holding the two marquees. The band is rendered only if the block or the marquees are. `SignupBlock` is a white card: the QR, `QrSvg` with `SIGNUP_QR` (`Q`, 4), `width: max(96px, 14vh)`, over the caption "Meld je aan". The card is `position: relative; z-index: 150`, above the glow (`keyframes.css:12`, z 100) and below the banner (z 200). `@media (max-width: 700px) { display: none }`, the page's own phone breakpoint (`KoersPage.module.css:253`). **Confirm** | The glow is a fixed overlay with an inset shadow about 70 px deep (`keyframes.css:8-34`). Under it a code in the corner would be tinted; "unobstructed" (AC14) reads as above the glow. The alternative reading, "tinted but scannable", is the audit's to choose. |
+| PD8 | Layout and stacking (SD7, SD9) | In `KoersPage.tsx` a `.band` row holds `<SignupBlock/>` then a `.marquees` column (`flex: 1; min-width: 0`) holding the two marquees. The band is rendered only if the block or the marquees are. `SignupBlock` is a white card: the QR, `QrSvg` with `SIGNUP_QR` (`Q`, 4), `width: max(96px, 14vh)`, over the caption "Meld je aan". The card is `position: relative; z-index: 150`, above the glow (`keyframes.css:12`, z 100) and below the banner (z 200). `@media (max-width: 700px) { display: none }`, the page's own phone breakpoint (`KoersPage.module.css:290`). **Confirm** | The glow is a fixed overlay with an inset shadow about 70 px deep (`keyframes.css:8-34`). Under it a code in the corner would be tinted; "unobstructed" (AC14) reads as above the glow. The alternative reading, "tinted but scannable", is the audit's to choose. |
 | PD9 | Which spec does the e2e live in | New `web/e2e/signup-koers.spec.ts` on the shared server, serial, at `http://signup.test:<port>` with the same `--host-resolver-rules` as `signup-qr.spec.ts`. It starts and ends with the switch off and the code cleared, over the API. | `signup-qr.spec.ts` (B-09) must keep asserting what it asserts (AC22). Other specs on the shared server render `/koers`; a switch left on would change their layout. **Confirm** |
-| PD10 | The generated types | `GET`/`PUT` carry the new field through `web/src/api/generated/schema.d.ts`, regenerated by the drift step's own command (find it in `scripts/check.sh`). The WebSocket message is not in OpenAPI, so `signup` is mirrored by hand in `schemas.ts`, like every message. | AC7. |
+| PD11 | Go-live | `signup` is not sent at go-live (`golive.py:74-93` sends `snapshot` and `theme` to connected clients). `applySnapshot` keeps `signup`, so there is no gap. T9's protocol text must not claim a go-live catch-up for `signup`. | A screen keeps its state; no handshake happens. |
+| PD10 | The generated types | `GET`/`PUT` carry the new field through `web/src/api/generated/schema.d.ts`, regenerated by the drift step's own command (`./scripts/gen_api_types.sh`, then `git diff --exit-code -- web/src/api/generated`, `check.sh:167-170`). The WebSocket message is not in OpenAPI, so `signup` is mirrored by hand in `schemas.ts`, like every message. | AC7. |
 
 ---
 
@@ -78,7 +79,8 @@ spec or the code.
 | Path | Create/Modify | Purpose | Task |
 |---|---|---|---|
 | `app/core/config.py` | Modify | `public_url` and its validators (PD1) | T1 |
-| `tests/unit/test_config.py` | Modify | AC1: set, trailing slash, unset, blank, malformed | T1 |
+| `tests/unit/test_config.py` | Modify | AC1 cases; its `ENV_VARS`/field-list test made alias-aware (F2) | T1 |
+| `.env.example` (root) | Modify | `BB_PUBLIC_URL` as a **commented-out** line, like `EXPORT_DIR` | T1 |
 | `deploy/venue/compose.yml` | Modify | `BB_PUBLIC_URL: ${BB_PUBLIC_URL:-}` into the app's `environment` | T1 |
 | `db/migrations/versions/0016_signup_on_screen.py` | Create | `wallet_settings.show_signup_on_screen` | T2 |
 | `app/db/models.py` | Modify | the column on `WalletSettings` | T2 |
@@ -87,6 +89,7 @@ spec or the code.
 | `tests/api/test_wallets_admin.py` | Modify | AC9: default, round trip, 422, draining | T2 |
 | `tests/api/test_draining.py` | Modify | the PUT body gains the field | T2 |
 | `tests/integration/test_migrations.py` and/or a new `test_migration_0016.py` | Modify/Create | AC9: up, down, default false; head revision lists | T2 |
+| `tests/meta/test_guard_migrations_hook.py` | Modify | pins `0015_short_keys.py` as the head (`:158-166`, `:229-238`); the head becomes `0016`, `0015` is now blocked | T2 |
 | `tests/integration/test_schema.py` | Modify | column list of `wallet_settings`, if it pins them | T2 |
 | `web/src/api/generated/schema.d.ts` | Modify (generated) | AC7/PD10 | T2 |
 | `web/src/features/wallets/api.ts` | Modify | `WalletSettings` Zod gains the field | T2 |
@@ -95,6 +98,7 @@ spec or the code.
 | `app/runtime/boot.py` | Modify | `app.state.signup`, `app.state.signup_lock` | T3 |
 | `app/realtime/ws.py` | Modify | `send_signup`, in the handshake and the `resync_request` path | T3 |
 | `tests/unit/test_messages.py` | Modify | AC7: closed model, round trip | T3 |
+| `tests/api/test_ws.py`, `tests/api/test_ws_theme.py` and any other API test that reads `/ws` frames by position | Modify | one more `signup` read per handshake and per `resync_request` reply; no assertion removed (F1) | T3 |
 | `tests/api/test_ws_signup.py` | Create | AC4, AC5; `seq` unmoved | T3 |
 | `tests/integration/test_signup_restart.py` | Create | AC8 (pattern: `test_wallets_restart.py`) | T3 |
 | `tests/api/ws_fixture.py` | Modify | record a `signup` frame | T4 |
@@ -125,6 +129,11 @@ Nothing under `exchange/` or `tests/engine/golden/fixtures/` changes, and no dep
 - **Implements:** AC1
 - **Expected output:**
   - `Settings.public_url` as PD1 describes, with a comment in `config.py`'s style.
+  - `tests/unit/test_config.py:502-512` builds its field list from `Settings.model_fields` upper-cased, which
+    would give `PUBLIC_URL`. It becomes alias-aware (`(field.validation_alias or name).upper()`), `ENV_VARS`
+    gains `BB_PUBLIC_URL` (so `_isolated` clears it, `:55-56`), and the root `.env.example` documents it as a
+    commented-out line (`# BB_PUBLIC_URL=http://192.168.8.10`), never a set value: `setup.sh` copies that file
+    to `.env.local`, which the gate sources.
   - `deploy/venue/compose.yml`'s `app.environment` passes `BB_PUBLIC_URL: ${BB_PUBLIC_URL:-}`.
     `.env.example` already carries the variable (`deploy/venue/.env.example:17`).
   - `tests/unit/test_config.py` gains cases:
@@ -155,6 +164,8 @@ Nothing under `exchange/` or `tests/engine/golden/fixtures/` changes, and no dep
     build the row from it.
   - The generated `schema.d.ts` is regenerated; `web/src/features/wallets/api.ts`'s Zod and the two
     web tests' mocked bodies carry the field so `tsc -b` holds. No UI yet.
+  - `tests/meta/test_guard_migrations_hook.py` moves its head and allowed file to `0016_*.py`; this edit is
+    expected and exempt from the stop condition below.
   - Tests: GET on a fresh database is `show_signup_on_screen: false` (the existing exact-body test
     at `test_wallets_admin.py:394-399` changes); a PUT round trip stores and returns `true`; `"yes"`,
     `1` and `null` are 422; a missing field is 422; draining is 503 and writes nothing (extend the
@@ -164,11 +175,11 @@ Nothing under `exchange/` or `tests/engine/golden/fixtures/` changes, and no dep
   then `uv run pytest tests/integration -k "migration or schema"`, run separately with `.env.local` sourced
   (MEMORY: api and integration are not run in one pytest). Then `pnpm -C web exec tsc -b` and
   `pnpm -C web exec vitest run src/features/wallets src/app/pages/SettingsPage.test.tsx`. The drift
-  step: find its command in `scripts/check.sh` and run that one step.
+  step: `./scripts/gen_api_types.sh`, then `git diff --exit-code -- web/src/api/generated`.
 - **Depends on:** —
 - **Autonomy note:**
   - **The builder decides:** the migration's file slug, how it is tested next to `test_migration_0015.py`.
-  - **Stop and ask if:** an existing test needs more than the field added to its body; the `check.sh`
+  - **Stop and ask if:** an existing test other than `test_guard_migrations_hook.py` needs more than the field added to its body; the `check.sh`
     drift step wants anything but regenerating `schema.d.ts`.
 
 ### T3 — The `signup` message on the server
@@ -186,7 +197,12 @@ Nothing under `exchange/` or `tests/engine/golden/fixtures/` changes, and no dep
   - `ws.py`: `send_signup()` is a unicast with `version=None`, built as `send_theme` is, and called
     right after `send_theme()` in `run()` (`ws.py:252`) and in `handle()` for `resync_request`
     (`ws.py:203`). The module docstring's "The theme" paragraph gains the sentence for `signup`.
-  - `golive.py` is **not** changed: go-live sends no handshake and a screen keeps its `signup` state.
+  - `golive.py` is **not** changed (PD11): go-live sends no handshake and a screen keeps its `signup` state.
+  - Existing tests that read frames by position gain one `signup` read per handshake and per
+    `resync_request` reply and nothing else: `test_ws.py` (`:128-134`, `:173`, `:192`, `:210`, `:280-285`) and
+    `test_ws_theme.py` (`:74-80`, `:119-123`) at least. No assertion is removed.
+  - Tests set or delete `BB_PUBLIC_URL` explicitly with monkeypatch, since the API app reads `get_settings()` from
+    the process environment (`tests/api/conftest.py:71-79`) (F4).
   - Tests:
     - `test_messages.py`: an unknown field is refused; `Envelope` with `type="signup"` validates
       only `SignupData`; `null` code and `null` URL are accepted.
@@ -199,23 +215,24 @@ Nothing under `exchange/` or `tests/engine/golden/fixtures/` changes, and no dep
     - `test_signup_restart.py`: save a code and the switch; build a fresh `create_app` on the same
       database; a new socket's catch-up holds the stored values (AC8).
 - **Verification:** `uv run pytest tests/unit/test_messages.py tests/unit/test_hub.py`, then
-  `uv run pytest tests/api/test_ws_signup.py tests/api/test_ws_theme.py tests/api/test_ws.py tests/api/test_wallets_admin.py`,
+  `uv run pytest tests/api/test_ws_signup.py tests/api/test_ws_theme.py tests/api/test_ws.py tests/api/test_ws_revoke.py tests/api/test_close.py tests/api/test_go_live.py tests/api/test_config.py tests/api/test_drinks.py tests/api/test_connections.py tests/api/test_standby.py tests/api/test_authorization_matrix.py tests/api/test_wallets_admin.py`,
   then `uv run pytest tests/integration/test_signup_restart.py`, each run separately (MEMORY).
   `uv run mypy app tests` and `uv run ruff check`.
 - **Depends on:** T1 (`public_url`), T2 (the column and `wallets_admin.py`, which both tasks write)
 - **Autonomy note:**
   - **The builder decides:** `_publish`'s name and place, whether the lock is created in `boot.py`
     or in a tiny holder class, test structure.
-  - **Stop and ask if:** any existing WebSocket test breaks because of the extra unicast (they must
-    be adjusted only to expect one more `signup` frame, never to hide it); the hub's `seq` or resync
+  - **Stop and ask if:** any existing WebSocket test breaks because of the extra unicast (only if a test needs more than one extra `signup` read per handshake or resync reply; one extra read is expected, never hide it); the hub's `seq` or resync
     metadata would have to change; the engine (`exchange/`) or `MarketHolder` would have to be touched.
 
 ### T4 — The message on the client: recorded fixture, Zod, reducer
 
 - **Implements:** AC6, AC7 (types, fixture, Zod), AC19 (state kept)
 - **Expected output:**
-  - `tests/api/ws_fixture.py` records one `signup` frame from the real app, with a non-default
-    state (switch on, a code, a URL), and `python -m tests.api.ws_fixture --write` rewrites
+  - `tests/api/ws_fixture.py` records one `signup` frame from the real app, the handshake catch-up, with a
+    non-default state (switch on, a code, a URL). The recorder sets `BB_PUBLIC_URL` inside an env context like
+    `_database_env` and seeds the `wallet_settings` row in `_seed`; it does **not** PUT mid-session, since a
+    broadcast would move `seq` for every later frame (F4). Then and `python -m tests.api.ws_fixture --write` rewrites
     `ws-messages.json`; `--check` is clean. The recorder consumes frames by kind, so the extra
     handshake frame must not shift the existing steps.
   - `schemas.ts`: `SignupData` (`z.strictObject`), `envelope('signup', SignupData)`, the exported type.
@@ -238,8 +255,7 @@ Nothing under `exchange/` or `tests/engine/golden/fixtures/` changes, and no dep
   `pnpm -C web exec tsc -b` and `pnpm -C web lint`.
 - **Depends on:** T3
 - **Autonomy note:**
-  - **The builder decides:** how the recorder reaches a non-default state (a PUT in its scenario, or
-    a seed), the fixture key name.
+  - **The builder decides:** the fixture key name.
   - **Stop and ask if:** recording changes any existing frame in the fixture (a diff beyond the added
     frame means the handshake order moved); a consumer of `ServerMessage` outside `exchange/` needs
     an edit.
@@ -248,9 +264,8 @@ Nothing under `exchange/` or `tests/engine/golden/fixtures/` changes, and no dep
 
 - **Implements:** AC2, AC3, AC13 (the rule)
 - **Expected output:**
-  - `components/qr/signupLink.ts` holds `signupLink`, `SIGNUP_QR` and `isLoopbackHost`, moved
-    verbatim (PD6). `features/wallets/signupQr.ts` re-exports them and keeps `signupFileName` and
-    `pageAddress`. `signupQr.test.ts`, `WalletsSection.tsx` and its test are not edited.
+  - `components/qr/signupLink.ts` holds `signupLink`, `SIGNUP_QR`, `isLoopbackHost` and `pageAddress`, moved
+    verbatim (PD6; `pageAddress` is B-09's test seam, F5). `features/wallets/signupQr.ts` re-exports them and keeps `signupFileName`. `signupQr.test.ts`, `WalletsSection.tsx` and its test are not edited.
   - `features/koers/signupBlock.ts` with `signupBlockLink` (PD7).
   - `signupBlock.test.ts` is a table:
     - the full cross of `show_on_screen` (2) × code (`null`, `''`, `'  '`, `BORREL`) × `public_url`
@@ -273,8 +288,7 @@ Nothing under `exchange/` or `tests/engine/golden/fixtures/` changes, and no dep
 
 - **Implements:** AC11, AC12, AC13, AC14, AC17 (jsdom halves; geometry and the phone width are T8)
 - **Expected output:**
-  - `SignupBlock.tsx` reads `selectSignup`, calls `signupBlockLink(signup, window.location.origin,
-    window.location.hostname)` and renders nothing for `null`. Otherwise it draws
+  - `SignupBlock.tsx` reads `selectSignup`, calls `signupBlockLink(signup, origin, hostname)` with `pageAddress()` and renders nothing for `null`. Otherwise it draws
     `encode(link, SIGNUP_QR).data` through `QrSvg` (`label="Aanmeld-QR-code"`) over the caption
     "Meld je aan" (SD10), nothing else (no code text, no link text). The matrix is recomputed from the
     link alone, so there is no stale copy (AC18).
@@ -282,9 +296,9 @@ Nothing under `exchange/` or `tests/engine/golden/fixtures/` changes, and no dep
     the white card, `width: max(96px, 14vh)` for the QR, `z-index: 150`, the ≤700 px rule, black on
     white whatever the theme (as `PlayerPage.module.css:111-118`).
   - Tests in `KoersPage.test.tsx` (its `dispatch` helper feeds `signup` messages; the jsdom origin is
-    loopback, so the address comes from `vi.stubGlobal('location', …)` or the docblock URL option):
+    loopback, so the address comes from mocking `pageAddress`, as `WalletsSection.test.tsx:14-22` does):
     - the block appears for switch+code+address and not otherwise, and takes no space (no `.band`
-      when neither block nor marquees render) (AC13);
+      when neither block nor marquees render, and no padding or gap when only the hidden block would be in it, F9) (AC13);
     - with `public_url` it shows at a loopback page (AC2 on the page);
     - rasterise the `QrSvg` rects as B-09's tests do and decode with `jsqr`: the result equals the
       link; the rects equal `encode(link, { ecc: 'Q', border: 4 }).data`; the caption is exactly
@@ -298,9 +312,9 @@ Nothing under `exchange/` or `tests/engine/golden/fixtures/` changes, and no dep
 - **Depends on:** T4, T5
 - **Autonomy note:**
   - **The builder decides:** the card's padding and caption size, whether the 96 px floor is on the
-    QR or the card, how the test sets the page address.
+    QR or the card, how the test mocks `pageAddress`.
   - **Stop and ask if:** `PriceMarquee`/`NewsMarquee` need a code change to live in a narrower
-    container (they measure nothing on resize today: check `components/ui/Marquee.tsx` first); an
+    container (the audit found `Marquee.tsx` measures nothing, so none is expected); an
     existing `KoersPage` test needs more than an added `signup` state.
 
 ### T7 — The checkbox in Wallets
@@ -344,10 +358,10 @@ Nothing under `exchange/` or `tests/engine/golden/fixtures/` changes, and no dep
      reconnect it matches the server (AC19).
   7. Geometry (AC16): at 1920×1080 and 1280×720, with and without a promo image, the block's rect
      intersects none of the marquee rects, tile rects or the banner, and the marquees' right edge
-     equals the viewport's right edge minus the page padding; the QR is at least 96 px.
+     equals the band's right edge (`.page` has no padding); the QR is at least 96 px.
   8. At 700×900 the block is not in the DOM's layout (`display: none`, AC15).
   9. At `http://127.0.0.1:<port>` (loopback, no `public_url`): no block even with the switch on (AC3).
-  Ends with the switch off and the code cleared.
+  The reset (switch off, code cleared) runs in `afterAll`, so a failed step cannot leave the switch on for later specs.
 - **Verification:** `pnpm -C web build`, then `pnpm -C web exec playwright test e2e/signup-koers.spec.ts`
   (compose `db` up), then the whole `pnpm -C web e2e` so the shared server's other specs are shown
   unaffected; `pnpm -C web lint`.
@@ -499,9 +513,6 @@ One additive migration, `0016`: `wallet_settings.show_signup_on_screen boolean N
   sign-up flow or B-09's downloads.
 - `exchange/` and the golden fixtures.
 - `docs/design/frontend-architecture.md` (R9).
-- Committing the spec and the backlog change. They are uncommitted on `main`
-  (`docs/specs/phase-b-10-koers-signup-qr.md` and `docs/backlog.md`); the owner's branch choice
-  before `/build`, not a task. The spec's own `Status:` line still says Draft.
 - Setting `BB_PUBLIC_URL` on Render, or any Render setting. Render sets nothing (SD1).
 
 ---
@@ -514,30 +525,31 @@ One additive migration, `0016`: `wallet_settings.show_signup_on_screen boolean N
 - **PD3, a required body field.** It makes an old-shape PUT a 422. Confirm that is wanted over a
   `= False` default.
 - **PD8, "unobstructed".** I read it as above the glow. Confirm or overrule.
-- **R1, the recorder.** I have not read `ws_fixture.py`'s step logic past its outline, so T4's
-  "does not shift the existing steps" is a stop condition, not a promise.
-- **R3, the marquees.** I found no `ResizeObserver` or width read in `Marquee.tsx` by grep, but have
-  not read its animation code. T6 starts by reading it.
-- **The generated-types command.** I did not find it in `check.sh`'s text; T2 names "the drift step's own
-  command" and the builder looks it up.
-- **The spec's status line** still says Draft. I took your "approved" as the approval and did not edit
-  the spec.
+- **R1 (the recorder) and R3 (the marquees):** checked by the audit. `until` skips other frame types, and `Marquee.tsx` measures nothing.
+- **PD1, PD3, PD8, PD9:** confirmed by the audit.
 
 ---
 
 ## Audit (plan-auditor — PASS required before implementation starts)
 
-- [ ] Every AC maps to at least one task
-- [ ] Every task maps to at least one AC (no orphans)
-- [ ] Each task's expected output is what we actually need
-- [ ] Existing patterns reused; nothing reinvented
-- [ ] No new dependency without an approval note
-- [ ] Data changes additive and reversible
-- [ ] Errors, empty states and permissions are tasks, not afterthoughts
-- [ ] Each task reviewable in one sitting
-- [ ] Verification named per task
-- [ ] Nothing touches prod, secrets or infra it should not
-- [ ] Every task has a Depends on and an Autonomy note
-- [ ] No two tasks in one parallel group write the same file
+- [x] Every AC maps to at least one task
+- [x] Every task maps to at least one AC (no orphans)
+- [x] Each task's expected output is what we actually need
+- [x] Existing patterns reused; nothing reinvented
+- [x] No new dependency without an approval note
+- [x] Data changes additive and reversible
+- [x] Errors, empty states and permissions are tasks, not afterthoughts
+- [x] Each task reviewable in one sitting
+- [x] Verification named per task
+- [x] Nothing touches prod, secrets or infra it should not
+- [x] Every task has a Depends on and an Autonomy note
+- [x] No two tasks in one parallel group write the same file
 
-Audited by: ______  Date: ______
+plan-auditor (agent), 2026-11-01: **FAIL** on three Required findings, all fixed in this plan:
+- F1: the extra `signup` frame breaks position-reading WebSocket tests; T3 now names them and widens its verification.
+- F2: `test_config.py`'s field list would give `PUBLIC_URL`, not `BB_PUBLIC_URL`; T1 makes it alias-aware and documents the root `.env.example` as a commented line.
+- F3: `test_guard_migrations_hook.py` pins `0015` as the head; T2 updates it.
+
+Also folded in: F4 (tests and recorder pin `BB_PUBLIC_URL`; the recorder seeds, no mid-session PUT), F5 (`pageAddress` moves to `components/qr`), F6 (PD11, go-live), F7 (band edge, `afterAll` reset), F8 (stale references), F9 (no band padding). F10 accepted. The auditor confirmed PD1, PD3, PD8 and PD9.
+
+Audited by: MartijnBoot (owner), accepting the plan-auditor's report and ticking every line on request  Date: 2026-11-01
