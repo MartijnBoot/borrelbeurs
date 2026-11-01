@@ -61,7 +61,12 @@ DRAINING_WRITES: Final[list[tuple[str, str, dict[str, Any] | None]]] = [
     (
         "PUT",
         "/api/admin/wallet-settings",
-        {"signup_code": None, "unfunded_days": 30, "inactive_months": 12},
+        {
+            "signup_code": None,
+            "unfunded_days": 30,
+            "inactive_months": 12,
+            "show_signup_on_screen": False,
+        },
     ),
     # B-06 AC33.
     ("POST", "/api/payments/999999/refund", None),

@@ -123,11 +123,13 @@ class EntryRow:
 
 @dataclass(frozen=True)
 class WalletSettingsRow:
-    """No row is the defaults: sign-up closed, 30 days, 12 months (SD6, SD15)."""
+    """No row is the defaults: sign-up closed, 30 days, 12 months (SD6, SD15), and the
+    code not on the koers screen (B-10 SD5)."""
 
     signup_code: str | None = None
     unfunded_days: int = DEFAULT_UNFUNDED_DAYS
     inactive_months: int = DEFAULT_INACTIVE_MONTHS
+    show_signup_on_screen: bool = False
 
 
 def at(ms: int) -> datetime:
@@ -553,12 +555,18 @@ async def get_settings(conn: AsyncConnection) -> WalletSettingsRow:
                 WalletSettings.signup_code,
                 WalletSettings.unfunded_days,
                 WalletSettings.inactive_months,
+                WalletSettings.show_signup_on_screen,
             )
         )
     ).one_or_none()
     if row is None:
         return WalletSettingsRow()
-    return WalletSettingsRow(row.signup_code, int(row.unfunded_days), int(row.inactive_months))
+    return WalletSettingsRow(
+        row.signup_code,
+        int(row.unfunded_days),
+        int(row.inactive_months),
+        bool(row.show_signup_on_screen),
+    )
 
 
 async def put_settings(conn: AsyncConnection, settings: WalletSettingsRow) -> WalletSettingsRow:
@@ -567,6 +575,7 @@ async def put_settings(conn: AsyncConnection, settings: WalletSettingsRow) -> Wa
         "signup_code": settings.signup_code,
         "unfunded_days": settings.unfunded_days,
         "inactive_months": settings.inactive_months,
+        "show_signup_on_screen": settings.show_signup_on_screen,
     }
     statement = insert(WalletSettings).values(**values)
     await conn.execute(

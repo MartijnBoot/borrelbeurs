@@ -41,7 +41,12 @@ const OVERVIEW = {
     { wallet_id: 3, name: 'Gamma', balance_cents: -350, last_activity_at: '2026-10-25T20:00:00Z' },
   ],
 }
-const STORED = { signup_code: 'Borrel2026', unfunded_days: 30, inactive_months: 12 }
+const STORED = {
+  signup_code: 'Borrel2026',
+  unfunded_days: 30,
+  inactive_months: 12,
+  show_signup_on_screen: false,
+}
 
 const json = (status: number, body?: unknown) =>
   new Response(body === undefined ? null : JSON.stringify(body), {
@@ -50,7 +55,14 @@ const json = (status: number, body?: unknown) =>
   })
 
 let overview: typeof OVERVIEW
-let stored: typeof STORED | { signup_code: null; unfunded_days: number; inactive_months: number }
+let stored:
+  | typeof STORED
+  | {
+      signup_code: null
+      unfunded_days: number
+      inactive_months: number
+      show_signup_on_screen: boolean
+    }
 let putAnswer: ((body: typeof STORED) => Response) | null
 
 beforeEach(() => {
@@ -116,7 +128,14 @@ describe('Aanmeldcode (SD6, PD12, PD20)', () => {
     fireEvent.change(within(code).getByLabelText('Aanmeldcode'), { target: { value: 'Nieuw' } })
     await click(code, 'Opslaan')
     await click(screen.getByRole('dialog'), 'Wijzigen')
-    expect(puts()).toEqual([{ signup_code: 'Nieuw', unfunded_days: 30, inactive_months: 12 }])
+    expect(puts()).toEqual([
+      {
+        signup_code: 'Nieuw',
+        unfunded_days: 30,
+        inactive_months: 12,
+        show_signup_on_screen: false,
+      },
+    ])
     expect(within(code).getByText(`${window.location.origin}/speler?code=Nieuw`)).toBeTruthy()
   })
 
@@ -125,13 +144,20 @@ describe('Aanmeldcode (SD6, PD12, PD20)', () => {
     const code = region('Aanmeldcode')
     await click(code, 'Wissen')
     await click(screen.getByRole('dialog'), 'Wissen')
-    expect(puts()).toEqual([{ signup_code: null, unfunded_days: 30, inactive_months: 12 }])
+    expect(puts()).toEqual([
+      { signup_code: null, unfunded_days: 30, inactive_months: 12, show_signup_on_screen: false },
+    ])
     expect(within(code).getByText('Aanmelden is gesloten.')).toBeTruthy()
     expect((within(code).getByLabelText('Aanmeldcode') as HTMLInputElement).value).toBe('')
   })
 
   it('no code set says sign-up is closed', async () => {
-    stored = { signup_code: null, unfunded_days: 30, inactive_months: 12 }
+    stored = {
+      signup_code: null,
+      unfunded_days: 30,
+      inactive_months: 12,
+      show_signup_on_screen: false,
+    }
     await open()
     expect(within(region('Aanmeldcode')).getByText('Aanmelden is gesloten.')).toBeTruthy()
   })
@@ -158,7 +184,14 @@ describe('Confirm before printed codes break (B-09 SD7, SD9)', () => {
     expect(puts()).toEqual([])
 
     await click(screen.getByRole('dialog'), 'Wijzigen')
-    expect(puts()).toEqual([{ signup_code: 'Anders', unfunded_days: 30, inactive_months: 12 }])
+    expect(puts()).toEqual([
+      {
+        signup_code: 'Anders',
+        unfunded_days: 30,
+        inactive_months: 12,
+        show_signup_on_screen: false,
+      },
+    ])
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
@@ -170,7 +203,9 @@ describe('Confirm before printed codes break (B-09 SD7, SD9)', () => {
     expect(puts()).toEqual([])
 
     await click(screen.getByRole('dialog'), 'Wissen')
-    expect(puts()).toEqual([{ signup_code: null, unfunded_days: 30, inactive_months: 12 }])
+    expect(puts()).toEqual([
+      { signup_code: null, unfunded_days: 30, inactive_months: 12, show_signup_on_screen: false },
+    ])
     expect(within(region('Aanmeldcode')).getByText('Aanmelden is gesloten.')).toBeTruthy()
   })
 
@@ -182,7 +217,9 @@ describe('Confirm before printed codes break (B-09 SD7, SD9)', () => {
     expect(puts()).toEqual([])
 
     await click(screen.getByRole('dialog'), 'Wissen')
-    expect(puts()).toEqual([{ signup_code: '   ', unfunded_days: 30, inactive_months: 12 }])
+    expect(puts()).toEqual([
+      { signup_code: '   ', unfunded_days: 30, inactive_months: 12, show_signup_on_screen: false },
+    ])
     expect(within(region('Aanmeldcode')).getByText('Aanmelden is gesloten.')).toBeTruthy()
   })
 
@@ -214,14 +251,24 @@ describe('Confirm before printed codes break (B-09 SD7, SD9)', () => {
     ['a first code', null, 'Nieuw', 'Opslaan'],
     ['"Wissen" with none saved', null, '', 'Wissen'],
   ])('%s saves at once with no dialog (AC14)', async (_, saved, typed, button) => {
-    stored = { signup_code: saved as never, unfunded_days: 30, inactive_months: 12 }
+    stored = {
+      signup_code: saved as never,
+      unfunded_days: 30,
+      inactive_months: 12,
+      show_signup_on_screen: false,
+    }
     await open()
     type(typed)
     await click(region('Aanmeldcode'), button)
 
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(puts()).toEqual([
-      { signup_code: button === 'Wissen' ? null : typed, unfunded_days: 30, inactive_months: 12 },
+      {
+        signup_code: button === 'Wissen' ? null : typed,
+        unfunded_days: 30,
+        inactive_months: 12,
+        show_signup_on_screen: false,
+      },
     ])
   })
 })
@@ -282,7 +329,12 @@ describe('The QR preview and its downloads (B-09 SD1–SD6, SD8, SD10)', () => {
   })
 
   it('no code saved: closed, no preview and no buttons (AC2)', async () => {
-    stored = { signup_code: null, unfunded_days: 30, inactive_months: 12 }
+    stored = {
+      signup_code: null,
+      unfunded_days: 30,
+      inactive_months: 12,
+      show_signup_on_screen: false,
+    }
     await open()
     expect(within(region('Aanmeldcode')).getByText('Aanmelden is gesloten.')).toBeTruthy()
     expect(preview()).toBeNull()
@@ -379,7 +431,14 @@ describe('Bewaartermijnen (AC33)', () => {
     fireEvent.change(within(periods).getByLabelText(/dagen/), { target: { value: '7' } })
     fireEvent.change(within(periods).getByLabelText(/maanden/), { target: { value: '3' } })
     await click(periods, 'Opslaan')
-    expect(puts()).toEqual([{ signup_code: 'Borrel2026', unfunded_days: 7, inactive_months: 3 }])
+    expect(puts()).toEqual([
+      {
+        signup_code: 'Borrel2026',
+        unfunded_days: 7,
+        inactive_months: 3,
+        show_signup_on_screen: false,
+      },
+    ])
   })
 
   it('a 422 names the ranges', async () => {

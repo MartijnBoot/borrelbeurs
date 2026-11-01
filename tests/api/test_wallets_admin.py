@@ -112,7 +112,13 @@ def _overview(client: TestClient) -> dict[str, Any]:
 
 
 def _settings_body(**changes: Any) -> dict[str, Any]:
-    return {"signup_code": "Borrel", "unfunded_days": 30, "inactive_months": 12, **changes}
+    return {
+        "signup_code": "Borrel",
+        "unfunded_days": 30,
+        "inactive_months": 12,
+        "show_signup_on_screen": False,
+        **changes,
+    }
 
 
 # --- the list and the totals (SD16) -------------------------------------------------
@@ -396,6 +402,7 @@ def test_the_settings_default_to_closed_thirty_days_and_twelve_months(admin: Tes
         "signup_code": None,
         "unfunded_days": 30,
         "inactive_months": 12,
+        "show_signup_on_screen": False,
     }
 
 
@@ -412,6 +419,9 @@ def test_the_settings_default_to_closed_thirty_days_and_twelve_months(admin: Tes
         {"signup_code": "x" * 41},
         {"signup_code": 1234},
         {"colour": "rood"},
+        {"show_signup_on_screen": "yes"},
+        {"show_signup_on_screen": 1},
+        {"show_signup_on_screen": None},
     ],
 )
 def test_a_period_or_code_off_the_rules_is_422_and_stores_nothing(
@@ -445,9 +455,29 @@ def test_a_code_is_trimmed_and_a_blank_one_closes_sign_up(
     cleared = admin.put("/api/admin/wallet-settings", json=_settings_body(signup_code="  "))
 
     assert cleared.json()["signup_code"] is None
-    assert _db(settings, api_env, wallets.get_settings) == WalletSettingsRow(None, 30, 12)
+    assert _db(settings, api_env, wallets.get_settings) == WalletSettingsRow(None, 30, 12, False)
     refused = admin.post("/api/wallet", json={"name": "Piet", "code": "abc"})
     assert (refused.status_code, refused.json()["error"]["code"]) == (409, "signup_closed")
+
+
+def test_the_screen_switch_is_stored_and_returned(
+    admin: TestClient, settings: Settings, api_env: str
+) -> None:
+    """B-10 AC9: the switch round-trips through the PUT, the GET and the row."""
+    body = _settings_body(show_signup_on_screen=True)
+
+    assert admin.put("/api/admin/wallet-settings", json=body).json() == body
+    assert admin.get("/api/admin/wallet-settings").json() == body
+    assert _db(settings, api_env, wallets.get_settings) == WalletSettingsRow("Borrel", 30, 12, True)
+
+
+def test_a_body_without_the_screen_switch_is_422_and_stores_nothing(admin: TestClient) -> None:
+    """B-10 PD3: `PUT` is a full replace; a missing switch is no silent `false`."""
+    body = _settings_body()
+    del body["show_signup_on_screen"]
+
+    assert admin.put("/api/admin/wallet-settings", json=body).status_code == 422
+    assert admin.get("/api/admin/wallet-settings").json()["signup_code"] is None
 
 
 def test_a_null_code_closes_sign_up(admin: TestClient) -> None:
@@ -469,11 +499,14 @@ def test_the_admin_writes_while_draining_are_503_and_write_nothing(
     try:
         responses = [
             admin.delete(f"/api/admin/wallets/{jan.wallet_id}"),
-            admin.put("/api/admin/wallet-settings", json=_settings_body()),
+            admin.put(
+                "/api/admin/wallet-settings", json=_settings_body(show_signup_on_screen=True)
+            ),
         ]
     finally:
         admin.app.state.draining = False  # type: ignore[attr-defined]
 
     assert [r.status_code for r in responses] == [503, 503]
     assert [w["name"] for w in _overview(admin)["wallets"]] == ["Jan"]
-    assert admin.get("/api/admin/wallet-settings").json()["signup_code"] is None
+    stored = admin.get("/api/admin/wallet-settings").json()
+    assert (stored["signup_code"], stored["show_signup_on_screen"]) == (None, False)

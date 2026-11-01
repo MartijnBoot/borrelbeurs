@@ -549,8 +549,9 @@ class WalletEntry(Base):
 
 
 class WalletSettings(Base):
-    """The sign-up code and the two retention periods (B-05 SD6, SD15). A single row,
-    `id = 1`, as `theme`; no row means sign-up closed, 30 days and 12 months."""
+    """The sign-up code, the two retention periods (B-05 SD6, SD15) and the switch for
+    the code on the koers screen (B-10 SD5). A single row, `id = 1`, as `theme`; no
+    row means sign-up closed, 30 days, 12 months and the switch off."""
 
     __tablename__ = "wallet_settings"
     __table_args__ = (
@@ -573,3 +574,4 @@ class WalletSettings(Base):
     signup_code: Mapped[str | None] = mapped_column(Text)
     unfunded_days: Mapped[int] = mapped_column(Integer)
     inactive_months: Mapped[int] = mapped_column(Integer)
+    show_signup_on_screen: Mapped[bool] = mapped_column(Boolean, server_default=false())

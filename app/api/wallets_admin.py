@@ -6,7 +6,8 @@ of reversals and the payments net of refunds (newest first, then the entries
 without a run when either sum is not zero), and every live wallet by
 case-folded name. `DELETE /api/admin/wallets/{wallet_id}` deletes one as a player
 does (SD15), 204, or 404 `wallet_not_found`. `GET`/`PUT /api/admin/wallet-settings`
-read and replace the sign-up code and the two retention periods (PD12).
+read and replace the sign-up code, the two retention periods (PD12) and the switch
+for the code on the koers screen (B-10 SD5).
 
 Admin only. The writes refuse while draining (Phase 6 PD19).
 """
@@ -17,7 +18,15 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictInt,
+    StrictStr,
+    field_validator,
+)
 
 from app.api.deps import Principal, clock_of, db_engine, refuse_while_draining, require_role
 from app.db.wallets import WalletSettingsRow
@@ -58,13 +67,16 @@ class WalletsOverview(BaseModel):
 
 
 class WalletSettingsData(BaseModel):
-    """`signup_code` null is sign-up closed (SD6). A code is trimmed, and blank means null."""
+    """`signup_code` null is sign-up closed (SD6). A code is trimmed, and blank means null.
+    `show_signup_on_screen` is "QR-code op het scherm" (B-10 SD5); it has no default, so a
+    `PUT` is a full replace (B-10 PD3)."""
 
     model_config = ConfigDict(extra="forbid")
 
     signup_code: StrictStr | None
     unfunded_days: Annotated[StrictInt, Field(ge=1, le=365)]
     inactive_months: Annotated[StrictInt, Field(ge=1, le=60)]
+    show_signup_on_screen: StrictBool
 
     @field_validator("signup_code")
     @classmethod
@@ -81,6 +93,7 @@ def _settings(row: WalletSettingsRow) -> WalletSettingsData:
         signup_code=row.signup_code,
         unfunded_days=row.unfunded_days,
         inactive_months=row.inactive_months,
+        show_signup_on_screen=row.show_signup_on_screen,
     )
 
 
@@ -135,6 +148,11 @@ async def put_wallet_settings(
 ) -> WalletSettingsData:
     stored = await actions.put_settings(
         db_engine(request),
-        WalletSettingsRow(body.signup_code, body.unfunded_days, body.inactive_months),
+        WalletSettingsRow(
+            body.signup_code,
+            body.unfunded_days,
+            body.inactive_months,
+            body.show_signup_on_screen,
+        ),
     )
     return _settings(stored)
