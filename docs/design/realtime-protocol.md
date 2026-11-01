@@ -31,7 +31,7 @@ Two caveats when slimming, both easy to get wrong:
 ```
 
 `seq` is global per process (Phase 3 SD27). Every **broadcast** takes the next `seq`;
-a **unicast** (`hello`, `snapshot`, `pong`, `error`, and the `theme` catch-up below) carries
+a **unicast** (`hello`, `snapshot`, `pong`, `error`, and the `theme` and `signup` catch-ups below) carries
 the current `seq` without incrementing it, so a snapshot at `seq = S` means "state as of S"
 and the next broadcast the client sees is `S+1`. Each boot draws a random `boot_id`.
 
@@ -54,6 +54,7 @@ what makes absolute end-timestamps usable.
 | `news` | `{op: add\|delete, item}` | On change |
 | `config` | `{revision, run, drinks, params}`: a committed live config change — its config `revision`, the run (the snapshot's `run` fields with its `name`; a save of "Wallet verplicht" or "Rood staan tot" is one such change, B-06 PD4), every drink with `active`, and the params (Phase 6 SD18). It replaces the client's `drinks`, `params` and `run`; when the active `drink_id` set or `candle_interval_ms` changed, the held prices and bars no longer fit, so the client sends one `resync_request`. A draft's writes broadcast nothing | On every live admin config write |
 | `theme` | `{preset, revision, tokens, font_family, images}`: the preset's name (`custom` for the stored custom theme, Phase 6 SD28), a `revision` (0 = nothing stored, Blauw), all **24 tokens** of the server's manifest (`app/runtime/theme.py`), the body's font stack, and `images` — `{bg, header, logo, promo}`, each `"/assets/<id>"` or `null` (Phase 6 PD9). Broadcast with `version: null`, with or without a live run; also sent as a **catch-up unicast** after every handshake replay or snapshot and every `resync_request` snapshot, so a client never misses a change across a reconnect or a gap | On theme change; after every replay or snapshot |
+| `signup` | `{show_on_screen, signup_code, public_url}` (B-10 SD3): the koers screen's sign-up QR code, the whole state, never a delta. `show_on_screen` is the Wallets switch "QR-code op het scherm"; `signup_code` is the stored code (`null` is sign-up closed); `public_url` is the server's `BB_PUBLIC_URL` (`null` when unset). Broadcast with `version: null` after every successful save of the wallet settings, with or without a live run, to every role (the code is on a poster and now on the screen, so it is not filtered by role); also sent as a **catch-up unicast** after every handshake replay or snapshot and every `resync_request` snapshot, and held in memory so a restart answers from the stored row. Go-live sends none: no handshake happens and a screen keeps its state | On every wallet-settings save; after every replay or snapshot |
 | `run_closed` | `{run_id, name, ended_at_ms}` (Phase 7 SD2): the admin closed the live run. Broadcast with `version: null` once the close has committed and the server holds no run. The server keeps the frame until the next go-live, and sends it as a unicast to a client whose `hello` named the run but whose connection joined only after the close, instead of a snapshot (there is none to send). Koers shows "Borrel afgelopen"; the bar and home show "Geen actieve borrel" | Once, on close; to a late joiner of the closed run |
 | `resync` | "You are too far behind, or I restarted" | On backpressure overflow or version gap |
 
@@ -84,6 +85,11 @@ countdown and animation locally, with no polling.
   than the held one, and it never starts or waits on a resync, because with no live run there
   is no snapshot to end one. A theme broadcast does not move the server's resync metadata
   (`run_id`, `version`) either.
+- A `signup` (B-10) is outside the seq rule too, with no revision to compare: the latest one
+  received wins. It never starts or waits on a resync, and takes its `seq` only when it is next
+  in line with no resync pending. A new `boot_id`, a `run_closed` and a `snapshot` keep it, so
+  the screen's block does not flash off; the catch-up after every handshake replaces it. It does
+  not move the server's resync metadata (`run_id`, `version`).
 - **A `run_closed` (Phase 7 PD5) is the second exception to the seq rule**, for the same
   reason: after a close there is no snapshot that could end a resync. It applies whatever its
   `seq`. It clears the live state as a new boot does (the boot, the theme and the clock skew

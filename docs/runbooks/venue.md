@@ -11,6 +11,8 @@
    `bash scripts/make_bundle.sh <sha>`; check it with `sha256sum -c SHA256SUMS` in that folder.
 4. In the bundle folder: copy `.env.example` to `.env` (or let `start.cmd` do it). Set
    `BB_PUBLIC_URL` to the router address below. `JWT_SECRET` is generated on first start.
+   The app reads `BB_PUBLIC_URL` too (B-10): it is the address in the sign-up QR code on the
+   big screen, so it must be the address phones reach, not `localhost`.
 5. Run `start.cmd` once at home, with the internet off, and check the board loads.
 6. Create keys and the run, with the bundle's own image. After step 5 the database is up and
    `.env` has its `JWT_SECRET`. Stop the app (`go-live` is refused while it runs):
@@ -38,6 +40,11 @@
    press "Download PNG". Print it, and check that a phone on the venue Wi-Fi scans it and opens
    the player page with the code filled in. Changing or clearing the code later breaks every
    printed copy: the page asks first, and you print again.
+5. The sign-up QR code on the big screen (optional). In the same Aanmeldcode box, tick
+   "QR-code op het scherm". The koers screen then shows the code at the top left, also when the
+   laptop drives the TV at `http://localhost/`, because it uses `BB_PUBLIC_URL`. It needs the
+   switch on, a code saved and `BB_PUBLIC_URL` set; check it by scanning the TV from a phone on
+   the venue Wi-Fi.
 
 ## During
 

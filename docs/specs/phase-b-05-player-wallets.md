@@ -78,6 +78,7 @@ interview and approved as a whole. The planner must not reopen any of them.
 
 - **SD6 — Open sign-up behind the deployment's sign-up code, rate-limited (Q9).**
   - The code is set by admin (SD14). With no code set, sign-up is closed (`signup_closed`).
+    > **Amended by B-10** ([phase-b-10-koers-signup-qr.md](phase-b-10-koers-signup-qr.md), SD3, SD4). The code is no longer seen by admin only: with the switch on it is also on the koers screen, so every role's WebSocket receives it in the `signup` message.
   - The code is compared trimmed and case-insensitively. A wrong code is `signup_code_invalid`.
   - The poster's QR is a link `/speler?code=<code>` that fills the code in.
   - Sign-up and the name check share one per-IP limiter shaped as the login one, default **5 per
