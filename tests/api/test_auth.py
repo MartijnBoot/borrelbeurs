@@ -67,7 +67,22 @@ def test_login_sets_a_secure_httponly_samesite_strict_cookie(
     [
         ("display", ["/koers"]),
         ("bar", ["/bar", "/manipulation"]),
-        ("admin", ["/", "/koers", "/bar", "/manipulation", "/settings", "/analytics", "/kassa"]),
+        # B-12 AC1: the landing and the three screens.
+        (
+            "admin",
+            [
+                "/",
+                "/koers",
+                "/bar",
+                "/manipulation",
+                "/settings",
+                "/settings/spel",
+                "/settings/wallets",
+                "/settings/beheer",
+                "/analytics",
+                "/kassa",
+            ],
+        ),
         # B-05 SD7, AC36.
         ("kassa", ["/kassa"]),
     ],

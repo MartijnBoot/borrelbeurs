@@ -1,8 +1,10 @@
 /**
- * The header menu (SD13): exactly the `allowed_routes` it is given, in that
- * order, plus "Uitloggen". The label map is presentation only -- it decides
- * nothing about access, and a route it lacks renders as its path rather than
- * being dropped. Ported from v1's unified nav (`koers.html:246-259, 293-338`).
+ * The header menu (SD13): the `allowed_routes` it is given, in that order,
+ * plus "Uitloggen". The label map is presentation only -- it decides nothing
+ * about access, and a route it lacks renders as its path rather than being
+ * dropped. A route nested under another listed route (`/settings/spel` under
+ * `/settings`) is left out: the parent page links to it (B-12 SD11, PD5).
+ * Ported from v1's unified nav (`koers.html:246-259, 293-338`).
  */
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
@@ -18,6 +20,10 @@ const LABELS: Readonly<Record<string, string>> = {
   '/analytics': 'Analyse',
   '/kassa': 'Kassa',
 }
+
+// B-12 PD5: a route that is another listed route followed by `/`.
+const isNested = (route: string, routes: readonly string[]) =>
+  routes.some((parent) => route.startsWith(`${parent}/`))
 
 export interface NavMenuProps {
   routes: readonly string[]
@@ -58,17 +64,19 @@ export function NavMenu({ routes, onLogout }: NavMenuProps) {
       </button>
       {open && (
         <div className={styles.panel} role="menu">
-          {routes.map((route) => (
-            <Link
-              key={route}
-              className={styles.item}
-              role="menuitem"
-              to={route}
-              onClick={() => setOpen(false)}
-            >
-              {LABELS[route] ?? route}
-            </Link>
-          ))}
+          {routes
+            .filter((route) => !isNested(route, routes))
+            .map((route) => (
+              <Link
+                key={route}
+                className={styles.item}
+                role="menuitem"
+                to={route}
+                onClick={() => setOpen(false)}
+              >
+                {LABELS[route] ?? route}
+              </Link>
+            ))}
           <div className={styles.sep} aria-hidden="true" />
           <button
             type="button"
