@@ -15,6 +15,8 @@ Top is next. Every item that is not `specced` or `dropped` appears here exactly 
 
 | # | ID | Feature | Size | Status |
 |---|---|---|---|---|
+| 1 | B-12 | Settings on separate screens per kind of work | M | idea |
+| 2 | B-13 | An organiser role | M | idea |
 
 ## Items
 
@@ -438,6 +440,121 @@ a timing test that fails only under load, so that a red gate is no longer believ
 **Touches.** (A guess.) `scripts/check.sh`, `tests/integration/conftest.py`,
 `tests/api/conftest.py`, `pyproject.toml` and `uv.lock`, the timing-sensitive test modules,
 perhaps the vitest config, and CLAUDE.md's "13 steps" text. Not the engine, no ADR.
+
+### B-12 — Settings on separate screens per kind of work
+
+- **Status:** idea
+- **Added:** 2026-10-27 (revised 2026-11-02)
+- **Size:** M (a few tasks) — a guess: a menu with screens, sections moving between them,
+  Globale instellingen split into groups, and the last tick boxes becoming toggles
+
+**Problem.** `/settings` is one long page of 11 sections in v1's sidebar order
+(`SettingsPage.tsx`, Phase 6 SD25), with no real logic to the order. What steers a night
+(drinks, prices, looks) sits mixed in with what runs the system (engine, keys, system actions).
+It is too crowded: finding a setting means scrolling or using the section select, someone else
+(a partner, a host) cannot tell what matters for the night and what for the system, and it is
+hard to explain what does what. Some settings that belong together sit apart: the wallet
+settings "Wallet verplicht" and "Rood staan tot" are in Globale instellingen, while the other
+wallet settings are in Wallets. Globale instellingen itself is 18 fields in one grid.
+
+**Idea.** "Instellingen" in the header menu stays, and opens a choice of separate screens, one
+per kind of work, each person seeing only the ones their role may open (B-13). A first guess at
+the groups, for `/spec` to settle:
+- **Spelopzet:** Borrel, Profielen, Drankjes beheren, Min/Max/Startprijs, Kleurenschema,
+  Afbeeldingen (Vraag/Aanbod: see the open questions).
+- **Mensen en wallets:** Wallets, with "Wallet verplicht" and "Rood staan tot" moved over from
+  Globale instellingen.
+- **Beheer** (the engine and the system): Systeemacties, Globale instellingen, Toegangssleutels.
+
+Globale instellingen splits into labelled groups (a guess): Prijzen (Prijsstap, beside
+Min/Max/Startprijs); Hoe bestellingen de prijs bewegen (Beweging per bestelling, Drukdrempel,
+Concurrentie, Trek naar gemiddelde prijs, Nawerking, Geheugen, Ritme stille drankjes);
+Willekeurige ruis (the switch, its five fields hidden while it is off); Koersbord
+(Grafiekgeschiedenis, Kaarsbreedte); Betalen (the two wallet settings, now in Mensen en
+wallets).
+
+No tick boxes: every on/off is a toggle switch. `/spec` works out how the switches look so the
+pages carry less visual clutter: size, where the label goes, whether related switches share a
+row. (Tick boxes left today: the Wallets section and Idle's per-drink boxes on Spel mechanica;
+Demand and Global already use `Switch`.) Spel mechanica stays its own menu item, as it is now.
+
+**Why it matters.** Each task has one obvious home, a screen shows only what one person needs,
+and the groups line up with who does what (B-13). The owner's partner can run a night without
+the owner on location as a technician. Without it, every setting added makes the one page
+longer.
+
+**Not this.** (A guess, not contradicted.) No change to the pricing maths or to what any
+setting does; B-01's names and explanations stay. No new settings and no new role — that is
+B-13. A failure, even if it works: a setting gets lost in the move, or can no longer be found.
+
+**Open questions.**
+- The group names, and which section goes where; in particular Toegangssleutels under Beheer
+  (a guess), Borrel (start and close), Profielen (a saved set of engine settings, B-04) and
+  Min/Max/Startprijs.
+- Does Vraag/Aanbod belong with the night (Spelopzet) or fold into the engine group (Beheer)?
+- How the header menu shows the groups (a submenu, or a main settings page that leads to them),
+  whether that page shows status too, and what a role sees that may open only some of them.
+- Screen addresses: `docs/design/frontend-architecture.md:64` keeps v1's routes, so changing
+  them changes `docs/design/` — the owner's call. Do old `/settings#section` links survive?
+- Narrow screens: what replaces `MobileSectionNav` across screens?
+- Does the wallet move change where the settings live in the API (`PATCH /config`), or is it
+  screen only?
+- The switch design, and whether Idle's per-drink boxes on `/manipulation` change too, though
+  the page stays.
+- The home tile's text ("Globale instellingen, grenzen, vraag/aanbod, drankjes, afsluiten").
+
+**Touches.** (A guess.) `web/src/app/pages/SettingsPage.tsx`, `features/settings`
+(`SettingsLayout`, `GlobalSection`), `features/wallets`, `features/keys`,
+`features/manipulation/IdleSection.tsx`, `features/home/HomePage.tsx`,
+`components/ui/NavMenu.tsx`, `MobileSectionNav`, `Switch`, `app/routes.tsx`. Reverses Phase 6
+SD25 (one page, v1's sidebar order) and B-06's placement of the two wallet settings — spec
+decisions, not an ADR; the route question may touch `docs/design/`. Not the engine.
+
+### B-13 — An organiser role
+
+- **Status:** idea
+- **Added:** 2026-10-27 (revised 2026-11-02)
+- **Size:** M (a few tasks) — a guess; L if the key and login changes grow
+- **Depends on:** B-12
+
+**Problem.** Kassa runs the bank and wallets, bar handles the bar and orders. Whoever sets up
+the game (drinks, prices, looks, profiles, wallets) has no role of their own: it is all
+admin-only, so they need the admin key, which also opens the engine's advanced settings, the
+system actions and creating keys. And kassa cannot reach the wallet settings, which sit on
+`/settings`.
+
+**Idea.** A new key role, organiser, between bar and admin. It opens the game-setup screens
+from B-12 (Spelopzet, Mensen en wallets) and not Beheer (Systeemacties, Globale instellingen,
+Toegangssleutels). The kassa key also opens the wallet screen. Creating keys stays admin-only;
+admin keeps everything. (The earlier draft called this "a role for the drinks and the look of
+the night"; the name organiser is the owner's choice.)
+
+**Why it matters.** The host of the event can do the setup for the night without the owner
+there, while the admin key stays with few people and the system actions stay out of reach.
+
+**Not this.** No usernames or passwords. The bar role does not gain any config rights (D-44: a
+bar key could once rewrite the whole config); bar and display keep what they can do now (bar
+keeps `/manipulation`). No change to the pricing maths. A failure, even if it works (a guess):
+the organiser can change an engine setting or create a key, or a menu hides Beheer while the
+server still accepts the calls — the server must refuse it, hiding a button is not enough.
+
+**Open questions.**
+- Does the server enforce the split per endpoint, not just the menu? Which admin-only endpoints
+  open to the organiser, and which to kassa?
+- Which pages it opens: `/manipulation`, `/koers`, `/bar`, `/analytics`, `/kassa`, home?
+- May an organiser load a Profiel, given that a profile sets engine settings?
+- Min/Max/Startprijs: the organiser's, or admin's (they are prices)?
+- Which wallet settings kassa gets: Aanmeldcode, Bewaartermijnen, Wallet verplicht, Rood staan
+  tot?
+- How an organiser key is made: `app.cli.keys --role`, the Toegangssleutels page, who may
+  create one.
+- What happens to existing keys and sessions; the role enum and its migration.
+
+**Touches.** (A guess.) `ROLE_ROUTES` in `app/api/security.py`, `app/api/deps.py` and the
+admin-only endpoints in `app/api`, `app.cli.keys --role`, `features/keys/KeysSection.tsx`, the
+login page, a possible migration for the role value, B-12's screens,
+`docs/design/architecture.md`. Changes Phase 3 SD5/SD6 and Phase 6 role decisions — spec
+decisions; check whether an ADR names the roles. Not the engine.
 
 ## Deferred work
 
