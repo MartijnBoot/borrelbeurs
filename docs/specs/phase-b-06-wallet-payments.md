@@ -61,7 +61,8 @@ them.
   - A run created after this phase's migration starts with the switch **on**. Runs that exist
     when the migration runs get **off**, so a deploy never changes a borrel in progress.
   - Admin edits it in Globale instellingen, on a draft or a live run, like any other setting
-    there. A live change takes effect for the next order that reaches the server. An order is
+    there. *(Since B-12 SD3, both settings are in Betalen on `/settings/wallets`:
+    [phase-b-12-settings-screens.md](phase-b-12-settings-screens.md).)* A live change takes effect for the next order that reaches the server. An order is
     judged by the switch as it stands when the order arrives, whatever the bar page showed.
 - **SD2 — "Rood staan tot": a per-run credit limit (Q4, Q5).**
   - A run has `credit_limit_cents`: €0,00–€50,00 in €0,50 steps. A new run starts at €0,00.
@@ -274,7 +275,8 @@ This is for the planner to refine, not to rename without a reason.
     modes, the basket's 409 confirmation, SD18's shortfall, SD6's release, SD7's message, the
     recent-payments list with "Terugboeken";
   - the bar's idempotency keys from `web/src/lib/idempotencyKey.ts` (D-49);
-  - Globale instellingen: "Wallet verplicht" and "Rood staan tot", with info popups;
+  - Globale instellingen: "Wallet verplicht" and "Rood staan tot", with info popups *(since
+    B-12 SD3 in Betalen on `/settings/wallets`: [phase-b-12-settings-screens.md](phase-b-12-settings-screens.md))*;
   - the kassa: a found wallet's payments with "Terugboeken";
   - negative balances on the player, kassa and bar pages, and the self-delete refusal;
   - the Wallets section's two totals and payments per borrel;
@@ -323,7 +325,8 @@ This is for the planner to refine, not to rename without a reason.
   bar pages shall follow without a reload. A limit outside €0,00–€50,00, or off the €0,50 grid,
   shall be 422 and store nothing. Bar, kassa and display keys shall get 403.
 - **AC3.** Both fields shall have an info popup in Globale instellingen. Neither shall be saved
-  into, or loaded from, a profile.
+  into, or loaded from, a profile. *(Since B-12 SD3, both are in Betalen on `/settings/wallets`:
+  [phase-b-12-settings-screens.md](phase-b-12-settings-screens.md).)*
 
 **Paying — SD4, SD13, SD14, SD15, SD16**
 

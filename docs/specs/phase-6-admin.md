@@ -374,6 +374,10 @@ Settled at the spec interview (2026-10-06).
   > and sidebar links now show B-02's pixel icon before the plain name (Borrel has none);
   > the narrow-screen select shows the plain names.
 
+  > **Superseded in part by B-12** ([phase-b-12-settings-screens.md](phase-b-12-settings-screens.md)). `/settings` is a
+  > landing page now, and the sections live on three screens: Spelopzet, Mensen en wallets
+  > and Beheer (B-12 SD3), each with its own section navigation.
+
 - **SD26 — System actions are shutdown and anchor-s0. Reset is Phase 7.**
   - **"⛔ Sluit app":** a `ConfirmDialog` reading "Applicatie nu afsluiten?", then
     `POST /api/admin/shutdown`, then "App sluit nu af…" with every control disabled.
