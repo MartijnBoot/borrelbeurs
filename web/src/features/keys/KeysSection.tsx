@@ -21,6 +21,7 @@ import { Field } from '../../components/ui/Field'
 import fieldStyles from '../../components/ui/Field.module.css'
 import { Select } from '../../components/ui/Select'
 import { HttpError, request } from '../../lib/http'
+import { useReportUnsaved } from '../../lib/unsavedEdits'
 import { formatWhen } from '../../lib/time'
 import styles from './KeysSection.module.css'
 
@@ -72,6 +73,8 @@ export function KeysSection() {
   const [revoking, setRevoking] = useState<KeyInfo | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // B-12 SD9 (OQ1 = B): a half-typed label for a new key counts as unsaved.
+  useReportUnsaved(label !== '')
   const labelId = useId()
 
   const reload = useCallback(

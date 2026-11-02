@@ -6,7 +6,8 @@
  * entries the bounds rows and the coefficient table use (AC9). A blank optional is left out of the body, so the server's
  * default applies (AC4); an invalid entry blocks the add. A Minimumprijs or
  * Maximumprijs off the Prijsstap shows B-07 SD1's message under it and blocks
- * the add too (B-07 SD10; PD9).
+ * the add too (B-07 SD10; PD9). While any of its fields holds typed text, the
+ * add form counts as unsaved for the leave guard (B-12 SD9, OQ1 = B).
  *
  * **Per active drink:** its name and bar price, saved as a dirty-only `PATCH`
  * ("Niets te wijzigen" when untouched), and "Verwijderen" behind
@@ -23,6 +24,7 @@ import { NumberField } from '../../components/ui/NumberField'
 import { Toast } from '../../components/ui/Toast'
 import { type FieldValue } from '../../lib/format'
 import { HttpError, request } from '../../lib/http'
+import { useReportUnsaved } from '../../lib/unsavedEdits'
 import { useEditableRecord } from '../../lib/useEditableRecord'
 import explanations from './explanations.json'
 import styles from './settings.module.css'
@@ -125,6 +127,8 @@ function AddDrinkForm({
   onDone: () => Promise<void>
 }) {
   const [draft, setDraft] = useState<AddDraft>(EMPTY)
+  // B-12 SD9 (OQ1 = B): any typed field of a drink not yet added counts as unsaved.
+  useReportUnsaved((Object.keys(EMPTY) as (keyof AddDraft)[]).some((k) => draft[k] !== EMPTY[k]))
   const [error, setError] = useState<string | null>(null)
   const [faults, setFaults] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)

@@ -25,6 +25,7 @@ import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Select } from '../../components/ui/Select'
 import { HttpError, request } from '../../lib/http'
+import { useReportUnsaved } from '../../lib/unsavedEdits'
 import { fetchPastRuns, type PastRun } from './pastRuns'
 import styles from './settings.module.css'
 import { CurrentRun, fetchCurrentRun, useCurrentRun } from './useCurrentRun'
@@ -74,6 +75,8 @@ export function BorrelSection({ names }: BorrelSectionProps) {
   const [asking, setAsking] = useState<'live' | 'close' | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // B-12 SD9 (OQ1 = B): a half-typed name for a new borrel counts as unsaved.
+  useReportUnsaved(run === null && name !== '')
 
   const noRun = run === null
   useEffect(() => {

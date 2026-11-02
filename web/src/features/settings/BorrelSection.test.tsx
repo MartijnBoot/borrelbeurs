@@ -6,6 +6,7 @@
 // B-04 T10 (AC7-AC10, AC22, AC23; SD4, SD13): the "Profiel" select from GET /api/profiles.
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { UnsavedEditsProvider, useHasUnsaved } from '../../lib/unsavedEdits'
 import { BorrelSection } from './BorrelSection'
 import { bumpProfiles } from './useProfiles'
 
@@ -451,5 +452,46 @@ describe('BorrelSection: copy from a past run (Phase 7 T18)', () => {
 
     expect(profileOptions()).toEqual(['—', 'rustig'])
     expect((screen.getByLabelText('Profiel') as HTMLSelectElement).value).toBe('')
+  })
+})
+
+function Unsaved() {
+  return <output data-testid="unsaved">{String(useHasUnsaved())}</output>
+}
+const unsaved = () => screen.getByTestId('unsaved').textContent
+
+// B-12 T11b (SD9, OQ1 = B): a half-typed name for a new borrel counts as unsaved.
+describe('BorrelSection: unsaved edits (B-12 T11b)', () => {
+  async function openGuarded() {
+    render(
+      <UnsavedEditsProvider>
+        <BorrelSection names={NAMES} />
+        <Unsaved />
+      </UnsavedEditsProvider>,
+    )
+    await settle()
+  }
+
+  it('a typed name counts until the borrel is made', async () => {
+    serve(noRun, () => json(201, draft))
+    await openGuarded()
+    expect(unsaved()).toBe('false')
+    fireEvent.change(screen.getByLabelText('Naam'), { target: { value: 'Vrij' } })
+    expect(unsaved()).toBe('true')
+    fireEvent.change(screen.getByLabelText('Naam'), { target: { value: 'Vrijmibo' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Nieuwe borrel' }))
+    await settle()
+    expect(screen.getByText('Concept')).toBeTruthy()
+    expect(unsaved()).toBe('false')
+  })
+
+  it('a name typed and erased does not count, and the selects never do', async () => {
+    serve(noRun)
+    await openGuarded()
+    fireEvent.change(screen.getByLabelText('Naam'), { target: { value: 'Vrij' } })
+    fireEvent.change(screen.getByLabelText('Naam'), { target: { value: '' } })
+    expect(unsaved()).toBe('false')
+    fireEvent.change(screen.getByLabelText('Profiel'), { target: { value: '' } })
+    expect(unsaved()).toBe('false')
   })
 })

@@ -25,6 +25,7 @@ import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Select } from '../../components/ui/Select'
 import { HttpError, request } from '../../lib/http'
+import { useReportUnsaved } from '../../lib/unsavedEdits'
 import { formatDayMonthTime } from '../../lib/time'
 import styles from './settings.module.css'
 import { useCurrentRun } from './useCurrentRun'
@@ -77,6 +78,8 @@ export function ProfilesSection({ names }: ProfilesSectionProps) {
   const [loading, setLoading] = useState<Profile | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // B-12 SD9 (OQ1 = B): a half-typed profile name counts as unsaved.
+  useReportUnsaved(name !== '')
 
   const canSave = run != null && (run.status === 'draft' || run.status === 'live')
   const canLoad = run?.status === 'draft' && profiles.length > 0
