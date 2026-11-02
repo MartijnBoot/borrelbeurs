@@ -54,7 +54,8 @@ describe('NavMenu (AC22, SD13)', () => {
   it('lists "Instellingen" once and none of the settings screens (B-12 AC4, SD11)', () => {
     const menu = renderMenu(ALLOWED.admin)
     expect(menu.getAllByRole('menuitem', { name: 'Instellingen' })).toHaveLength(1)
-    expect(hrefs(menu).filter((href) => href?.startsWith('/settings/'))).toEqual([])
+    const nested = hrefs(menu).filter((href: string | null) => href?.startsWith('/settings/'))
+    expect(nested).toEqual([])
   })
 
   it('keeps a nested route whose parent is not listed (B-12 PD5)', () => {
