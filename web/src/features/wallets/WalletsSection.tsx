@@ -11,6 +11,8 @@
  *   it saves at once, with no confirm: nothing printed breaks. It is a
  *   `Switch` (B-12 SD7).
  * - **Bewaartermijnen:** the two retention periods, whole days and months.
+ * - The code and the two periods count as unsaved while they differ from the
+ *   stored settings (B-12 PD4).
  * - **Totalen:** "Tegoed", what the association still owes in drinks, and
  *   "Rood", what players owe, never netted (B-06 SD20, PD10); per borrel the
  *   top-ups net of reversals and the wallet payments net of refunds, newest
@@ -30,6 +32,7 @@ import fieldStyles from '../../components/ui/Field.module.css'
 import { Switch } from '../../components/ui/Switch'
 import { formatBalance, formatEuro } from '../../lib/format'
 import { HttpError } from '../../lib/http'
+import { useReportUnsaved } from '../../lib/unsavedEdits'
 import { formatDayMonth } from '../../lib/time'
 import {
   deleteWallet,
@@ -86,6 +89,13 @@ export function WalletsSection() {
   const modules = useMemo(
     () => (saved === null ? null : encode(signupLink(origin, saved), SIGNUP_QR).data),
     [origin, saved],
+  )
+
+  useReportUnsaved(
+    settings !== null &&
+      (code !== (settings.signup_code ?? '') ||
+        days !== String(settings.unfunded_days) ||
+        months !== String(settings.inactive_months)),
   )
 
   const show = useCallback((stored: WalletSettings) => {

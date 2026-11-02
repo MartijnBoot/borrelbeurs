@@ -5,6 +5,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { exchangeStore, type ThemeData } from '../exchange'
+import { UnsavedEditsProvider, useHasUnsaved } from '../../lib/unsavedEdits'
 import { ThemeEditor } from './ThemeEditor'
 // The server's own manifest, as text: Vite's `?raw` import, test-only.
 import themePy from '../../../../app/runtime/theme.py?raw'
@@ -98,5 +99,48 @@ describe('ThemeEditor', () => {
     })
     render(<ThemeEditor />)
     expect((screen.getByLabelText('Lettertype') as HTMLSelectElement).value).toBe('garamond')
+  })
+})
+
+// B-12 T11a (SD9, PD4): the leave guard counts a draft that differs from the active theme.
+describe('unsaved edits (B-12 PD4)', () => {
+  function Unsaved() {
+    return <output data-testid="unsaved">{String(useHasUnsaved())}</output>
+  }
+  const unsaved = () => screen.getByTestId('unsaved').textContent
+
+  beforeEach(() => {
+    cleanup()
+    render(
+      <UnsavedEditsProvider>
+        <ThemeEditor />
+        <Unsaved />
+      </UnsavedEditsProvider>,
+    )
+  })
+
+  it('an edited token counts until it is saved', async () => {
+    expect(unsaved()).toBe('false')
+    fireEvent.change(screen.getByLabelText('--bg'), { target: { value: '#000000' } })
+    expect(unsaved()).toBe('true')
+    fireEvent.click(save())
+    await act(async () => {})
+    expect(unsaved()).toBe('false')
+  })
+
+  it('a token or font typed back to the active theme does not count', () => {
+    fireEvent.change(screen.getByLabelText('--bg'), { target: { value: '#000000' } })
+    fireEvent.change(screen.getByLabelText('--bg'), { target: { value: held.tokens['--bg'] } })
+    expect(unsaved()).toBe('false')
+    fireEvent.change(screen.getByLabelText('Lettertype'), { target: { value: 'garamond' } })
+    expect(unsaved()).toBe('true')
+    fireEvent.change(screen.getByLabelText('Lettertype'), { target: { value: 'inter' } })
+    expect(unsaved()).toBe('false')
+  })
+
+  it('"Herstellen" stops counting', () => {
+    fireEvent.change(screen.getByLabelText('--bg'), { target: { value: '#000000' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Herstellen' }))
+    expect(unsaved()).toBe('false')
   })
 })
