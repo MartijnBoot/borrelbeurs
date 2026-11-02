@@ -129,12 +129,14 @@ test('a player signs up, the kassa tops up, reverses and moves, admin sees the t
   const admin = await open(browser, venueUrl, '/login')
   expect(await admin.evaluate(() => window.isSecureContext)).toBe(false) // PD16: the venue path
   await login(admin, adminKey)
-  await admin.goto('/settings')
+  // B-12 SD3: the code on Mensen en wallets, the kassa key on Beheer.
+  await admin.goto('/settings/wallets')
   const wallets = section(admin, 'Wallets')
   await wallets.getByRole('textbox', { name: 'Aanmeldcode' }).fill('Borrel2026')
   await wallets.getByRole('button', { name: 'Opslaan' }).first().click()
   await expect(wallets.getByText(`${venueUrl}/speler?code=Borrel2026`)).toBeVisible()
 
+  await admin.goto('/settings/beheer')
   const keys = section(admin, 'Toegangssleutels')
   await keys.getByLabel('Rol').selectOption({ label: 'Kassa' })
   await keys.getByLabel('Label').fill('Kassa 1')
@@ -225,7 +227,7 @@ test('a player signs up, the kassa tops up, reverses and moves, admin sees the t
   })
 
   // 8. Admin: the outstanding balance and the borrel's top-ups (AC34); the kassa counted (AC40).
-  await admin.reload()
+  await admin.goto('/settings/wallets')
   const totals = section(admin, 'Wallets').getByRole('region', { name: 'Totalen' })
   await expect(totals).toContainText(/Tegoed: €\s15,00/)
   await expect(totals).toContainText(/Walletborrel: opgewaardeerd €\s15,00, besteed €\s0,00/)

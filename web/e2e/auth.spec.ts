@@ -48,6 +48,14 @@ test.describe('navigation (AC22, AC23)', () => {
     await expect(page).toHaveURL((url) => url.pathname === '/settings')
   })
 
+  // B-12 AC3, SD17: the screens are admin's only.
+  test('display at /settings/beheer sees "Geen toegang"', async ({ page, loginAs }) => {
+    await loginAs('display')
+    await page.goto('/settings/beheer')
+    await expect(page.getByText('Geen toegang')).toBeVisible()
+    await expect(page).toHaveURL((url) => url.pathname === '/settings/beheer')
+  })
+
   test('bar at /bar sees the bar page (Phase 5)', async ({ page, loginAs }) => {
     await loginAs('bar')
     await expect(page).toHaveURL((url) => url.pathname === '/bar')

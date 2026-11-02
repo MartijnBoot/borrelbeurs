@@ -188,19 +188,21 @@ test('a borrel paid from a wallet: pay, a shortfall, debt, a refund, the switch 
   // 1. Admin: the sign-up code, "Rood staan tot" €2,50, a kassa and a bar key (AC2).
   const admin = await open(browser, loopbackUrl, '/login')
   await login(admin, adminKey)
-  await admin.goto('/settings')
+  // B-12 SD3: the code and Betalen on Mensen en wallets, the keys on Beheer.
+  await admin.goto('/settings/wallets')
   const wallets = section(admin, 'Wallets')
   await wallets.getByRole('textbox', { name: 'Aanmeldcode' }).fill(CODE)
   await wallets.getByRole('button', { name: 'Opslaan' }).first().click()
   await expect(wallets.getByText(`/speler?code=${CODE}`)).toBeVisible()
-  const global = section(admin, 'Globale instellingen')
-  await expect(global.getByRole('switch', { name: 'Wallet verplicht' })).toHaveAttribute(
+  const betalen = section(admin, 'Betalen')
+  await expect(betalen.getByRole('switch', { name: 'Wallet verplicht' })).toHaveAttribute(
     'aria-checked',
     'true',
   )
-  await global.getByRole('textbox', { name: 'Rood staan tot (€)' }).fill('2,50')
-  await global.getByRole('button', { name: 'Opslaan instellingen' }).click()
+  await betalen.getByRole('textbox', { name: 'Rood staan tot (€)' }).fill('2,50')
+  await betalen.getByRole('button', { name: 'Opslaan' }).click()
   await expect(admin.getByText('Opgeslagen', { exact: true })).toBeVisible()
+  await admin.goto('/settings/beheer')
   const kassaKey = await newKey(admin, 'Kassa', 'Kassa 1')
   barKey = await newKey(admin, 'Bar', 'Bar 1')
 
@@ -287,9 +289,9 @@ test('a borrel paid from a wallet: pay, a shortfall, debt, a refund, the switch 
 
   // 6. Admin turns the switch off; the bar follows live (AC2) and books an order with no
   // wallet, writing no payment (AC15).
-  await admin.goto('/settings')
-  await global.getByRole('switch', { name: 'Wallet verplicht' }).click()
-  await global.getByRole('button', { name: 'Opslaan instellingen' }).click()
+  await admin.goto('/settings/wallets')
+  await betalen.getByRole('switch', { name: 'Wallet verplicht' }).click()
+  await betalen.getByRole('button', { name: 'Opslaan' }).click()
   await expect(admin.getByText('Opgeslagen', { exact: true })).toBeVisible()
   const listed = await payments(bar).count()
   await tap(bar, 'Fris', 1)

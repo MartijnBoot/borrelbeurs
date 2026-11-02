@@ -170,7 +170,7 @@ test('the koers screen shows the sign-up QR code, follows changes live and hides
   const display = await openAs(browser, signupUrl(), server().keys.display, '/koers')
   const errors: Error[] = []
   display.on('pageerror', (error) => errors.push(error))
-  const admin = await openAs(browser, signupUrl(), server().keys.admin, '/settings')
+  const admin = await openAs(browser, signupUrl(), server().keys.admin, '/settings/wallets')
 
   // 1. The switch is off: no block (AC13). Not a secure context (AC20).
   expect(await display.evaluate(() => window.isSecureContext)).toBe(false)

@@ -85,7 +85,7 @@ test('a short key is minted, copied by hand, typed loosely and revoked at an HTT
   expect(await admin.evaluate(() => navigator.clipboard === undefined)).toBe(true)
 
   // 2. A bar key, under Toegangssleutels.
-  await admin.goto('/settings')
+  await admin.goto('/settings/beheer') // B-12 SD3
   const keys = section(admin, 'Toegangssleutels')
   await keys.getByLabel('Rol').selectOption({ label: 'Bar' })
   await keys.getByLabel('Label').fill('Tap 1')
