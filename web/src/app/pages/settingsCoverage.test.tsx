@@ -181,11 +181,15 @@ const SCREEN_OF: Readonly<Record<string, ScreenName>> = {
 }
 
 /** Controls that leave their old section's screen: `section role name` to its new screen. */
-const MOVED: Readonly<Record<string, ScreenName>> = {}
+const MOVED: Readonly<Record<string, ScreenName>> = {
+  // T7, SD4: Prijsstap to Spelopzet's Prijzen.
+  'globaal button Uitleg: Prijsstap (€)': 'Spelopzet',
+  'globaal textbox Prijsstap (€)': 'Spelopzet',
+}
 
 /** What B-12 adds, per screen, as `role name`. */
 const ADDED: Readonly<Record<ScreenName, readonly string[]>> = {
-  Spelopzet: [],
+  Spelopzet: ['button Opslaan prijsstap'], // T7, PD9: Prijsstap's own form
   'Mensen en wallets': [],
   Beheer: [],
 }

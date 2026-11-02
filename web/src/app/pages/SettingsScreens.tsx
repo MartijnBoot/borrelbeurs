@@ -16,6 +16,7 @@ import {
   DrinksSection,
   GlobalSection,
   ImagesSection,
+  PriceStepSection,
   ProfilesSection,
   type SettingsSection,
   SettingsLayout,
@@ -36,8 +37,18 @@ const SPELOPZET: readonly SettingsSection[] = [
     content: <ProfilesSection names={settingNames} />,
   },
   { id: 'drankjes', label: 'Drankjes beheren', icon: 'cup', content: <DrinksSection /> },
-  // SD4, SD12: Min/Max/Startprijs's section and icon, renamed.
-  { id: 'prijzen', label: 'Prijzen', icon: 'padlock', content: <BoundsSection /> },
+  // SD4, SD12: Prijsstap above the bounds it constrains, under Min/Max/Startprijs's icon.
+  {
+    id: 'prijzen',
+    label: 'Prijzen',
+    icon: 'padlock',
+    content: (
+      <>
+        <PriceStepSection />
+        <BoundsSection />
+      </>
+    ),
+  },
   { id: 'vraag', label: 'Vraag/Aanbod', icon: 'chart', content: <DemandSection /> },
   {
     id: 'kleuren',
