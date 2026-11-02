@@ -10,15 +10,22 @@
  * editing keeps the input and offers "Overnemen" (AC5). A 422 shows under the
  * field it names.
  *
- * B-03 (SD4-SD6) adds the noise after Kaarsbreedte, behind the same save:
- * Willekeurige ruis as a `Switch`, then its five settings as `NumberField`s
- * (E34-E39). Switching the noise off disables none of them (SD5).
+ * B-03 (SD4-SD6) adds the noise, behind the same save: Willekeurige ruis as a
+ * `Switch`, then its five settings as `NumberField`s (E34-E39).
+ *
+ * B-12 SD5, SD6 (PD11, PD12): one form and one "Opslaan instellingen", in three
+ * groups with their own heading: "Hoe bestellingen de prijs bewegen",
+ * "Willekeurige ruis" and "Koersbord". The five noise fields show only while
+ * the switch is on. Turning it off discards nothing: a hidden field keeps its
+ * edit, and the next save sends it. A hidden field that is empty or invalid
+ * blocks the save, and a line per field names it and says to switch the noise
+ * on to fix it. This amends B-03 SD5 ("disables none of them").
  *
  * B-12 SD3, SD4: Prijsstap, and B-07's confirm with it, is on Spelopzet's
  * Prijzen (`PriceStepSection`), and B-06's "Wallet verplicht" and "Rood staan
  * tot" are Betalen on Mensen en wallets (`PaymentSection`).
  */
-import { type FormEvent, useMemo, useState } from 'react'
+import { type FormEvent, type ReactNode, useMemo, useState } from 'react'
 import { Button } from '../../components/ui/Button'
 import { NumberField } from '../../components/ui/NumberField'
 import { Switch } from '../../components/ui/Switch'
@@ -27,24 +34,27 @@ import { request } from '../../lib/http'
 import { useEditableRecord } from '../../lib/useEditableRecord'
 import explanations from './explanations.json'
 import styles from './settings.module.css'
+import groupStyles from './GlobalSection.module.css'
 import { faultsOf, Revision, type RunConfig, useRunConfig } from './useRunConfig'
 
-const FIELDS = [
+/** PD11: what moves the price on an order, in SD5's order. */
+const PRICE_FIELDS = [
   'eta',
   'K',
   'lambda_orders',
   'alpha_price',
   'phi_persist',
   'decay_rho',
-  'history_window_minutes',
   'refresh_minutes',
-  'candle_interval_s',
 ] as const
 
 /** After the Willekeurige ruis switch, in B-03 SD4's order. */
 const NOISE_FIELDS = ['bm_sigma_y', 'bm_dt_minutes', 'flow_vol_amp', 'flow_beta', 'y_clip'] as const
 
-type Field = (typeof FIELDS)[number] | (typeof NOISE_FIELDS)[number]
+const BOARD_FIELDS = ['history_window_minutes', 'candle_interval_s'] as const
+
+type Field =
+  (typeof PRICE_FIELDS)[number] | (typeof NOISE_FIELDS)[number] | (typeof BOARD_FIELDS)[number]
 type GlobalRecord = Record<Field, number> & { bm_enabled: boolean }
 
 function recordOf(config: RunConfig): GlobalRecord {
@@ -76,15 +86,23 @@ export function GlobalSection() {
   const [faults, setFaults] = useState<Record<string, string>>({})
   const [saveError, setSaveError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // PD12: hidden noise fields that blocked the last save.
+  const [hiddenFaults, setHiddenFaults] = useState<readonly Field[]>([])
 
   if (config === null) {
     return <p className={styles.muted}>{failed ? 'Verbindingsfout. Probeer opnieuw.' : 'Laden…'}</p>
   }
   const runId = config.run.run_id
+  const noiseOn = record.values?.bm_enabled === true
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    void send()
+    const values = record.values
+    const blocked = noiseOn
+      ? []
+      : NOISE_FIELDS.filter((field) => values?.[field] === null || values?.[field] === 'invalid')
+    setHiddenFaults(blocked)
+    if (blocked.length === 0) void send()
   }
 
   async function send() {
@@ -138,21 +156,29 @@ export function GlobalSection() {
           <Button onClick={record.takeServer}>Overnemen</Button>
         </p>
       )}
-      <div className={styles.grid}>
-        {FIELDS.map(numberField)}
+      <Group title="Hoe bestellingen de prijs bewegen">{PRICE_FIELDS.map(numberField)}</Group>
+      <Group title="Willekeurige ruis">
         <div>
           <Switch
             label={explanations.bm_enabled.name}
             info={explanations.bm_enabled}
-            checked={record.values?.bm_enabled === true}
+            checked={noiseOn}
             onChange={(on) => record.set('bm_enabled', on)}
           />
           {faults.bm_enabled !== undefined && (
             <span className={styles.error}>{faults.bm_enabled}</span>
           )}
         </div>
-        {NOISE_FIELDS.map(numberField)}
-      </div>
+        {noiseOn && NOISE_FIELDS.map(numberField)}
+      </Group>
+      {!noiseOn &&
+        hiddenFaults.map((field) => (
+          <p key={field} className={styles.error} role="alert">
+            {explanations[field].name} is leeg of ongeldig. Zet Willekeurige ruis aan om het te
+            verbeteren.
+          </p>
+        ))}
+      <Group title="Koersbord">{BOARD_FIELDS.map(numberField)}</Group>
       <div className={styles.row}>
         <Button type="submit" disabled={busy}>
           Opslaan instellingen
@@ -161,5 +187,15 @@ export function GlobalSection() {
       </div>
       <Toast message={notice} onDone={() => setNotice(null)} />
     </form>
+  )
+}
+
+/** One of PD11's groups: a labelled region with its heading, its fields in the grid. */
+function Group({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className={groupStyles.group} aria-label={title}>
+      <h3>{title}</h3>
+      <div className={styles.grid}>{children}</div>
+    </section>
   )
 }

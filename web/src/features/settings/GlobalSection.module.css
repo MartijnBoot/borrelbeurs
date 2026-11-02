@@ -1,0 +1,15 @@
+/* B-12 PD11: Globale instellingen' three groups, after WalletsSection's subsections. */
+.group {
+  padding: 12px 0;
+  border-top: 1px solid var(--grid);
+}
+
+.group:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.group h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}

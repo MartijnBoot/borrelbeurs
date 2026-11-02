@@ -196,7 +196,8 @@ const MOVED: Readonly<Record<string, ScreenName>> = {
 const ADDED: Readonly<Record<ScreenName, readonly string[]>> = {
   Spelopzet: ['button Opslaan prijsstap'], // T7, PD9: Prijsstap's own form
   'Mensen en wallets': ['button Opslaan'], // T8, PD10: Betalen's own form
-  Beheer: [],
+  // T9, PD11: Globale instellingen' three group headings.
+  Beheer: ['h3 Hoe bestellingen de prijs bewegen', 'h3 Willekeurige ruis', 'h3 Koersbord'],
 }
 
 const SCREENS: Readonly<Record<ScreenName, React.JSX.Element>> = {

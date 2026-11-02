@@ -6,7 +6,9 @@
 // B-06 T17: "Wallet verplicht" and "Rood staan tot" at the top level (SD1-SD3; AC2, AC3);
 // B-12 T8 moved them, and their cases, to PaymentSection.test.tsx.
 // B-12 T7 (SD4): Prijsstap, and B-07's cases with it, moved to PriceStepSection.test.tsx.
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+// B-12 T9 (SD5, SD6; PD11, PD12; AC12-AC14): three groups in one form, and the five
+// noise fields shown only while the noise is on, their edits kept while hidden.
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectExplained } from '../../components/ui/infoTesting'
 import { exchangeStore } from '../exchange'
@@ -147,6 +149,8 @@ function refuse(loc: string[], msg: string) {
 
 const input = (label: string) => screen.getByLabelText(label) as HTMLInputElement
 const noiseSwitch = () => screen.getByRole('switch', { name: 'Willekeurige ruis' })
+const labelOf = (control: HTMLElement) =>
+  (control as HTMLInputElement | HTMLButtonElement).labels?.[0]?.textContent
 const NOISE_NUMBERS = [
   'Sterkte ruis',
   'Ritme ruis (min)',
@@ -171,6 +175,46 @@ describe('GlobalSection', () => {
     ]) {
       expect(screen.getByLabelText(label)).toBeTruthy()
     }
+  })
+
+  // B-12 SD5, PD11 (AC12): one form, three groups, in this order.
+  it('shows three groups with 7, 1 + 5 and 2 controls, and one save', async () => {
+    await open()
+    const groups = screen.getAllByRole('region')
+    expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual([
+      'Hoe bestellingen de prijs bewegen',
+      'Willekeurige ruis',
+      'Koersbord',
+    ])
+    for (const group of groups) {
+      expect(within(group).getByRole('heading', { level: 3 }).textContent).toBe(
+        group.getAttribute('aria-label'),
+      )
+    }
+    expect(within(groups[0]).getAllByRole('textbox').map(labelOf)).toEqual([
+      'Beweging per bestelling',
+      'Drukdrempel',
+      'Concurrentie tussen drankjes',
+      'Trek naar gemiddelde prijs',
+      'Nawerking van bestellingen',
+      'Geheugen van bestellingen',
+      'Ritme stille drankjes (min)',
+    ])
+    expect(within(groups[1]).getAllByRole('switch').map(labelOf)).toEqual(['Willekeurige ruis'])
+    expect(within(groups[1]).getAllByRole('textbox').map(labelOf)).toEqual(NOISE_NUMBERS)
+    expect(within(groups[2]).getAllByRole('textbox').map(labelOf)).toEqual([
+      'Grafiekgeschiedenis (min)',
+      'Kaarsbreedte (sec)',
+    ])
+    expect(screen.getAllByRole('button', { name: /^Opslaan/ })).toHaveLength(1)
+  })
+
+  it('edits in two groups go out in one save, split as before (AC13)', async () => {
+    await open()
+    fireEvent.change(input('Drukdrempel'), { target: { value: '7' } })
+    fireEvent.change(input('Kaarsbreedte (sec)'), { target: { value: '30' } })
+    await save()
+    expect(patches()).toEqual([{ params: { K: 7 }, candle_interval_s: 30 }])
   })
 
   it('has no Prijsstap: it is on Spelopzet (B-12 SD4, AC12)', async () => {
@@ -273,9 +317,9 @@ describe('GlobalSection', () => {
   })
 
   describe('the noise (B-03)', () => {
-    it('shows the six after Kaarsbreedte, in SD4 order, with the server values (AC10)', async () => {
+    it('shows the switch then the five, in SD4 order, with the server values (AC10)', async () => {
       await open()
-      const controls = [input('Kaarsbreedte (sec)'), noiseSwitch(), ...NOISE_NUMBERS.map(input)]
+      const controls = [noiseSwitch(), ...NOISE_NUMBERS.map(input)]
       for (let i = 1; i < controls.length; i++) {
         const order = controls[i - 1].compareDocumentPosition(controls[i])
         expect(order & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -290,10 +334,55 @@ describe('GlobalSection', () => {
       ])
     })
 
-    it('the switch shows the server off as off (AC10)', async () => {
+    it('the switch shows the server off as off, and the five hidden (AC10; B-12 AC14)', async () => {
       served = config({ ...PARAMS, bm_enabled: false })
       await open()
       expect(noiseSwitch().getAttribute('aria-checked')).toBe('false')
+      for (const label of NOISE_NUMBERS) expect(screen.queryByLabelText(label)).toBeNull()
+    })
+
+    // B-12 SD6, AC14 (amends B-03 SD5: the five no longer stay on screen while off).
+    it('switching off hides the five, switching on shows them again', async () => {
+      await open()
+      fireEvent.click(noiseSwitch())
+      for (const label of NOISE_NUMBERS) expect(screen.queryByLabelText(label)).toBeNull()
+      fireEvent.click(noiseSwitch())
+      for (const label of NOISE_NUMBERS) expect(input(label)).toBeTruthy()
+    })
+
+    it('an edit to a field then hidden is kept and sent by the next save (AC14)', async () => {
+      await open()
+      fireEvent.change(input('Sterkte ruis'), { target: { value: '0,5' } })
+      fireEvent.click(noiseSwitch())
+      await save()
+      expect(patches()).toEqual([{ params: { bm_sigma_y: 0.5, bm_enabled: false } }])
+    })
+
+    it('a hidden field left empty blocks the save and says how to fix it (AC14, PD12)', async () => {
+      await open()
+      fireEvent.change(input('Sterkte ruis'), { target: { value: '' } })
+      fireEvent.click(noiseSwitch())
+      await save()
+      expect(patches()).toEqual([])
+      expect(screen.getByRole('alert').textContent).toBe(
+        'Sterkte ruis is leeg of ongeldig. Zet Willekeurige ruis aan om het te verbeteren.',
+      )
+      fireEvent.click(noiseSwitch())
+      expect(screen.queryByText(/Zet Willekeurige ruis aan/)).toBeNull()
+      expect(screen.getByText('Verplicht')).toBeTruthy()
+    })
+
+    it('names every hidden field that blocks, one line each (PD12)', async () => {
+      await open()
+      fireEvent.change(input('Sterkte ruis'), { target: { value: '' } })
+      fireEvent.change(input('Grens ruis'), { target: { value: 'x' } })
+      fireEvent.click(noiseSwitch())
+      await save()
+      expect(patches()).toEqual([])
+      expect(screen.getAllByRole('alert').map((line) => line.textContent)).toEqual([
+        'Sterkte ruis is leeg of ongeldig. Zet Willekeurige ruis aan om het te verbeteren.',
+        'Grens ruis is leeg of ongeldig. Zet Willekeurige ruis aan om het te verbeteren.',
+      ])
     })
 
     it.each(NOISE_KEYS)('%s has an (i) with its explanation (AC14)', async (key) => {
@@ -333,13 +422,11 @@ describe('GlobalSection', () => {
       expect(screen.getByText('Input should be a valid boolean')).toBeTruthy()
     })
 
-    it('with the switch off the five stay editable and save (AC12)', async () => {
+    it('switching off sends {params: {bm_enabled: false}} and keeps the five as stored (AC12)', async () => {
       await open()
       fireEvent.click(noiseSwitch())
-      for (const label of NOISE_NUMBERS) expect(input(label).disabled).toBe(false)
-      fireEvent.change(input('Ritme ruis (min)'), { target: { value: '0,5' } })
       await save()
-      expect(patches()).toEqual([{ params: { bm_enabled: false, bm_dt_minutes: 0.5 } }])
+      expect(patches()).toEqual([{ params: { bm_enabled: false } }])
     })
 
     it('a server change of y_clip while Sterkte ruis is dirty offers "Overnemen" (AC13)', async () => {
