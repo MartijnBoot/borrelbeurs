@@ -12,6 +12,9 @@
  * B-05 builds `/kassa` (T17). PD13: `/speler` stands beside `/login`, outside the shell and needing no
  * session. `/` without a crew session is the landing choice; with one, the
  * shell and `HomePage` as before.
+ *
+ * B-12 PD2, PD3: the shell holds the unsaved-edits registry and the one
+ * `LeaveGuard`, and Uitloggen asks it first.
  */
 import { useEffect, type ReactNode } from 'react'
 import { Outlet, Route, Routes, useNavigate } from 'react-router'
@@ -24,7 +27,10 @@ import { KoersPage } from '../features/koers'
 import { ManipulationPage } from '../features/manipulation'
 import { PlayerPage } from '../features/player'
 import { setOnUnauthenticated } from '../lib/http'
+import { UnsavedEditsProvider } from '../lib/unsavedEdits'
 import { AppShell } from './AppShell'
+import { useConfirmLeave } from './confirmLeave'
+import { LeaveGuard } from './LeaveGuard'
 import { LandingPage } from './pages/LandingPage'
 import { NoAccess } from './pages/NoAccess'
 import { SettingsPage } from './pages/SettingsPage'
@@ -48,9 +54,8 @@ function ManipulationRoute() {
 }
 
 function ShellLayout() {
-  const { session, logout } = useSession()
+  const { session } = useSession()
   const goToLogin = useGoToLogin()
-  const navigate = useNavigate()
 
   useEffect(() => {
     if (session.status === 'anonymous') goToLogin()
@@ -58,12 +63,27 @@ function ShellLayout() {
 
   if (session.status !== 'ready') return null
   return (
+    <UnsavedEditsProvider>
+      <LeaveGuard>
+        <Shell routes={session.me.allowed_routes} />
+      </LeaveGuard>
+    </UnsavedEditsProvider>
+  )
+}
+
+function Shell({ routes }: { routes: readonly string[] }) {
+  const { logout } = useSession()
+  const navigate = useNavigate()
+  const confirmLeave = useConfirmLeave()
+  return (
     <AppShell
-      routes={session.me.allowed_routes}
-      onLogout={() => {
-        navigate('/login', { replace: true })
-        void logout()
-      }}
+      routes={routes}
+      onLogout={() =>
+        confirmLeave(() => {
+          navigate('/login', { replace: true })
+          void logout()
+        })
+      }
     >
       <Outlet />
     </AppShell>

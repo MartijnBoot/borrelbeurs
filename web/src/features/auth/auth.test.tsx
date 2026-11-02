@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 // Login and role routing through the real route table, with fetch stubbed
 // as the server answers (AC20-AC23, SD4, SD12, SD13).
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter, useLocation } from 'react-router'
+import { act, cleanup, fireEvent, screen } from '@testing-library/react'
+import { useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppRoutes } from '../../app/routes'
+import { renderInDataRouter } from '../../app/testRouter'
 
 // jsdom has no Web Animations API; the board's marquees are tested on their own.
 vi.mock('../../components/ui/Marquee', () => ({ Marquee: () => null }))
@@ -87,12 +88,14 @@ function Where() {
 
 const where = () => screen.getByTestId('where').textContent
 
+// B-12 PD1: mounted as main.tsx mounts it, under a data router (the shell's leave guard).
 async function open(path: string) {
-  render(
-    <MemoryRouter initialEntries={[path]}>
+  renderInDataRouter(
+    <>
       <AppRoutes />
       <Where />
-    </MemoryRouter>,
+    </>,
+    [path],
   )
   await act(async () => {})
 }

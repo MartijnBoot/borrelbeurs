@@ -13,8 +13,12 @@
  * it already says what the edits say, or says what the last one did (a refetch
  * with the same content); `takeServer` then discards the edits.
  * Lists compare by content; everything else with `Object.is`.
+ *
+ * While dirty, the record reports itself unsaved (B-12 PD2), so the leave
+ * guard asks before its edits are dropped; without a provider that is a no-op.
  */
 import { useCallback, useState } from 'react'
+import { useReportUnsaved } from './unsavedEdits'
 
 /** What a field may hold while edited: its type, or empty, or unparseable. */
 export type Draft<T> = { [K in keyof T]: T[K] | null | 'invalid' }
@@ -56,6 +60,7 @@ export function useEditableRecord<T extends object>(server: T | null): EditableR
 
   const changed = diff(base, values)
   const dirty = Object.keys(changed).length > 0
+  useReportUnsaved(dirty)
 
   if (server !== seen) {
     setSeen(server)

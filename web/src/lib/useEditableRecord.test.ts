@@ -4,6 +4,7 @@
 // ever sent, and an untouched section sends nothing at all.
 import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import { UnsavedEditsProvider, useHasUnsaved } from './unsavedEdits'
 import { useEditableRecord } from './useEditableRecord'
 
 interface Params {
@@ -115,6 +116,26 @@ describe('useEditableRecord', () => {
     expect(result.current.values).toBeNull()
     rerender({ record: SERVER })
     expect(result.current.values).toEqual(SERVER)
+  })
+
+  // B-12 PD2: the leave guard hears from every record while it is dirty.
+  it('reports itself unsaved while dirty, and stops after a save or a reset', () => {
+    let server: Params = SERVER
+    const { result, rerender } = renderHook(
+      () => ({ record: useEditableRecord(server), unsaved: useHasUnsaved() }),
+      { wrapper: UnsavedEditsProvider },
+    )
+    expect(result.current.unsaved).toBe(false)
+
+    act(() => result.current.record.set('K', 20))
+    expect(result.current.unsaved).toBe(true)
+    act(() => result.current.record.reset())
+    expect(result.current.unsaved).toBe(false)
+
+    act(() => result.current.record.set('K', 20))
+    server = { ...SERVER, K: 20 } // the save's echo
+    rerender()
+    expect(result.current.unsaved).toBe(false)
   })
 
   it('a refetch with the same content while dirty is not a conflict (AC5)', () => {
