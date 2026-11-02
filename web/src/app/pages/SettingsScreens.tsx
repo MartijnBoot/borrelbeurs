@@ -16,6 +16,7 @@ import {
   DrinksSection,
   GlobalSection,
   ImagesSection,
+  PaymentSection,
   PriceStepSection,
   ProfilesSection,
   type SettingsSection,
@@ -65,6 +66,8 @@ const SPELOPZET: readonly SettingsSection[] = [
 ]
 
 const WALLETS: readonly SettingsSection[] = [
+  // SD3, SD12, SD13: B-06's two run columns, with no icon, before the wallets.
+  { id: 'betalen', label: 'Betalen', content: <PaymentSection /> },
   { id: 'wallets', label: 'Wallets', icon: 'wallet', content: <WalletsSection /> },
 ]
 

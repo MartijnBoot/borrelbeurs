@@ -14,16 +14,12 @@
  * Willekeurige ruis as a `Switch`, then its five settings as `NumberField`s
  * (E34-E39). Switching the noise off disables none of them (SD5).
  *
- * B-06 (SD1-SD3) adds "Wallet verplicht" as a `Switch` and "Rood staan tot" as a
- * `MoneyField` (E40, E41), after the noise. Both are run columns: they go at the
- * top level beside the candle interval, never under `params`.
- *
- * B-12 SD4: Prijsstap, and B-07's confirm with it, is on Spelopzet's Prijzen
- * (`PriceStepSection`).
+ * B-12 SD3, SD4: Prijsstap, and B-07's confirm with it, is on Spelopzet's
+ * Prijzen (`PriceStepSection`), and B-06's "Wallet verplicht" and "Rood staan
+ * tot" are Betalen on Mensen en wallets (`PaymentSection`).
  */
 import { type FormEvent, useMemo, useState } from 'react'
 import { Button } from '../../components/ui/Button'
-import { MoneyField } from '../../components/ui/MoneyField'
 import { NumberField } from '../../components/ui/NumberField'
 import { Switch } from '../../components/ui/Switch'
 import { Toast } from '../../components/ui/Toast'
@@ -49,11 +45,7 @@ const FIELDS = [
 const NOISE_FIELDS = ['bm_sigma_y', 'bm_dt_minutes', 'flow_vol_amp', 'flow_beta', 'y_clip'] as const
 
 type Field = (typeof FIELDS)[number] | (typeof NOISE_FIELDS)[number]
-type GlobalRecord = Record<Field, number> & {
-  bm_enabled: boolean
-  wallet_required: boolean
-  credit_limit_cents: number
-}
+type GlobalRecord = Record<Field, number> & { bm_enabled: boolean }
 
 function recordOf(config: RunConfig): GlobalRecord {
   const { params, run } = config
@@ -73,8 +65,6 @@ function recordOf(config: RunConfig): GlobalRecord {
     flow_vol_amp: params.flow_vol_amp,
     flow_beta: params.flow_beta,
     y_clip: params.y_clip,
-    wallet_required: run.wallet_required,
-    credit_limit_cents: run.credit_limit_cents,
   }
 }
 
@@ -103,12 +93,10 @@ export function GlobalSection() {
     setBusy(true)
     try {
       const result = await record.save(async (patch) => {
-        const { candle_interval_s, wallet_required, credit_limit_cents, ...params } = patch
+        const { candle_interval_s, ...params } = patch
         const body = {
           ...(Object.keys(params).length > 0 ? { params } : {}),
           ...(candle_interval_s !== undefined ? { candle_interval_s } : {}),
-          ...(wallet_required !== undefined ? { wallet_required } : {}),
-          ...(credit_limit_cents !== undefined ? { credit_limit_cents } : {}),
         }
         await request('PATCH', `/api/runs/${runId}/config`, { body, schema: Revision })
         await reload()
@@ -124,7 +112,7 @@ export function GlobalSection() {
     }
   }
 
-  function errorFor(field: Field | 'credit_limit_cents'): string | undefined {
+  function errorFor(field: Field): string | undefined {
     const value = record.values?.[field]
     if (value === null) return 'Verplicht'
     if (value === 'invalid') return 'Ongeldig getal'
@@ -164,24 +152,6 @@ export function GlobalSection() {
           )}
         </div>
         {NOISE_FIELDS.map(numberField)}
-        <div>
-          <Switch
-            label={explanations.wallet_required.name}
-            info={explanations.wallet_required}
-            checked={record.values?.wallet_required === true}
-            onChange={(on) => record.set('wallet_required', on)}
-          />
-          {faults.wallet_required !== undefined && (
-            <span className={styles.error}>{faults.wallet_required}</span>
-          )}
-        </div>
-        <MoneyField
-          label={explanations.credit_limit_cents.name}
-          info={explanations.credit_limit_cents}
-          cents={record.values?.credit_limit_cents ?? null}
-          onChange={(cents) => record.set('credit_limit_cents', cents)}
-          error={errorFor('credit_limit_cents')}
-        />
       </div>
       <div className={styles.row}>
         <Button type="submit" disabled={busy}>

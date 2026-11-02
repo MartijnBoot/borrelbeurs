@@ -185,12 +185,17 @@ const MOVED: Readonly<Record<string, ScreenName>> = {
   // T7, SD4: Prijsstap to Spelopzet's Prijzen.
   'globaal button Uitleg: Prijsstap (€)': 'Spelopzet',
   'globaal textbox Prijsstap (€)': 'Spelopzet',
+  // T8, SD3: Wallet verplicht and Rood staan tot to Betalen.
+  'globaal button Uitleg: Wallet verplicht': 'Mensen en wallets',
+  'globaal toggle Wallet verplicht': 'Mensen en wallets',
+  'globaal button Uitleg: Rood staan tot (€)': 'Mensen en wallets',
+  'globaal textbox Rood staan tot (€)': 'Mensen en wallets',
 }
 
 /** What B-12 adds, per screen, as `role name`. */
 const ADDED: Readonly<Record<ScreenName, readonly string[]>> = {
   Spelopzet: ['button Opslaan prijsstap'], // T7, PD9: Prijsstap's own form
-  'Mensen en wallets': [],
+  'Mensen en wallets': ['button Opslaan'], // T8, PD10: Betalen's own form
   Beheer: [],
 }
 

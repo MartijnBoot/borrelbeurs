@@ -41,7 +41,10 @@ const SCREENS: Readonly<Record<string, Screen>> = {
   'Mensen en wallets': {
     path: '/settings/wallets',
     page: <WalletsScreenPage />,
-    sections: [['Wallets', 'wallet']],
+    sections: [
+      ['Betalen', null],
+      ['Wallets', 'wallet'],
+    ],
   },
   Beheer: {
     path: '/settings/beheer',
@@ -63,8 +66,9 @@ const INFO_COUNTS: Readonly<Record<string, number>> = {
   'Vraag/Aanbod': 2 + 4,
   Kleurenschema: 0,
   Afbeeldingen: 0,
+  Betalen: 2,
   Wallets: 0,
-  'Globale instellingen': 11 + 6,
+  'Globale instellingen': 9 + 6,
   Toegangssleutels: 0,
   Systeemacties: 1,
 }
