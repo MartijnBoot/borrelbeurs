@@ -34,6 +34,7 @@ import { LeaveGuard } from './LeaveGuard'
 import { LandingPage } from './pages/LandingPage'
 import { NoAccess } from './pages/NoAccess'
 import { SettingsPage } from './pages/SettingsPage'
+import { BeheerPage, SpelopzetPage, WalletsScreenPage } from './pages/SettingsScreens'
 import { Providers } from './providers'
 
 const PAGES: readonly (readonly [string, ReactNode])[] = [
@@ -41,6 +42,10 @@ const PAGES: readonly (readonly [string, ReactNode])[] = [
   ['/bar', <BarPage />],
   ['/manipulation', <ManipulationRoute />],
   ['/settings', <SettingsPage />],
+  // B-12 SD1: the three settings screens.
+  ['/settings/spel', <SpelopzetPage />],
+  ['/settings/wallets', <WalletsScreenPage />],
+  ['/settings/beheer', <BeheerPage />],
   ['/analytics', <AnalyticsPage />],
   ['/kassa', <KassaPage />],
 ]

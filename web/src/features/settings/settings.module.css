@@ -5,6 +5,11 @@
   padding: 18px;
 }
 
+/* B-12 PD8: one section, no navigation column. */
+.single {
+  grid-template-columns: 1fr;
+}
+
 .nav {
   position: sticky;
   top: 18px;

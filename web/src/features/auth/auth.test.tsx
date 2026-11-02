@@ -12,11 +12,22 @@ vi.mock('../../components/ui/Marquee', () => ({ Marquee: () => null }))
 
 type Role = 'display' | 'bar' | 'admin' | 'kassa'
 
-// Phase 3 SD2, as GET /api/auth/me returns it.
+// Phase 3 SD2, as GET /api/auth/me returns it (B-12 SD1: the three settings screens).
 const ALLOWED: Record<Role, string[]> = {
   display: ['/koers'],
   bar: ['/bar', '/manipulation'],
-  admin: ['/', '/koers', '/bar', '/manipulation', '/settings', '/analytics', '/kassa'],
+  admin: [
+    '/',
+    '/koers',
+    '/bar',
+    '/manipulation',
+    '/settings',
+    '/settings/spel',
+    '/settings/wallets',
+    '/settings/beheer',
+    '/analytics',
+    '/kassa',
+  ],
   kassa: ['/kassa'],
 }
 
@@ -218,6 +229,18 @@ describe('routes (AC22, AC23, SD4, SD13)', () => {
     await open('/settings')
     expect(screen.getByText('Geen toegang')).toBeTruthy()
     expect(where()).toBe('/settings')
+  })
+
+  // B-12 AC3: only admin opens the screens (SD17); the address stays.
+  it.each(
+    (['display', 'bar', 'kassa'] as const).flatMap((role) =>
+      ['/settings/spel', '/settings/wallets', '/settings/beheer'].map((path) => [role, path]),
+    ),
+  )('%s on %s sees "Geen toegang"', async (role, path) => {
+    session = role as Role
+    await open(path)
+    expect(screen.getByText('Geen toegang')).toBeTruthy()
+    expect(where()).toBe(path)
   })
 
   it('bar on /bar sees the bar page inside the shell (Phase 5 AC28)', async () => {

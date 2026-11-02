@@ -4,3 +4,10 @@
   font-size: 20px;
   color: var(--muted);
 }
+
+/* B-12 PD8: a settings screen's way back to the landing, above its sections. */
+.back {
+  display: inline-block;
+  margin: 18px 18px 0;
+  color: var(--text);
+}
