@@ -53,7 +53,7 @@ test('every Phase 4 page works with every non-origin request blocked (AC1)', asy
   }
   await expectThemeFontLoaded(page)
 
-  await page.goto('/settings')
+  await page.goto('/settings/spel') // B-12 SD3: Kleurenschema is on Spelopzet
   // Phase 6 SD25 renamed the theme section after v1's sidebar.
   await expect(page.getByRole('heading', { name: 'Kleurenschema' })).toBeVisible()
   await expectThemeFontLoaded(page)
