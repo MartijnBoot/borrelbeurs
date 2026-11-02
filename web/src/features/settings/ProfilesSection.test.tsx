@@ -6,7 +6,7 @@
 import { act, cleanup, fireEvent, render, renderHook, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { exchangeStore } from '../exchange'
-import { DemandSection } from './DemandSection'
+import { DemandSwitches } from './DemandSection'
 import { GlobalSection } from './GlobalSection'
 import { ProfilesSection } from './ProfilesSection'
 import { useProfiles } from './useProfiles'
@@ -527,7 +527,7 @@ describe('after a load, the other sections show the loaded values (AC16)', () =>
       <>
         <ProfilesSection names={NAMES} />
         <GlobalSection />
-        <DemandSection />
+        <DemandSwitches />
       </>,
     )
     await settle()

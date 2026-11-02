@@ -51,6 +51,7 @@ const SCREENS: Readonly<Record<string, Screen>> = {
     page: <BeheerPage />,
     sections: [
       ['Globale instellingen', 'gear'],
+      ['Vraag/Aanbod', 'chart'],
       ['Toegangssleutels', 'key'],
       ['Systeemacties', 'broom'],
     ],
@@ -63,7 +64,7 @@ const INFO_COUNTS: Readonly<Record<string, number>> = {
   Profielen: 0,
   'Drankjes beheren': 8 + 1 * 2,
   Prijzen: 1 + 3 * 2,
-  'Vraag/Aanbod': 2 + 4,
+  'Vraag/Aanbod': 4, // Spelopzet: the table's four column headers (Beheer's two below)
   Kleurenschema: 0,
   Afbeeldingen: 0,
   Betalen: 2,
@@ -178,7 +179,8 @@ describe.each(Object.keys(SCREENS))('%s', (screenName) => {
     await open(screenName)
     for (const name of names(screenName)) {
       const buttons = info(screen.getByRole('region', { name }))
-      expect([name, buttons.length]).toEqual([name, INFO_COUNTS[name]])
+      const count = screenName === 'Beheer' && name === 'Vraag/Aanbod' ? 2 : INFO_COUNTS[name]
+      expect([name, buttons.length]).toEqual([name, count])
       for (const button of buttons) {
         expect(NAMES.has(button.getAttribute('aria-label')!.slice('Uitleg: '.length))).toBe(true)
       }

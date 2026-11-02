@@ -190,6 +190,12 @@ const MOVED: Readonly<Record<string, ScreenName>> = {
   'globaal toggle Wallet verplicht': 'Mensen en wallets',
   'globaal button Uitleg: Rood staan tot (€)': 'Mensen en wallets',
   'globaal textbox Rood staan tot (€)': 'Mensen en wallets',
+  // T10, SD3: Vraag/Aanbod's switches to Beheer; its table stays on Spelopzet.
+  'vraag button Uitleg: Verwachte verkoop meetellen': 'Beheer',
+  'vraag toggle Verwachte verkoop meetellen': 'Beheer',
+  'vraag button Uitleg: Evenwicht zetten bij live zetten': 'Beheer',
+  'vraag toggle Evenwicht zetten bij live zetten': 'Beheer',
+  'vraag button Opslaan schakelaars': 'Beheer',
 }
 
 /** What B-12 adds, per screen, as `role name`. */

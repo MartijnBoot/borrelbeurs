@@ -3,7 +3,7 @@
  * (`/settings/spel`) for the night, Mensen en wallets (`/settings/wallets`)
  * for the players, and Beheer (`/settings/beheer`) for the system, Systeemacties
  * last. Each is one `SettingsScreen`: "← Instellingen" to the landing above
- * its own sections. Composed here in the app layer, as the one page was,
+ * its own sections. Vraag/Aanbod is on two screens, a half on each (PD13). Composed here in the app layer, as the one page was,
  * because `features/keys`, `features/wallets` and `features/settings` may not
  * import each other (sibling isolation). The section ids are the old page's.
  */
@@ -12,7 +12,8 @@ import { KeysSection } from '../../features/keys'
 import {
   BorrelSection,
   BoundsSection,
-  DemandSection,
+  DemandSwitches,
+  DemandTable,
   DrinksSection,
   GlobalSection,
   ImagesSection,
@@ -50,7 +51,8 @@ const SPELOPZET: readonly SettingsSection[] = [
       </>
     ),
   },
-  { id: 'vraag', label: 'Vraag/Aanbod', icon: 'chart', content: <DemandSection /> },
+  // SD3, SD16: the a/d/s0/c table, while Beheer's switch is on.
+  { id: 'vraag', label: 'Vraag/Aanbod', icon: 'chart', content: <DemandTable /> },
   {
     id: 'kleuren',
     label: 'Kleurenschema',
@@ -73,6 +75,8 @@ const WALLETS: readonly SettingsSection[] = [
 
 const BEHEER: readonly SettingsSection[] = [
   { id: 'globaal', label: 'Globale instellingen', icon: 'gear', content: <GlobalSection /> },
+  // SD3: Vraag/Aanbod's two switches; its table is on Spelopzet.
+  { id: 'vraag', label: 'Vraag/Aanbod', icon: 'chart', content: <DemandSwitches /> },
   { id: 'sleutels', label: 'Toegangssleutels', icon: 'key', content: <KeysSection /> },
   { id: 'systeem', label: 'Systeemacties', icon: 'broom', content: <SystemSection /> },
 ]

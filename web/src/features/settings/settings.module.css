@@ -5,6 +5,14 @@
   padding: 18px;
 }
 
+/* B-12 PD13 (AC20): switches stacked, so their tracks share one x. */
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
 /* B-12 PD8: one section, no navigation column. */
 .single {
   grid-template-columns: 1fr;
