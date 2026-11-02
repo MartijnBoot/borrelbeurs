@@ -551,14 +551,17 @@ describe('a failed load', () => {
   })
 })
 
+// B-12 SD7, AC21: a switch now, still saved at once with no confirm.
 describe('"QR-code op het scherm" (B-10 SD5; AC10)', () => {
-  const box = () =>
-    within(region('Aanmeldcode')).getByRole('checkbox', {
+  const box = () => {
+    const toggle = within(region('Aanmeldcode')).getByRole('switch', {
       name: 'QR-code op het scherm',
-    }) as HTMLInputElement
+    })
+    return { checked: toggle.getAttribute('aria-checked') === 'true', element: toggle }
+  }
 
   async function toggle() {
-    fireEvent.click(box())
+    fireEvent.click(box().element)
     await act(async () => {})
   }
 

@@ -65,12 +65,16 @@
 }
 
 .targets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
   margin: 0 0 12px;
   border: none;
   padding: 0;
+}
+
+/* B-12 PD15: one switch row per drink; each grid column's tracks share one x. */
+.switches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(20rem, 100%), 1fr));
+  column-gap: 14px;
 }
 
 .targets legend {
@@ -82,12 +86,6 @@
 }
 
 .withInfo {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.check {
   display: inline-flex;
   align-items: center;
   gap: 6px;

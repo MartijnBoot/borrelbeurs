@@ -1,20 +1,22 @@
 /**
  * Idle (Phase 6 SD11, SD20; AC1, AC2, AC5, AC7, AC22): admin only (D-44).
  *
- * v1's decay/rise minutes and strengths as `NumberField`s, and a checkbox per
- * active drink for each target list, held as `drink_id`s. Each carries its
+ * v1's decay/rise minutes and strengths as `NumberField`s, and a `Switch` per
+ * active drink for each target list, held as `drink_id`s, in a wrapping grid
+ * (B-12 SD7, PD15); switching one on appends its id, as the checkbox did. Each carries its
  * B-01 name and an (i) (E21-E26); a fieldset keeps `aria-label` so its name
  * stays exact with the (i) inside its legend. The form edits a
  * `useEditableRecord` copy of the live run's params (`GET config`, refetched
  * on every `config` message), and "Opslaan idle" sends only what changed as
  * `PATCH config {params}` -- nothing at all when clean. A removed drink has no
- * checkbox, since the list is the store's active drinks.
+ * switch, since the list is the store's active drinks.
  */
 import { type FormEvent, useCallback, useEffect, useState } from 'react'
 import { z } from 'zod'
 import { Button } from '../../components/ui/Button'
 import { InfoButton } from '../../components/ui/InfoButton'
 import { NumberField } from '../../components/ui/NumberField'
+import { Switch } from '../../components/ui/Switch'
 import { Toast } from '../../components/ui/Toast'
 import { request } from '../../lib/http'
 import { useEditableRecord } from '../../lib/useEditableRecord'
@@ -146,19 +148,19 @@ export function IdleSection() {
             {explanations[list].name}
             <InfoButton explanation={explanations[list]} />
           </legend>
-          {drinks.map((drink) => {
-            const ids = values[list]
-            return (
-              <label key={drink.drink_id} className={styles.check}>
-                <input
-                  type="checkbox"
+          <div className={styles.switches}>
+            {drinks.map((drink) => {
+              const ids = values[list]
+              return (
+                <Switch
+                  key={drink.drink_id}
+                  label={drink.name}
                   checked={Array.isArray(ids) && ids.includes(drink.drink_id)}
                   onChange={() => toggle(list, drink.drink_id)}
                 />
-                {drink.name}
-              </label>
-            )
-          })}
+              )
+            })}
+          </div>
         </fieldset>
       ))}
       <div className={styles.row}>

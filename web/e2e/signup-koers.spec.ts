@@ -177,13 +177,14 @@ test('the koers screen shows the sign-up QR code, follows changes live and hides
   await expect(display.locator('[class*="_tile_"]').first()).toBeVisible()
   await expect(qr(display)).toHaveCount(0)
 
-  // 2. A code with the switch off: still none. The checkbox turns it on, with no reload (AC11, AC18).
+  // 2. A code with the switch off: still none. The switch turns it on, with no reload (AC11, AC18;
+  // B-12 SD7: a switch now, not a checkbox).
   await putSettings({ signup_code: 'BORREL' })
   await expect(wallets(admin).getByRole('textbox', { name: 'Aanmeldcode' })).toBeVisible()
   await display.waitForTimeout(500)
   await expect(qr(display)).toHaveCount(0)
   await admin.reload()
-  const onScreen = wallets(admin).getByRole('checkbox', { name: 'QR-code op het scherm' })
+  const onScreen = wallets(admin).getByRole('switch', { name: 'QR-code op het scherm' })
   await onScreen.click() // controlled: it flips when the save returns
   await expect(onScreen).toBeChecked()
   await expect(qr(display)).toBeVisible()
