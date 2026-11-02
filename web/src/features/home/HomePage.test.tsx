@@ -77,7 +77,8 @@ describe('HomePage', () => {
       expect(screen.getByRole('link', { name: new RegExp(name) }).getAttribute('href')).toBe(href)
     }
     const blurbs = [
-      'Globale instellingen, grenzen, vraag/aanbod, drankjes, afsluiten.',
+      // B-12 SD15: the settings are three screens now.
+      'Spelopzet, wallets en beheer.',
       'Price jumps, nieuws, idle, reset.',
     ]
     for (const blurb of blurbs) expect(screen.getByText(blurb)).toBeTruthy()

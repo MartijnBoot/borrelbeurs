@@ -3,8 +3,8 @@
 // exactly one of the three screens, with the same label, and the setting names
 // and explanations are byte for byte as on `main`.
 //
-// `OLD_CONTROLS` is the old page's list, captured from it (B-12 T5) with this
-// file's fixture: per control its old section, its role (a checkbox and a
+// `OLD_CONTROLS` is the old page's list, captured from it at B-12 T5 with the
+// fixture in `settingsFixture.ts` (the page itself is gone since T6): per control its old section, its role (a checkbox and a
 // switch both count as `toggle`) and its accessible name, in page order. It
 // carries the section because one label, "Opslaan", sits in sections that land
 // on two screens: the section pins every control, that one included, to one
@@ -15,12 +15,11 @@
 // The test maps each old section to its screen, moves the controls B-12 moves
 // to another screen (`MOVED`), adds the controls B-12 adds (`ADDED`), and
 // asserts each screen holds exactly that list.
-import { act, cleanup, render, screen, within } from '@testing-library/react'
+import { act, cleanup, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import explanationsText from '../../features/settings/explanations.json?raw'
 import { renderInDataRouter } from '../testRouter'
 import { stubNarrow, stubServer } from './settingsFixture'
-import { SettingsPage } from './SettingsPage'
 import { BeheerPage, SpelopzetPage, WalletsScreenPage } from './SettingsScreens'
 
 type Control = readonly [section: string, role: string, name: string]
@@ -237,17 +236,6 @@ beforeEach(() => {
 })
 
 afterEach(cleanup)
-
-describe('the old page (captured at B-12 T5)', () => {
-  it('holds exactly OLD_CONTROLS', async () => {
-    render(<SettingsPage />)
-    await settle()
-    const captured = sections().flatMap((section) =>
-      controlsOf(section).map(([role, name]) => [section.id, role, name] as const),
-    )
-    expect(captured).toEqual(OLD_CONTROLS)
-  })
-})
 
 describe('the three screens (AC10)', () => {
   it('every old section has a screen, and every move names an old control', () => {
