@@ -15,7 +15,6 @@ Top is next. Every item that is not `specced` or `dropped` appears here exactly 
 
 | # | ID | Feature | Size | Status |
 |---|---|---|---|---|
-| 1 | B-12 | Settings on separate screens per kind of work | M | idea |
 | 2 | B-13 | An organiser role | M | idea |
 
 ## Items
@@ -443,7 +442,7 @@ perhaps the vitest config, and CLAUDE.md's "13 steps" text. Not the engine, no A
 
 ### B-12 — Settings on separate screens per kind of work
 
-- **Status:** idea
+- **Status:** specced → `docs/specs/phase-b-12-settings-screens.md`
 - **Added:** 2026-10-27 (revised 2026-11-02)
 - **Size:** M (a few tasks) — a guess: a menu with screens, sections moving between them,
   Globale instellingen split into groups, and the last tick boxes becoming toggles
