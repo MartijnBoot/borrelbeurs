@@ -7,7 +7,8 @@ drink's `[p_min_cents, p_max_cents]`, else 422.
 `POST /api/market/events {kind, duration_ms}`: crash, bubble or correction;
 `duration_ms` 1 000-600 000, default 30 000.
 
-Both are bar and admin (SD1: bar keeps v1's manipulation rights).
+Both are bar and admin (SD1: bar keeps v1's manipulation rights), and the
+organiser's (B-13 SD9).
 """
 
 from __future__ import annotations
@@ -54,7 +55,7 @@ def _holder(request: Request) -> MarketHolder:
 async def post_jump(
     body: JumpRequest,
     request: Request,
-    _: Annotated[Principal, Depends(require_role("bar", "admin"))],
+    _: Annotated[Principal, Depends(require_role("bar", "organiser", "admin"))],
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> JumpResult:
     holder = _holder(request)
@@ -71,7 +72,7 @@ async def post_jump(
 async def post_event(
     body: EventRequest,
     request: Request,
-    _: Annotated[Principal, Depends(require_role("bar", "admin"))],
+    _: Annotated[Principal, Depends(require_role("bar", "organiser", "admin"))],
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> MarketEventInfo:
     event = await start_event(

@@ -18,6 +18,10 @@
  * B-07 (SD5; PD11): a load whose Prijsstap leaves a drink no room between its
  * bounds is a 422 `bounds_collision`; its message, which names the drink, is
  * shown as the server wrote it.
+ *
+ * B-13 (SD6, OQ1 = B): without `canManage` the list and "Profiel laden" show, and
+ * the save form and every "Verwijderen" do not: the organiser may list and load a
+ * profile, not save or delete one, and is not offered what the server refuses.
  */
 import { type FormEvent, useState } from 'react'
 import { z } from 'zod'
@@ -66,9 +70,11 @@ function saveFailure(error: unknown, names: Readonly<Record<string, string>>): s
 export interface ProfilesSectionProps {
   /** Wire name → the setting's name from the explanations (B-01, B-03; PD11). */
   names: Readonly<Record<string, string>>
+  /** Whether this session may save and delete profiles (B-13 SD6). */
+  canManage: boolean
 }
 
-export function ProfilesSection({ names }: ProfilesSectionProps) {
+export function ProfilesSection({ names, canManage }: ProfilesSectionProps) {
   const { run, reload } = useCurrentRun()
   const { profiles, failed } = useProfiles()
   const [name, setName] = useState('')
@@ -81,7 +87,7 @@ export function ProfilesSection({ names }: ProfilesSectionProps) {
   // B-12 SD9 (OQ1 = B): a half-typed profile name counts as unsaved.
   useReportUnsaved(name !== '')
 
-  const canSave = run != null && (run.status === 'draft' || run.status === 'live')
+  const canSave = canManage && run != null && (run.status === 'draft' || run.status === 'live')
   const canLoad = run?.status === 'draft' && profiles.length > 0
   // The select's choice, or the first profile while none (or a deleted one) is chosen.
   const toLoad = profiles.find((p) => String(p.profile_id) === chosen) ?? profiles[0]
@@ -168,9 +174,11 @@ export function ProfilesSection({ names }: ProfilesSectionProps) {
                 {`${profile.name} · opgeslagen ${formatDayMonthTime(Date.parse(profile.saved_at))}`}
                 {` · uit '${profile.source_run_name}'`}
               </span>
-              <Button disabled={busy} onClick={() => setDeleting(profile)}>
-                Verwijderen
-              </Button>
+              {canManage && (
+                <Button disabled={busy} onClick={() => setDeleting(profile)}>
+                  Verwijderen
+                </Button>
+              )}
             </li>
           ))}
         </ul>

@@ -105,6 +105,33 @@ describe('KeysSection', () => {
     expect(writes()[0]).toEqual(['/api/keys', 'POST', '{"role":"kassa","label":"Kassa 2"}'])
   })
 
+  it('offers "Organisator", lists an organiser key so and creates one (B-13 AC21)', async () => {
+    const organiser = { ...KEYS[2], key_id: 5, label: 'Organisatie', role: 'organiser' }
+    fetchMock.mockImplementation((_path: string, init?: RequestInit) =>
+      Promise.resolve(
+        (init?.method ?? 'GET') === 'GET'
+          ? json(200, [...KEYS, organiser])
+          : json(201, { key_id: 5, key: SECRET }),
+      ),
+    )
+    await open()
+    expect(within(screen.getAllByRole('row')[4]).getByText('Organisator')).toBeTruthy()
+    expect(
+      within(screen.getByLabelText('Rol')).getByRole('option', { name: 'Organisator' }),
+    ).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Rol'), { target: { value: 'organiser' } })
+    fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'Organisatie 2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Nieuwe sleutel' }))
+    await settle()
+
+    expect(writes()[0]).toEqual([
+      '/api/keys',
+      'POST',
+      '{"role":"organiser","label":"Organisatie 2"}',
+    ])
+  })
+
   it('a new key posts {role, label} and is shown once (AC36)', async () => {
     await open()
     await create()

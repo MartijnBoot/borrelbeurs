@@ -238,7 +238,8 @@ def test_anything_but_a_payment_is_payment_not_found(
     assert _entries(settings, api_env) == before
 
 
-@pytest.mark.parametrize("role", ["kassa", "admin"])
+# B-13 SD10, AC15: the organiser as the kassa; the bar's own limit still holds for bar.
+@pytest.mark.parametrize("role", ["kassa", "organiser", "admin"])
 def test_kassa_and_admin_refund_an_old_bar_payment(
     live_client: TestClient,
     login: Login,
@@ -251,6 +252,7 @@ def test_kassa_and_admin_refund_an_old_bar_payment(
     jan = _wallet(settings, api_env)
     payment, total = _pay(login("bar", "Bar 1"), "k-pay-old-0001", jan)
     advance(3_600_000)
+    assert _error(_refund(login("bar", "Bar 1"), payment)) == (403, "refund_not_allowed")
     crew = login(role, f"Crew {role}")
 
     response = _refund(crew, payment)

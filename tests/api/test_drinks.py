@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.core.config import Settings
+from app.db.keys import Role
 from app.db.runs import create_run
 from app.db.session import create_engine
 from tests.api.conftest import Login
@@ -676,3 +677,31 @@ def test_a_live_off_grid_add_or_edit_takes_no_transition(
     assert admin.get("/api/state").json()["version"] == version
     assert _revisions(settings, api_env, live_run) == revisions
     assert _drink(admin, live_run, bier["drink_id"]) == bier
+
+
+# --- B-13: the organiser sets up the drinks (SD5, AC9) -------------------------
+
+
+@pytest.mark.parametrize("role", ["admin", "organiser"])
+def test_the_organiser_adds_edits_and_removes_a_drink_as_admin_does(
+    draft: int, client: TestClient, login: Login, settings: Settings, api_env: str, role: Role
+) -> None:
+    """Add, the bounds and a/d/s0/c table, and delete: the same bodies for both roles."""
+    session = login(role)
+
+    added = session.post(f"/api/runs/{draft}/drinks", json=BIER)
+    wijn = session.post(f"/api/runs/{draft}/drinks", json={**BIER, "name": "Wijn"})
+    bier = added.json()["drink_id"]
+    edited = session.patch(
+        f"/api/runs/{draft}/drinks/{bier}",
+        json={"p_min_cents": 100, "p_max_cents": 600, "a": 2.0, "d": 0.3, "s0": 4.0, "c": 0.2},
+    )
+    removed = session.delete(f"/api/runs/{draft}/drinks/{bier}")
+
+    assert (added.status_code, added.json()["revision"]) == (201, 2), added.text
+    assert wijn.status_code == 201, wijn.text
+    assert (edited.status_code, edited.json()) == (200, {"revision": 4}), edited.text
+    assert (removed.status_code, removed.json()) == (200, {"revision": 5}), removed.text
+    drinks = session.get(f"/api/runs/{draft}/config").json()["drinks"]
+    assert [d["name"] for d in drinks] == ["Wijn"]
+    assert _revisions(settings, api_env, draft) == 5

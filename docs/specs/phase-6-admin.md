@@ -510,6 +510,14 @@ Settled at the spec interview (2026-10-06).
   - **bar:** news, jumps and market events (unchanged from Phase 3), and `/manipulation`
     without Idle. No config, drinks, theme, keys, runs or connections.
   - **display:** none of it.
+  - *Amended by B-13 (SD1-SD11):* **organiser:** creating, going live with and closing a run,
+    drinks, theme and images, listing and loading profiles, `GET config` and, in `PATCH config`,
+    only `name`, `wallet_required`, `credit_limit_cents` and `params.step_quant`; the wallet
+    settings and the full cash desk; everything bar does, with `/manipulation` without Idle;
+    the connected clients and the run list. Not Beheer, keys, delete-run, anchor-s0, shutdown,
+    saving or deleting a profile, or analytics beyond the run list.
+  - *Amended by B-13 (SD4, SD8):* **kassa** also opens `/settings` and `/settings/wallets`, and
+    the wallet settings, list and delete there; not Betalen.
 
   The authorization matrix test gains a row for every new route.
 

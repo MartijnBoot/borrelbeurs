@@ -6,9 +6,9 @@ bucket, not by order count (D-31). Read outside the holder's lock:
 `holder.run_id` is a plain read, and the query touches only committed orders.
 
 Without `run_id`, or naming the live run, it is the live run's series on the
-main engine, for bar and admin (SD19); with no live run that is 409
-`no_live_run`. Any other `run_id` is admin-only (the bar gets 403, known run or
-not) and is read on the heavy engine (PD15); an unknown one is 404
+main engine, for bar, organiser (B-13 SD9) and admin (SD19); with no live run
+that is 409 `no_live_run`. Any other `run_id` is admin-only (the bar and the
+organiser get 403, known run or not) and is read on the heavy engine (PD15); an unknown one is 404
 `run_not_found`, and a run without orders is `[]`.
 """
 
@@ -45,7 +45,7 @@ class EarningsPoint(BaseModel):
 @router.get("/series")
 async def get_series(
     request: Request,
-    principal: Annotated[Principal, Depends(require_role("bar", "admin"))],
+    principal: Annotated[Principal, Depends(require_role("bar", "organiser", "admin"))],
     run_id: int | None = None,
     bucket_s: BucketSeconds = 60,
 ) -> list[EarningsPoint]:

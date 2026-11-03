@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.core.config import Settings
+from app.db.keys import Role
 from app.db.runs import DEFAULT_PARAMS
 from app.db.session import create_engine
 from app.runtime.config_patch import profile_settings
@@ -37,8 +38,12 @@ def _insert_run(settings: Settings, url: str, *, status: str, name: str) -> None
     asyncio.run(scenario())
 
 
-def test_create_on_an_empty_database_is_a_draft_and_the_current_run(login: Login) -> None:
-    admin = login("admin", label="Bestuur")
+# B-13 SD5, AC9: the organiser creates and reads the current run as admin does.
+@pytest.mark.parametrize("role", ["admin", "organiser"])
+def test_create_on_an_empty_database_is_a_draft_and_the_current_run(
+    login: Login, role: Role
+) -> None:
+    admin = login(role, label="Bestuur")
 
     response = admin.post("/api/runs", json={"name": " Vrijmibo "})
 

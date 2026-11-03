@@ -521,6 +521,28 @@ def test_a_load_is_admin_only(
     assert _load(client, stocked, 1).status_code == (401 if role is None else 403)
 
 
+def test_the_organiser_lists_and_loads_but_neither_saves_nor_deletes(
+    stocked: int, login: Login, settings: Settings, api_env: str
+) -> None:
+    """B-13 SD6, AC9: the list and the load answer as for admin; save and delete are 403."""
+    admin = login("admin")
+    profile_id = _wild_profile(admin, stocked)
+    (stored,) = _stored(settings, api_env)
+    listed = admin.get("/api/profiles").json()
+    revisions = _revisions(settings, api_env, stocked)
+    organiser = login("organiser", label="Organisatie")
+
+    assert organiser.get("/api/profiles").json() == listed
+    response = _load(organiser, stocked, profile_id)
+    assert (response.status_code, response.json()) == (200, {"revision": revisions[-1][0] + 1})
+    assert _document_values(organiser, stocked) == stored["settings"]
+    assert _revisions(settings, api_env, stocked)[-1] == (revisions[-1][0] + 1, "Organisatie")
+
+    assert _save(organiser, stocked, "Eigen").status_code == 403
+    assert organiser.delete(f"/api/profiles/{profile_id}").status_code == 403
+    assert _stored(settings, api_env) == [stored]
+
+
 # --- B-07 T3: a load moves bounds onto the profile's step (AC12) --------------
 
 

@@ -1,7 +1,8 @@
 """`/api/analytics`: the run list and a run's detail (Phase 7 SD10, SD12; PD11, PD12).
 
-Admin only (SD7), read-only, and read on the heavy engine (SD11, AC31): its
-own connections and the longer timeout, never the order path's pool. Money is
+Admin only (SD7; B-13 SD11: the organiser reads the run list), read-only, and
+read on the heavy engine (SD11, AC31): its own connections and the longer
+timeout, never the order path's pool. Money is
 integer cents named per PD11 -- `revenue_cents`, `bar_price_total_cents`,
 `avg_price_cents` -- and no `p0_*` field exists (AC13).
 
@@ -71,7 +72,7 @@ def _run(totals: RunTotals) -> AnalyticsRun:
 
 @router.get("/runs")
 async def get_runs(
-    request: Request, _: Annotated[Principal, Depends(require_role("admin"))]
+    request: Request, _: Annotated[Principal, Depends(require_role("organiser", "admin"))]
 ) -> list[AnalyticsRun]:
     async with heavy_engine(request).connect() as conn:
         runs = await run_list(conn)

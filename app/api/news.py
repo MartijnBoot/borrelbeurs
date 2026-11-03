@@ -58,7 +58,7 @@ async def list_items(
 async def add_item(
     body: NewsRequest,
     request: Request,
-    _: Annotated[Principal, Depends(require_role("bar", "admin"))],
+    _: Annotated[Principal, Depends(require_role("bar", "organiser", "admin"))],
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> NewsItemData:
     holder = _holder(request)
@@ -87,7 +87,7 @@ async def add_item(
 async def delete_item(
     news_id: int,
     request: Request,
-    _: Annotated[Principal, Depends(require_role("bar", "admin"))],
+    _: Annotated[Principal, Depends(require_role("bar", "organiser", "admin"))],
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> NewsItemData:
     holder = _holder(request)

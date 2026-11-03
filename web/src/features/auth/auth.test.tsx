@@ -10,9 +10,10 @@ import { renderInDataRouter } from '../../app/testRouter'
 // jsdom has no Web Animations API; the board's marquees are tested on their own.
 vi.mock('../../components/ui/Marquee', () => ({ Marquee: () => null }))
 
-type Role = 'display' | 'bar' | 'admin' | 'kassa'
+type Role = 'display' | 'bar' | 'admin' | 'kassa' | 'organiser'
 
-// Phase 3 SD2, as GET /api/auth/me returns it (B-12 SD1: the three settings screens).
+// Phase 3 SD2, as GET /api/auth/me returns it (B-12 SD1: the three settings screens;
+// B-13 SD3, SD4: the organiser, and kassa's Mensen en wallets).
 const ALLOWED: Record<Role, string[]> = {
   display: ['/koers'],
   bar: ['/bar', '/manipulation'],
@@ -28,7 +29,17 @@ const ALLOWED: Record<Role, string[]> = {
     '/analytics',
     '/kassa',
   ],
-  kassa: ['/kassa'],
+  kassa: ['/kassa', '/settings', '/settings/wallets'],
+  organiser: [
+    '/',
+    '/koers',
+    '/bar',
+    '/manipulation',
+    '/settings',
+    '/settings/spel',
+    '/settings/wallets',
+    '/kassa',
+  ],
 }
 
 const KEYS: Record<string, Role> = {
@@ -36,6 +47,7 @@ const KEYS: Record<string, Role> = {
   'key-bar': 'bar',
   'key-admin': 'admin',
   'key-kassa': 'kassa',
+  'key-organiser': 'organiser',
 }
 
 let session: Role | null
@@ -124,6 +136,8 @@ describe('login (AC21)', () => {
     ['key-admin', '/'],
     // B-05 SD7, AC36.
     ['key-kassa', '/kassa'],
+    // B-13 SD3, AC5.
+    ['key-organiser', '/'],
   ])('%s lands on %s', async (key, landing) => {
     await open('/login')
     await logIn(key)
@@ -231,12 +245,18 @@ describe('routes (AC22, AC23, SD4, SD13)', () => {
     expect(where()).toBe('/settings')
   })
 
-  // B-12 AC3: only admin opens the screens (SD17); the address stays.
-  it.each(
-    (['display', 'bar', 'kassa'] as const).flatMap((role) =>
+  // B-12 AC3: only admin opens the screens (SD17); the address stays. B-13 AC6: the
+  // organiser holds neither Beheer nor Analyse, and kassa only Mensen en wallets.
+  it.each([
+    ...(['display', 'bar'] as const).flatMap((role) =>
       ['/settings/spel', '/settings/wallets', '/settings/beheer'].map((path) => [role, path]),
     ),
-  )('%s on %s sees "Geen toegang"', async (role, path) => {
+    ['kassa', '/settings/spel'],
+    ['kassa', '/settings/beheer'],
+    ['kassa', '/analytics'],
+    ['organiser', '/settings/beheer'],
+    ['organiser', '/analytics'],
+  ])('%s on %s sees "Geen toegang"', async (role, path) => {
     session = role as Role
     await open(path)
     expect(screen.getByText('Geen toegang')).toBeTruthy()
@@ -263,6 +283,17 @@ describe('routes (AC22, AC23, SD4, SD13)', () => {
     expect(screen.getByText('Geen toegang')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: /Menu/ }))
     expect(screen.queryByRole('menuitem', { name: 'Analyse' })).toBeNull()
+  })
+
+  // B-13 SD9, AC19: what bar sees, without Idle (canEditIdle stays admin's).
+  it('an organiser on /manipulation sees the news, events and jump, and no Idle', async () => {
+    session = 'organiser'
+    await open('/manipulation')
+    for (const name of ['Nieuws', 'Market events', 'Price jump']) {
+      expect(screen.getByRole('heading', { level: 2, name })).toBeTruthy()
+    }
+    expect(screen.queryByRole('heading', { name: /Idle/ })).toBeNull()
+    expect(where()).toBe('/manipulation')
   })
 
   it('an unknown route sees "Geen toegang" inside the shell', async () => {

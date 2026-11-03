@@ -83,8 +83,22 @@ def test_login_sets_a_secure_httponly_samesite_strict_cookie(
                 "/kassa",
             ],
         ),
-        # B-05 SD7, AC36.
-        ("kassa", ["/kassa"]),
+        # B-05 SD7, AC36; B-13 SD4, AC5: Mensen en wallets too, landing on /kassa.
+        ("kassa", ["/kassa", "/settings", "/settings/wallets"]),
+        # B-13 AC5: lands on the first, `/`.
+        (
+            "organiser",
+            [
+                "/",
+                "/koers",
+                "/bar",
+                "/manipulation",
+                "/settings",
+                "/settings/spel",
+                "/settings/wallets",
+                "/kassa",
+            ],
+        ),
     ],
 )
 def test_me_returns_sd2s_routes_per_role(login: Login, role: str, routes: list[str]) -> None:

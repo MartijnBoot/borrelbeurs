@@ -15,7 +15,6 @@ Top is next. Every item that is not `specced` or `dropped` appears here exactly 
 
 | # | ID | Feature | Size | Status |
 |---|---|---|---|---|
-| 2 | B-13 | An organiser role | M | idea |
 
 ## Items
 
@@ -511,7 +510,7 @@ decisions, not an ADR; the route question may touch `docs/design/`. Not the engi
 
 ### B-13 — An organiser role
 
-- **Status:** idea
+- **Status:** specced → `docs/specs/phase-b-13-organiser-role.md`
 - **Added:** 2026-10-27 (revised 2026-11-02)
 - **Size:** M (a few tasks) — a guess; L if the key and login changes grow
 - **Depends on:** B-12

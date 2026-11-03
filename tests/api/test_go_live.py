@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.core.config import Settings
+from app.db.keys import Role
 from app.db.runs import add_drink
 from app.db.session import create_engine
 from tests.api.conftest import Login
@@ -70,11 +71,13 @@ def _until(ws: Any, kind: str, limit: int = 20) -> dict[str, Any]:
     raise AssertionError(f"no {kind} within {limit} frames")
 
 
+# B-13 SD5, AC9: the organiser makes a draft live as admin does.
+@pytest.mark.parametrize("role", ["admin", "organiser"])
 def test_an_open_socket_gets_the_new_runs_snapshot_then_its_ticks(
-    login: Login, settings: Settings, api_env: str, advance: Advance
+    login: Login, settings: Settings, api_env: str, advance: Advance, role: Role
 ) -> None:
     """AC25, AC27."""
-    admin = login("admin", label="Bestuur")
+    admin = login(role, label="Bestuur")
     run_id = admin.post("/api/runs", json={"name": "Vrijmibo"}).json()["run_id"]
     _add_drink(settings, api_env, run_id)
     _sql(settings, api_env, "UPDATE run SET tick_interval_ms = 500 WHERE run_id = :r", r=run_id)

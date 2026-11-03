@@ -1,6 +1,6 @@
 """The bar's wallet routes (B-06 SD9, SD13; plan PD9).
 
-Every route is `require_role("bar", "admin")`. A bar key may look a scanned wallet
+Every route is `require_role("bar", "organiser", "admin")`. A bar key may look a scanned wallet
 up and sees only its name and balance (SD13): never a wallet id, a short code or a
 token. It may list the wallet payments it booked itself in the last 10 minutes on
 the app clock (SD9), each with its lines, amount, wallet name and whether it was
@@ -22,7 +22,7 @@ from app.runtime import wallets as actions
 
 router = APIRouter(prefix="/bar", tags=["bar"])
 
-Bar = Annotated[Principal, Depends(require_role("bar", "admin"))]
+Bar = Annotated[Principal, Depends(require_role("bar", "organiser", "admin"))]
 
 
 class BarWallet(BaseModel):

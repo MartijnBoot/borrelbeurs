@@ -5,6 +5,10 @@
  * order. It holds no settings and no section, so an old `/settings#borrel`
  * link opens it and scrolls nowhere (SD14). The screens are in
  * `SettingsScreens.tsx`.
+ *
+ * B-13 SD14: the status line reads `GET /api/runs/current`, which only a session
+ * holding Spelopzet may call, so it is mounted only for one: the kassa sees its
+ * one tile and asks for no run.
  */
 import { Link } from 'react-router'
 import { useSession } from '../../features/auth'
@@ -42,13 +46,17 @@ function statusLine(run: CurrentRun | null | undefined, failed: boolean): string
   return `Borrel: ${run.name} (${RUN_STATUS[run.status]})`
 }
 
+function RunStatus() {
+  const { run, failed } = useCurrentRun()
+  return <p className={styles.runStatus}>{statusLine(run, failed)}</p>
+}
+
 export function SettingsPage() {
   const { session } = useSession()
-  const { run, failed } = useCurrentRun()
   const allowed = session.status === 'ready' ? session.me.allowed_routes : []
   return (
     <div className={styles.landing}>
-      <p className={styles.runStatus}>{statusLine(run, failed)}</p>
+      {allowed.includes('/settings/spel') && <RunStatus />}
       <div className={styles.tiles}>
         {SCREENS.filter(([path]) => allowed.includes(path)).map(([path, name, line]) => (
           <Link key={path} to={path} className={styles.tile}>

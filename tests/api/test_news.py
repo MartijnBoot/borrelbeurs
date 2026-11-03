@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.core.config import Settings
+from app.db.keys import Role
 from app.db.session import create_engine
 from app.realtime.messages import Envelope
 from tests.api.conftest import Login
@@ -47,15 +48,18 @@ def _rows(settings: Settings, url: str) -> list[tuple[str, str, bool]]:
     return asyncio.run(scenario())
 
 
+# B-13 SD9, AC17: the organiser posts and deletes news as the bar does.
+@pytest.mark.parametrize("role", ["bar", "organiser"])
 def test_posting_news_persists_trims_and_broadcasts(
     live_client: TestClient,
     login: Login,
     broadcasts: list[Envelope],
     settings: Settings,
     api_env: str,
+    role: Role,
 ) -> None:
     """AC28: persisted, broadcast as `news {op: add, item}`."""
-    client = login("bar")
+    client = login(role)
 
     response = client.post("/api/news", json={"level": "warning", "text": "  Happy hour!  "})
 
@@ -131,15 +135,17 @@ def test_five_hundred_characters_are_accepted(live_client: TestClient, login: Lo
     assert client.post("/api/news", json={"level": "danger", "text": "x" * 500}).status_code == 201
 
 
+@pytest.mark.parametrize("role", ["bar", "organiser"])
 def test_deleting_twice_is_404_the_second_time(
     live_client: TestClient,
     login: Login,
     broadcasts: list[Envelope],
     settings: Settings,
     api_env: str,
+    role: Role,
 ) -> None:
     """AC28: soft delete, broadcast `op: delete`; absent or already deleted is 404."""
-    client = login("bar")
+    client = login(role)
     item = client.post("/api/news", json={"level": "info", "text": "weg"}).json()
 
     first = client.delete(f"/api/news/{item['news_id']}")

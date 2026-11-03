@@ -18,8 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.db.models import AuthKey
 
-Role = Literal["display", "bar", "admin", "kassa"]
-ROLES: tuple[Role, ...] = ("display", "bar", "admin", "kassa")
+Role = Literal["display", "bar", "admin", "kassa", "organiser"]
+ROLES: tuple[Role, ...] = ("display", "bar", "admin", "kassa", "organiser")
 
 
 @dataclass(frozen=True)

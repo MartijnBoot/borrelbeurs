@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
+from app.db.keys import Role
 from app.db.session import create_engine
 from app.db.theme import ThemeRow, get_theme
 from app.runtime.theme import PRESETS, TOKEN_NAMES, resolve
@@ -91,11 +92,13 @@ def test_an_etag_from_before_a_reset_never_revalidates_another_preset(
     assert f"--bg:{PRESETS['rood'].tokens['--bg']};" in after.text
 
 
+# B-13 SD5, AC9: the organiser sets the look as admin does.
+@pytest.mark.parametrize("role", ["admin", "organiser"])
 def test_an_admin_put_stores_returns_and_serves_the_preset(
-    client: TestClient, login: Login, settings: Settings, api_env: str
+    client: TestClient, login: Login, settings: Settings, api_env: str, role: Role
 ) -> None:
     """AC10: after Oud Geld, the CSS carries the EB Garamond stack, at a new ETag."""
-    response = login("admin").put("/api/theme", json={"preset": "oudgeld"})
+    response = login(role).put("/api/theme", json={"preset": "oudgeld"})
 
     assert response.status_code == 200, response.text
     body = response.json()
@@ -295,9 +298,11 @@ def test_an_invalid_custom_body_is_422_and_changes_nothing(
     assert _stored(settings, api_env) is None
 
 
-def test_theme_css_paints_the_uploaded_images(client: TestClient, login: Login) -> None:
+# B-13 SD5, AC9: and uploads and removes its images.
+@pytest.mark.parametrize("role", ["admin", "organiser"])
+def test_theme_css_paints_the_uploaded_images(client: TestClient, login: Login, role: Role) -> None:
     """Phase 6 T19 (PD9; AC35): a set slot is a `--img-*` variable, and bg/header get rules."""
-    admin = login("admin")
+    admin = login(role)
     logo = _upload(admin, "logo", PNG).json()["asset_id"]
     promo = _upload(admin, "promo", PNG).json()["asset_id"]
 

@@ -66,7 +66,12 @@ QR codes, bookmarks and muscle memory survive. *B-12* adds `/settings/spel`, `/s
 and `/settings/beheer` under the `/settings` landing
 ([phase-b-12-settings-screens.md](../specs/phase-b-12-settings-screens.md)). *B-05* adds `/kassa` inside the shell (the
 `kassa` role), `/speler` beside `/login` outside it (a player has no session and no WebSocket),
-and at `/`, without a crew session, the landing choice "Speler" or "Crew". **Role gating comes from the server:**
+and at `/`, without a crew session, the landing choice "Speler" or "Crew". *B-13* adds the
+`organiser` role ([phase-b-13-organiser-role.md](../specs/phase-b-13-organiser-role.md)): it
+holds the setup and cash-desk addresses -- `/`, `/koers`, `/bar`, `/manipulation`, `/settings`,
+`/settings/spel`, `/settings/wallets`, `/kassa` -- and not `/settings/beheer` or `/analytics`;
+`kassa` also holds `/settings` and `/settings/wallets`, where it sees Wallets without Betalen.
+**Role gating comes from the server:**
 `/auth/me` returns `allowed_routes`, and both `RequireRole` and `NavMenu` read that one list.
 In v1 the role map is duplicated in `backend/auth.py:25-29` and again in four page scripts.
 

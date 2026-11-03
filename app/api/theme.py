@@ -9,9 +9,10 @@ database, a migration round trip, the cutover): a revision alone would 304 a
 browser's cached preset over a different one. `index.html` links it as a blocking
 stylesheet before any script (ADR 0005).
 
-**`PUT /api/theme {preset, tokens?, font?}`** is admin-only and takes one of the
-five presets, or `custom` (Phase 6 SD28, PD8). `tokens` -- exactly the manifest's,
-each a hex colour -- and `font` come only with `custom`, and only together;
+**`PUT /api/theme {preset, tokens?, font?}`** is admin's and the organiser's
+(B-13 SD5) and takes one of the five presets, or `custom` (Phase 6 SD28, PD8).
+`tokens` -- exactly the manifest's, each a hex colour -- and `font` come only
+with `custom`, and only together;
 `custom` alone reuses the stored custom theme, or is 409 `no_custom_theme`.
 It never touches `MarketHolder`: `mutate` refuses with no live run, and SD9
 forbids the engine state lock for theme writes. So it commits in its own
@@ -121,7 +122,7 @@ async def theme_css(request: Request) -> Response:
 async def put_theme(
     body: ThemeRequest,
     request: Request,
-    _: Annotated[Principal, Depends(require_role("admin"))],
+    _: Annotated[Principal, Depends(require_role("organiser", "admin"))],
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> ThemeData:
     state = request.app.state
@@ -210,7 +211,7 @@ def _no_file(message: str) -> InvalidUpload:
 async def post_image(
     slot: ImageSlot,
     request: Request,
-    _: Annotated[Principal, Depends(require_role("admin"))],
+    _: Annotated[Principal, Depends(require_role("organiser", "admin"))],
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> ImageData:
     data = await _read_file(request)
@@ -230,7 +231,7 @@ async def post_image(
 async def delete_image(
     slot: ImageSlot,
     request: Request,
-    _: Annotated[Principal, Depends(require_role("admin"))],
+    _: Annotated[Principal, Depends(require_role("organiser", "admin"))],
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> ImageData:
     async with request.app.state.engine.begin() as conn:

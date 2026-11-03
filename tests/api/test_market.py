@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.core.config import Settings
+from app.db.keys import Role
 from app.db.session import create_engine
 from app.realtime.messages import Envelope
 from tests.api.conftest import Login
@@ -64,7 +65,12 @@ def _drink(client: TestClient) -> int:
     return drinks[0]
 
 
-def test_a_valid_jump_is_201_with_the_next_version(bar: TestClient) -> None:
+# B-13 SD9, AC17: the organiser jumps a price as the bar does.
+@pytest.mark.parametrize("role", ["bar", "organiser"])
+def test_a_valid_jump_is_201_with_the_next_version(
+    live_client: TestClient, login: Login, role: Role
+) -> None:
+    bar = login(role)
     version = bar.app.state.holder.state.version  # type: ignore[attr-defined]
 
     response = bar.post(

@@ -30,7 +30,7 @@ import { request } from '../../lib/http'
 type MeData = components['schemas']['Me']
 
 export const Me: z.ZodType<MeData> = z.object({
-  role: z.enum(['display', 'bar', 'admin', 'kassa']),
+  role: z.enum(['display', 'bar', 'admin', 'kassa', 'organiser']),
   label: z.string(),
   allowed_routes: z.array(z.string()),
 })

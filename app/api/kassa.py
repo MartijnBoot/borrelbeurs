@@ -1,6 +1,7 @@
 """The kassa's routes (B-05 SD7, SD10-SD14, SD22; plan PD9, PD17).
 
-Every route is `require_role("kassa", "admin")` (SD7); a write is refused while
+Every route is `require_role("kassa", "organiser", "admin")` (SD7; B-13 SD8: the
+organiser has the full cash desk); a write is refused while
 draining after that (Phase 6 PD19). A money write carries an `Idempotency-Key`
 as an order does (`app/api/orders.py`): the same key and body again is a 200
 replay of the stored entry, another body under it is 422 `idempotency_key_reused`.
@@ -30,7 +31,7 @@ from app.runtime.wallet_codes import display_short_code
 
 router = APIRouter(prefix="/kassa", tags=["kassa"])
 
-Kassa = Annotated[Principal, Depends(require_role("kassa", "admin"))]
+Kassa = Annotated[Principal, Depends(require_role("kassa", "organiser", "admin"))]
 Draining = Annotated[None, Depends(refuse_while_draining)]
 IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", pattern=IDEMPOTENCY_KEY_PATTERN)]
 

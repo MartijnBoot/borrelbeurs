@@ -138,7 +138,19 @@ ROLE_ROUTES: Final[dict[Role, tuple[str, ...]]] = {
         "/analytics",
         "/kassa",
     ),
-    "kassa": ("/kassa",),
+    # B-13 SD4: Mensen en wallets too, without Betalen; still lands on /kassa.
+    "kassa": ("/kassa", "/settings", "/settings/wallets"),
+    # B-13 SD3: setup and the cash desk, not Beheer or Analyse; lands on `/`.
+    "organiser": (
+        "/",
+        "/koers",
+        "/bar",
+        "/manipulation",
+        "/settings",
+        "/settings/spel",
+        "/settings/wallets",
+        "/kassa",
+    ),
 }
 
 

@@ -10,12 +10,14 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import insert, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from app.core.config import Settings
 from app.db import models
+from app.db.keys import Role
 from app.db.runs import add_drink, create_draft_run
 from app.db.session import create_engine
 from exchange import Params
@@ -41,8 +43,10 @@ def _order(client: TestClient, key: str) -> int:
     return total
 
 
-def test_bar_gets_the_cumulative_series(live_client: TestClient, login: Login) -> None:
-    bar = login("bar")
+# B-13 SD9, AC17: the organiser reads the live run's series as the bar does.
+@pytest.mark.parametrize("role", ["bar", "organiser"])
+def test_bar_gets_the_cumulative_series(live_client: TestClient, login: Login, role: Role) -> None:
+    bar = login(role)
     first = _order(bar, "k-series-0001")
     second = _order(bar, "k-series-0002")
 

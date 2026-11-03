@@ -259,6 +259,25 @@ def test_an_admin_key_may_top_up(login: Login, settings: Settings, api_env: str)
     assert _sql(settings, api_env, "SELECT actor_label FROM wallet_entry") == [("Bestuur",)]
 
 
+def test_an_organiser_key_tops_up_as_the_kassa(
+    live_run: int, login: Login, settings: Settings, api_env: str
+) -> None:
+    """B-13 SD8, AC14: booked with the organiser key's id, its label and the live run."""
+    organiser = login("organiser", "Organisatie")
+    wallet = _wallet(settings, api_env)
+
+    assert _lookup(organiser, qr_token=wallet.qr_token).status_code == 200
+    assert _top_up(organiser, wallet.wallet_id, 1500).status_code == 201
+    ((key_id,),) = _sql(settings, api_env, "SELECT key_id FROM auth_key WHERE role = 'organiser'")
+    assert _sql(
+        settings,
+        api_env,
+        "SELECT kind, amount_cents, run_id, actor_key_id, actor_label FROM wallet_entry",
+    ) == [("topup", 1500, live_run, key_id, "Organisatie")]
+    listed = organiser.get(f"/api/kassa/wallets/{wallet.wallet_id}/topups").json()
+    assert [t["actor_label"] for t in listed] == ["Organisatie"]
+
+
 def test_a_top_up_of_an_unknown_or_deleted_wallet_is_404(
     kassa: TestClient, settings: Settings, api_env: str
 ) -> None:

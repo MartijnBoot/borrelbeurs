@@ -1,14 +1,16 @@
 """Refunding a wallet payment (B-06 SD9; AC21-AC23; plan PD9).
 
-`POST /api/payments/{entry_id}/refund` is `require_role("bar", "kassa", "admin")`,
-then refused while draining (Phase 6 PD19). It carries an `Idempotency-Key` as a
-kassa write does: the same key and payment again is a 200 replay of the stored
-refund, another payment under it is 422 `idempotency_key_reused`.
+`POST /api/payments/{entry_id}/refund` is `require_role("bar", "kassa",
+"organiser", "admin")`, then refused while draining (Phase 6 PD19). It carries an
+`Idempotency-Key` as a kassa write does: the same key and payment again is a 200
+replay of the stored refund, another payment under it is 422
+`idempotency_key_reused`.
 
 A refund returns the money only: one `refund` entry of the payment's whole amount,
 with the payment's run. The order, its lines, the revenue and the engine are never
 touched (SD9, SD21). A bar key may refund only the payments it booked itself, for
-10 minutes on the app clock; kassa and admin any, at any age.
+10 minutes on the app clock; kassa, organiser (B-13 SD10) and admin any, at any
+age.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ from app.runtime import wallets as actions
 
 router = APIRouter(prefix="/payments", tags=["payments"])
 
-Refunder = Annotated[Principal, Depends(require_role("bar", "kassa", "admin"))]
+Refunder = Annotated[Principal, Depends(require_role("bar", "kassa", "organiser", "admin"))]
 
 
 @router.post(

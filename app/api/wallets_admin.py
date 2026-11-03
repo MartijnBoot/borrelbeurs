@@ -10,7 +10,8 @@ read and replace the sign-up code, the two retention periods (PD12) and the swit
 for the code on the koers screen (B-10 SD5). Every successful `PUT` broadcasts the
 screen's `signup` state (B-10 SD3, PD4), as a theme save broadcasts `theme`.
 
-Admin only. The writes refuse while draining (Phase 6 PD19).
+Admin, kassa and organiser (B-13 SD8). The writes refuse while draining
+(Phase 6 PD19).
 """
 
 from __future__ import annotations
@@ -38,7 +39,7 @@ from app.runtime.holder import MarketHolder
 
 router = APIRouter(prefix="/admin", tags=["wallets"])
 
-Admin = Annotated[Principal, Depends(require_role("admin"))]
+WalletAdmin = Annotated[Principal, Depends(require_role("organiser", "kassa", "admin"))]
 Draining = Annotated[None, Depends(refuse_while_draining)]
 
 SIGNUP_CODE_MAX = 40
@@ -120,7 +121,7 @@ def _publish(request: Request, row: WalletSettingsRow) -> None:
 
 
 @router.get("/wallets")
-async def wallets_overview(request: Request, _: Admin) -> WalletsOverview:
+async def wallets_overview(request: Request, _: WalletAdmin) -> WalletsOverview:
     found = await actions.overview(db_engine(request))
     return WalletsOverview(
         positive_balance_cents=found.positive_balance_cents,
@@ -148,7 +149,7 @@ async def wallets_overview(request: Request, _: Admin) -> WalletsOverview:
 
 @router.delete("/wallets/{wallet_id}", status_code=204)
 async def delete_wallet(
-    wallet_id: int, request: Request, principal: Admin, _: Draining
+    wallet_id: int, request: Request, principal: WalletAdmin, _: Draining
 ) -> Response:
     await actions.delete(
         db_engine(request),
@@ -160,13 +161,13 @@ async def delete_wallet(
 
 
 @router.get("/wallet-settings")
-async def get_wallet_settings(request: Request, _: Admin) -> WalletSettingsData:
+async def get_wallet_settings(request: Request, _: WalletAdmin) -> WalletSettingsData:
     return _settings(await actions.settings(db_engine(request)))
 
 
 @router.put("/wallet-settings")
 async def put_wallet_settings(
-    body: WalletSettingsData, request: Request, _: Admin, __: Draining
+    body: WalletSettingsData, request: Request, _: WalletAdmin, __: Draining
 ) -> WalletSettingsData:
     # Two racing saves broadcast in the order they committed (B-10 PD2): the row has no
     # revision for the client to compare, as `theme`'s has.

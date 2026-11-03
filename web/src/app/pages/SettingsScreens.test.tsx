@@ -7,13 +7,14 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Route, Routes, useLocation } from 'react-router'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PixelIcon, type PixelIconName } from '../../components/ui/PixelIcon'
+import { SessionProvider } from '../../features/auth'
 import { settingsExplanations as explanations, SettingsLayout } from '../../features/settings'
 import { UnsavedEditsProvider } from '../../lib/unsavedEdits'
 import { LeaveGuard } from '../LeaveGuard'
 import { renderInDataRouter } from '../testRouter'
-import { stubNarrow, stubServer } from './settingsFixture'
+import { SERVED, stubNarrow, stubServer } from './settingsFixture'
 import { settingNames } from './settingNames'
 import { BeheerPage, SettingsScreen, SpelopzetPage, WalletsScreenPage } from './SettingsScreens'
 
@@ -85,19 +86,34 @@ function Where() {
 
 const where = () => screen.getByTestId('where').textContent
 
+// B-13: the session the screens read, as `GET /api/auth/me` answers it.
+const ROUTES: Readonly<Record<string, string[]>> = {
+  admin: ['/settings', '/settings/spel', '/settings/wallets', '/settings/beheer'],
+  organiser: ['/settings', '/settings/spel', '/settings/wallets'],
+  kassa: ['/kassa', '/settings', '/settings/wallets'],
+}
+
+/** The fixture's server, answering `/api/auth/me` for `role`. */
+function serveAs(role: string, served: Readonly<Record<string, unknown>> = SERVED) {
+  const me = { role, label: `${role} key`, allowed_routes: ROUTES[role] }
+  stubServer({ ...served, '/api/auth/me': me })
+}
+
 /** A screen inside the shell's guard (PD2, PD3), with the landing beside it. */
 async function open(screenName: string) {
   const { path, page } = SCREENS[screenName]
   renderInDataRouter(
-    <UnsavedEditsProvider>
-      <LeaveGuard>
-        <Routes>
-          <Route path={path} element={page} />
-          <Route path="/settings" element={<p>Landing</p>} />
-        </Routes>
-        <Where />
-      </LeaveGuard>
-    </UnsavedEditsProvider>,
+    <SessionProvider>
+      <UnsavedEditsProvider>
+        <LeaveGuard>
+          <Routes>
+            <Route path={path} element={page} />
+            <Route path="/settings" element={<p>Landing</p>} />
+          </Routes>
+          <Where />
+        </LeaveGuard>
+      </UnsavedEditsProvider>
+    </SessionProvider>,
     [path],
   )
   for (let i = 0; i < 4; i += 1) await act(async () => {})
@@ -117,7 +133,7 @@ const iconMarkup = (name: PixelIconName) => renderToStaticMarkup(<PixelIcon name
 
 beforeEach(() => {
   stubNarrow(false)
-  stubServer()
+  serveAs('admin')
 })
 
 afterEach(cleanup)
@@ -222,6 +238,62 @@ describe('Mensen en wallets', () => {
     expect(region.id).toBe('wallets')
     expect(within(region).getByText('Aanmelden is gesloten.')).toBeTruthy()
     expect(within(region).getByText('Nog geen wallets')).toBeTruthy()
+  })
+})
+
+// B-13 SD4, SD14; AC8: Betalen only for a session holding Spelopzet.
+describe('Mensen en wallets per role (B-13)', () => {
+  const asked = (path: string) =>
+    vi.mocked(fetch).mock.calls.filter(([p]) => String(p) === path).length
+
+  it('the kassa sees Wallets, not Betalen, and asks for no run or config', async () => {
+    serveAs('kassa')
+    await open('Mensen en wallets')
+    expect(screen.getByRole('region', { name: 'Wallets' })).toBeTruthy()
+    expect(screen.queryByRole('region', { name: 'Betalen' })).toBeNull()
+    expect(asked('/api/runs/current')).toBe(0)
+    expect(asked('/api/runs/7/config')).toBe(0)
+  })
+
+  it.each(['organiser', 'admin'])('%s sees Betalen and Wallets', async (role) => {
+    serveAs(role)
+    await open('Mensen en wallets')
+    expect(
+      screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent),
+    ).toEqual(['Betalen', 'Wallets'])
+  })
+})
+
+// B-13 SD6 (OQ1 = B): on a draft the organiser loads a profile, and neither saves nor
+// deletes one; admin keeps both.
+describe('Profielen per role (B-13)', () => {
+  const PROFILE = {
+    profile_id: 1,
+    name: 'Wilde beurs',
+    saved_at: '2026-10-24T12:05:00Z',
+    source_run_name: 'Proef',
+  }
+  const onADraft = {
+    ...SERVED,
+    '/api/runs/current': { run_id: 7, name: 'Vrijmibo', status: 'draft' },
+    '/api/profiles': [PROFILE],
+  }
+  const profielen = () => screen.getByRole('region', { name: 'Profielen' })
+
+  it('the organiser has "Laden", and no save form or "Verwijderen"', async () => {
+    serveAs('organiser', onADraft)
+    await open('Spelopzet')
+    expect(within(profielen()).getByRole('button', { name: 'Laden' })).toBeTruthy()
+    expect(within(profielen()).queryByRole('button', { name: 'Opslaan als profiel' })).toBeNull()
+    expect(within(profielen()).queryByRole('button', { name: 'Verwijderen' })).toBeNull()
+  })
+
+  it('admin has all three', async () => {
+    serveAs('admin', onADraft)
+    await open('Spelopzet')
+    for (const name of ['Laden', 'Opslaan als profiel', 'Verwijderen']) {
+      expect(within(profielen()).getByRole('button', { name })).toBeTruthy()
+    }
   })
 })
 

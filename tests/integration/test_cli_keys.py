@@ -140,6 +140,23 @@ def test_create_mints_a_kassa_key(
     assert row["secret_hash"] == security.key_hash(symbols)
 
 
+def test_create_mints_an_organiser_key_and_list_shows_its_role(
+    scratch: str, settings: Settings, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """B-13 SD2, AC1: `create --role organiser`, printed once in the grouped form."""
+    key = _create(capsys, "organiser", "Organisatie")
+    assert KEY_SHAPE.fullmatch(key), key
+    symbols = security.normalise_key(key)
+    assert symbols is not None
+
+    (row,) = _rows(settings, scratch)
+
+    assert (row["role"], row["label"]) == ("organiser", "Organisatie")
+    assert row["secret_hash"] == security.key_hash(symbols)
+    assert main(["list"]) == 0
+    assert capsys.readouterr().out.splitlines()[1].split()[-2:] == ["organiser", "active"]
+
+
 def test_create_gives_up_after_five_collisions_and_writes_nothing(
     scratch: str,
     settings: Settings,

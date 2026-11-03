@@ -61,7 +61,7 @@ class ConnectionInfo(BaseModel):
 
 @router.get("/connections")
 async def connections(
-    request: Request, _: Annotated[Principal, Depends(require_role("admin"))]
+    request: Request, _: Annotated[Principal, Depends(require_role("organiser", "admin"))]
 ) -> list[ConnectionInfo]:
     hub: Hub = request.app.state.hub
     return [

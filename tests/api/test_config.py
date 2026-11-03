@@ -14,6 +14,10 @@ fields, stored on a draft or live run, 422 off their rules, and broadcast live.
 B-07 T3 (AC6, AC8, AC9 on a draft): a Prijsstap change moves the active drinks'
 bounds inward in the same revision, a drink left with no room refuses the whole
 write as `bounds_collision`, and any other write moves no bound.
+
+B-13 T3 (SD7; AC11, AC12, AC16): an organiser's PATCH may carry only `name`,
+`wallet_required`, `credit_limit_cents` and `params.step_quant`; any other field
+is 403 naming it, before the body is validated, and nothing is written or sent.
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.core.config import Settings
+from app.db.keys import Role
 from app.db.runs import DEFAULT_PARAMS, add_drink, create_run
 from app.db.session import create_engine
 from tests.api.conftest import Login
@@ -680,12 +685,14 @@ def test_an_unknown_run_is_404_run_not_found(client: TestClient, login: Login) -
         assert response.json()["error"]["code"] == "run_not_found"
 
 
-@pytest.mark.parametrize("role", ["display", "bar"])
+# B-13 AC11, AC16: the whole route, even for a body an organiser may send.
+@pytest.mark.parametrize("role", ["display", "bar", "kassa"])
 def test_other_roles_are_403(draft: int, client: TestClient, login: Login, role: str) -> None:
     session = login(role)
 
     assert session.get(f"/api/runs/{draft}/config").status_code == 403
     assert session.patch(f"/api/runs/{draft}/config", json={}).status_code == 403
+    assert session.patch(f"/api/runs/{draft}/config", json={"name": "x"}).status_code == 403
 
 
 def test_the_nan_literal_is_valid_json_to_the_server() -> None:
@@ -784,3 +791,168 @@ def test_a_write_that_keeps_the_step_moves_no_bound(
 
     assert response.status_code == 200, response.text
     assert _bounds(admin.get(f"/api/runs/{draft}/config").json())["Bier"] == (124, 260, 497)
+
+
+# --- B-13 T3: an organiser's PATCH is cut by field (SD7; AC11, AC12, AC16) -----
+
+
+ALLOWED: dict[str, dict[str, Any]] = {
+    "name": {"name": "Vrijmibo"},
+    "wallet_required": {"wallet_required": False},
+    "credit_limit_cents": {"credit_limit_cents": 250},
+    "params.step_quant": {"params": {"step_quant": 0.25}},
+}
+ALL_FOUR: dict[str, Any] = {
+    "name": "Vrijmibo",
+    "wallet_required": False,
+    "credit_limit_cents": 250,
+    "params": {"step_quant": 0.25},
+}
+
+
+def _the_four(document: Any) -> dict[str, Any]:
+    run = document["run"]
+    return {
+        "name": run["name"],
+        "wallet_required": run["wallet_required"],
+        "credit_limit_cents": run["credit_limit_cents"],
+        "params.step_quant": document["params"]["step_quant"],
+    }
+
+
+@pytest.mark.parametrize("role", ["admin", "organiser"])
+@pytest.mark.parametrize("field", [*ALLOWED, "all four"])
+def test_the_four_fields_are_applied_for_an_organiser_as_for_admin(
+    draft: int, client: TestClient, login: Login, role: Role, field: str
+) -> None:
+    """AC11: each allowed field alone, and all four together, on a draft."""
+    session = login(role)
+    before = _the_four(session.get(f"/api/runs/{draft}/config").json())
+    body = ALL_FOUR if field == "all four" else ALLOWED[field]
+    expected = {
+        "name": "Vrijmibo",
+        "wallet_required": False,
+        "credit_limit_cents": 250,
+        "params.step_quant": 0.25,
+    }
+    if field != "all four":
+        expected = {**before, field: expected[field]}
+
+    response = session.patch(f"/api/runs/{draft}/config", json=body)
+
+    assert (response.status_code, response.json()) == (200, {"revision": 2}), response.text
+    assert _the_four(session.get(f"/api/runs/{draft}/config").json()) == expected
+
+
+@pytest.mark.parametrize(
+    ("body", "field"),
+    [
+        ({"params": {"eta": 0.9}}, "params.eta"),
+        ({"params": {"bm_enabled": False}}, "params.bm_enabled"),
+        ({"params": {"demand_enabled": False}}, "params.demand_enabled"),
+        ({"params": {"idle_targets": []}}, "params.idle_targets"),
+        ({"params": {"idle_rise_targets": []}}, "params.idle_rise_targets"),
+        ({"candle_interval_s": 30}, "candle_interval_s"),
+        ({"foo": 1}, "foo"),
+        ({"params.step_quant": 0.25}, "params.step_quant"),
+        ({"params": {"eta": -1}}, "params.eta"),
+    ],
+    ids=[
+        "eta",
+        "bm_enabled",
+        "demand_enabled",
+        "idle_targets",
+        "idle_rise_targets",
+        "candle_interval_s",
+        "unknown",
+        "dotted-top-level",
+        "eta-invalid",
+    ],
+)
+def test_any_other_field_is_403_naming_it_and_writes_nothing(
+    draft: int,
+    client: TestClient,
+    login: Login,
+    settings: Settings,
+    api_env: str,
+    body: Any,
+    field: str,
+) -> None:
+    """AC11, AC12: one param of every group, Kaarsbreedte and an unknown key; an
+    invalid value is still 403, not 422, so the check runs before validation."""
+    organiser = login("organiser")
+    before = organiser.get(f"/api/runs/{draft}/config").json()
+
+    response = organiser.patch(f"/api/runs/{draft}/config", json=body)
+
+    assert response.status_code == 403, response.text
+    error = response.json()["error"]
+    assert error["code"] == "forbidden"
+    assert field in error["message"]
+    assert error["fields"] == [field]
+    assert _revisions(settings, api_env, draft) == 1
+    assert organiser.get(f"/api/runs/{draft}/config").json() == before
+
+
+def test_a_mixed_body_is_403_listing_every_refused_field_and_writes_nothing(
+    draft: int, client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """AC11: valid allowed fields beside refused ones write nothing at all."""
+    organiser = login("organiser")
+    before = organiser.get(f"/api/runs/{draft}/config").json()
+
+    response = organiser.patch(
+        f"/api/runs/{draft}/config",
+        json={
+            "name": "Vrijmibo",
+            "candle_interval_s": 30,
+            "params": {"step_quant": 0.25, "y_clip": 3.0, "eta": 0.9},
+        },
+    )
+
+    assert response.status_code == 403, response.text
+    error = response.json()["error"]
+    assert error["fields"] == ["candle_interval_s", "params.eta", "params.y_clip"]
+    assert "candle_interval_s" in error["message"]
+    assert _revisions(settings, api_env, draft) == 1
+    assert organiser.get(f"/api/runs/{draft}/config").json() == before
+
+
+@pytest.mark.parametrize("body", [[1], {"params": 5}], ids=["not-an-object", "params-not-object"])
+def test_a_body_that_names_no_field_is_the_same_422_as_for_admin(
+    draft: int, client: TestClient, login: Login, body: Any
+) -> None:
+    """PD4: a body or `params` that is not an object names no field to refuse."""
+    expected = login("admin").patch(f"/api/runs/{draft}/config", json=body)
+
+    response = login("organiser").patch(f"/api/runs/{draft}/config", json=body)
+
+    assert response.status_code == expected.status_code == 422
+    assert response.json() == expected.json()
+
+
+def test_on_the_live_run_a_refused_body_writes_nothing_and_sends_no_config(
+    live_run: int, live_client: TestClient, login: Login
+) -> None:
+    """AC11 (live): the mixed body is 403; no transition, no `config` frame."""
+    organiser = login("organiser")
+    before = organiser.get(f"/api/runs/{live_run}/config").json()
+    version = organiser.get("/api/state").json()["version"]
+
+    with organiser.websocket_connect("wss://testserver/ws") as ws:
+        assert json.loads(ws.receive_text())["type"] == "hello"
+        ws.send_text(json.dumps({"type": "hello", "boot_id": "elsewhere", "last_seq": 0}))
+        assert json.loads(ws.receive_text())["type"] == "snapshot"
+        response = organiser.patch(
+            f"/api/runs/{live_run}/config", json={"name": "Vrijmibo", "params": {"eta": 0.9}}
+        )
+        ws.send_text(json.dumps({"type": "ping"}))
+        frames = [json.loads(ws.receive_text())]
+        while frames[-1]["type"] != "pong":
+            frames.append(json.loads(ws.receive_text()))
+
+    assert response.status_code == 403, response.text
+    assert response.json()["error"]["fields"] == ["params.eta"]
+    assert "config" not in [frame["type"] for frame in frames]
+    assert organiser.get("/api/state").json()["version"] == version
+    assert organiser.get(f"/api/runs/{live_run}/config").json() == before
