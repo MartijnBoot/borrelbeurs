@@ -20,6 +20,13 @@ image cannot read a short one. The way back in is a long key minted with that im
 (`python -m app.cli.keys create --role admin --label <who>`, in the Render shell or with
 `docker compose ... run --rm --no-deps app` at the venue).
 
+**Past B-13.** Rolling back to an image older than B-13 still boots (migration `0017` keeps
+the compatibility revision), and every admin, bar, display and kassa key works. An organiser
+key does not: that image cannot log it in, and its Toegangssleutels list fails to load while
+any `organiser` row exists, revoked or not. Stop organiser keys with that image's CLI
+(`python -m app.cli.keys list`, then `revoke <key_id>`); for the key list itself, roll forward
+again.
+
 ## Render
 
 1. Find the previous good SHA: the last green **deploy** run, or `git log` on `main`.
