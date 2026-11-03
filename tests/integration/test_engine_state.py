@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+from collections.abc import Iterator
+from typing import Any
 
 import numpy as np
 import pytest
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.core.config import Settings
@@ -258,6 +260,93 @@ def test_go_live_writes_the_initial_state_and_a_reset_tick(
             assert [(t.version, t.source, t.wall_ts_ms) for t in ticks] == [(0, "reset", T0)]
             assert set(ticks[0].prices) == set(drink_ids)
             assert ticks[0].prices[drink_ids[0]]["p_q"] == LIVE_CONFIG["p0"][0]
+        finally:
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def _scanned_tables(plan: dict[str, Any]) -> Iterator[tuple[str, str, str | None, int]]:
+    """`(node type, relation, index, estimated rows)` for every scan of an
+    `EXPLAIN (FORMAT JSON)` plan.
+
+    A bitmap scan is two nodes: the `Bitmap Index Scan` names the index and no table,
+    so a node is reported when it names either.
+    """
+    if "Relation Name" in plan or "Index Name" in plan:
+        yield (
+            plan["Node Type"],
+            plan.get("Relation Name", ""),
+            plan.get("Index Name"),
+            int(plan["Plan Rows"]),
+        )
+    for child in plan.get("Plans", ()):
+        yield from _scanned_tables(child)
+
+
+def test_the_tick_window_is_read_without_scanning_the_whole_run(
+    settings: Settings, database_url: str
+) -> None:
+    """Boot reads the history window through an index, never every tick of the run.
+
+    The 2026-11-03 Render outage: a run live for weeks held so many ticks that
+    rehydrate's sequential scan of `price_tick` outlasted the 5 s statement timeout,
+    and every boot failed. Each statement `load_ticks_in_window` sends is explained
+    with its own parameters: none may plan a `Seq Scan` on `price_tick`, and the
+    window must be read through `price_tick_run_wall_ts` -- a scan of the primary
+    key filtered on `wall_ts_ms` would read every tick of the run just the same.
+
+    And the planner must know the window is small. A cutoff computed in a subquery
+    is estimated at a third of the run; at this size Postgres may still pick the
+    index for it, but at production's it chose a `Seq Scan`. So the window scan's
+    estimate is held near the window, not near the run.
+    """
+    ticks_in_run = 50_000
+    window_ms = 15 * 60_000
+
+    async def scenario() -> None:
+        engine = _engine(settings, database_url)
+        sent: list[tuple[str, Any]] = []
+
+        def record(_conn: Any, _cursor: Any, statement: str, parameters: Any, *_: Any) -> None:
+            sent.append((statement, parameters))
+
+        try:
+            run_id = await _draft(engine)
+            await go_live(engine, run_id, now_ms=T0)
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        "INSERT INTO price_tick (run_id, version, source, prices, wall_ts_ms) "
+                        "SELECT :r, v, 'tick', '{}'::jsonb, CAST(:t0 AS bigint) + v * 1000 "
+                        "FROM generate_series(1, :n) AS v"
+                    ),
+                    {"r": run_id, "t0": T0, "n": ticks_in_run},
+                )
+                await conn.execute(text("ANALYZE price_tick"))
+
+            async with engine.connect() as conn:
+                event.listen(engine.sync_engine, "before_cursor_execute", record)
+                try:
+                    ticks = await load_ticks_in_window(conn, run_id, window_ms)
+                finally:
+                    event.remove(engine.sync_engine, "before_cursor_execute", record)
+                scans: list[tuple[str, str, str | None, int]] = []
+                for statement, parameters in sent:
+                    plan = (
+                        await conn.exec_driver_sql(f"EXPLAIN (FORMAT JSON) {statement}", parameters)
+                    ).scalar_one()
+                    scans.extend(_scanned_tables(plan[0]["Plan"]))
+
+            first = ticks_in_run - window_ms // 1000
+            assert [t.version for t in ticks] == list(range(first, ticks_in_run + 1))
+            seq_scans = [s for s in scans if s[0] == "Seq Scan" and s[1] == "price_tick"]
+            assert seq_scans == [], scans
+            window_scans = [
+                rows for _, _, index, rows in scans if index == "price_tick_run_wall_ts"
+            ]
+            assert window_scans, scans
+            assert all(rows <= 5 * len(ticks) for rows in window_scans), scans
         finally:
             await engine.dispose()
 

@@ -671,12 +671,34 @@ def test_0017_admits_the_organiser_role_and_keeps_the_old_keys(
         await connection.execute(text("DELETE FROM auth_key WHERE role = 'organiser'"))
 
     _in_transaction(empty_database, organiser_key)
-    refused = alembic(empty_database, "downgrade", "-1")
+    refused = alembic(empty_database, "downgrade", "0016")
     assert refused.returncode != 0, "the downgrade must fail loudly while an organiser key exists"
     assert "auth_key_role_check" in refused.stderr
 
     _in_transaction(empty_database, remove_it)
-    step = alembic(empty_database, "downgrade", "-1")
+    step = alembic(empty_database, "downgrade", "0016")
     assert step.returncode == 0, step.stderr
     with pytest.raises(IntegrityError, match="auth_key_role_check"):
         _in_transaction(empty_database, organiser_key)
+
+
+def test_0018_indexes_price_tick_by_wall_time(empty_database: str, alembic: RunAlembic) -> None:
+    """The 2026-11-03 outage: head indexes `price_tick (run_id, wall_ts_ms)` for boot's
+    history-window read; the downgrade drops the index and nothing else."""
+    indexes: list[str] = []
+
+    async def read(connection: AsyncConnection) -> None:
+        indexes.clear()
+        result = await connection.execute(
+            text("SELECT indexdef FROM pg_indexes WHERE indexname = 'price_tick_run_wall_ts'")
+        )
+        indexes.extend(str(row[0]) for row in result)
+
+    assert alembic(empty_database, "upgrade", "head").returncode == 0
+    _in_transaction(empty_database, read)
+    assert len(indexes) == 1 and "(run_id, wall_ts_ms)" in indexes[0]
+
+    step = alembic(empty_database, "downgrade", "0017")
+    assert step.returncode == 0, step.stderr
+    _in_transaction(empty_database, read)
+    assert indexes == []
