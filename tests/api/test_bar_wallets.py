@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.core.config import Settings
 from app.db import wallets
+from app.db.keys import Role
 from app.db.session import create_engine
 from app.db.wallets import WalletRow
 from app.runtime.wallet_codes import cookie_hash
@@ -77,12 +78,14 @@ def _pay(client: TestClient, key: str, wallet: WalletRow, qtys: dict[str, int]) 
     return response.json()
 
 
+# B-13 SD9, AC17: the organiser looks a wallet up as the bar does.
+@pytest.mark.parametrize("role", ["bar", "organiser"])
 def test_a_lookup_by_token_or_code_shows_only_the_name_and_balance(
-    live_client: TestClient, login: Login, settings: Settings, api_env: str
+    live_client: TestClient, login: Login, settings: Settings, api_env: str, role: Role
 ) -> None:
     """AC4, AC35, SD13: never a wallet id, a code or a token."""
     jan = _wallet(settings, api_env, "Jan", 750)
-    bar = login("bar", "Bar 1")
+    bar = login(role, "Bar 1")
 
     by_token = bar.post("/api/bar/wallet-lookup", json={"qr_token": jan.qr_token})
     by_code = bar.post("/api/bar/wallet-lookup", json={"short_code": jan.short_code.lower()})
@@ -215,6 +218,21 @@ def test_an_admin_key_sees_its_own_payments(
     paid = _pay(admin, "k-admin-pay-01", jan, {"Bier": 1})
 
     response = admin.get("/api/bar/payments")
+
+    assert response.status_code == 200
+    assert [p["amount_cents"] for p in response.json()] == [paid["total_cents"]]
+
+
+def test_an_organiser_key_sees_only_its_own_payments(
+    live_client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """B-13 SD9, AC17: the recent payments are its own, as for a bar key."""
+    jan = _wallet(settings, api_env, "Jan")
+    _pay(login("bar", "Bar 1"), "k-bar-pay-0001", jan, {"Fris": 1})
+    organiser = login("organiser", "Organisatie")
+    paid = _pay(organiser, "k-org-pay-0001", jan, {"Bier": 1})
+
+    response = organiser.get("/api/bar/payments")
 
     assert response.status_code == 200
     assert [p["amount_cents"] for p in response.json()] == [paid["total_cents"]]

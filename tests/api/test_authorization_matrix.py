@@ -23,8 +23,9 @@ from tests.meta.test_route_authorization import PUBLIC_ROUTES, flatten
 # feed; every other route below is 403 for it (AC36). B-13 SD1: the organiser is a
 # session like any other.
 ALL: Final = frozenset({"display", "bar", "admin", "kassa", "organiser"})
-MARKET: Final = frozenset({"display", "bar", "admin"})
-WRITERS: Final = frozenset({"bar", "admin"})
+# B-13 SD9: the organiser reads the market and writes as the bar does.
+MARKET: Final = frozenset({"display", "bar", "organiser", "admin"})
+WRITERS: Final = frozenset({"bar", "organiser", "admin"})
 ADMIN: Final = frozenset({"admin"})
 # B-05 SD7; B-13 SD8: the organiser has the full cash desk.
 KASSA: Final = frozenset({"kassa", "organiser", "admin"})
@@ -223,15 +224,22 @@ def test_every_route_and_actor(
         assert status not in {401, 403}, (method, path, actor, status)
 
 
+# B-13 SD12, AC17: the organiser is held to the bar's rule.
+@pytest.mark.parametrize("role", ["bar", "organiser"])
 @pytest.mark.parametrize(("run_id", "expected"), [("other", 403), ("live", 200)])
 def test_the_bar_reads_only_the_live_runs_series(
-    live_client: TestClient, live_run: int, issued_key: IssueKey, run_id: str, expected: int
+    live_client: TestClient,
+    live_run: int,
+    issued_key: IssueKey,
+    run_id: str,
+    expected: int,
+    role: str,
 ) -> None:
     """Phase 7 SD9, AC16: inside the route's row, any other run is admin-only.
 
     The other run is unknown here, so the bar learns nothing from 403 vs 404.
     """
-    _act(live_client, issued_key, "bar")
+    _act(live_client, issued_key, role)
     target = live_run if run_id == "live" else 999_999
 
     response = live_client.get("/api/earnings/series", params={"run_id": target})

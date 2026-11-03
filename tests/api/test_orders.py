@@ -247,6 +247,29 @@ def test_display_may_not_order(live_client: TestClient, login: Login) -> None:
     )
 
 
+def test_an_organiser_orders_as_the_bar(
+    live_client: TestClient, login: Login, settings: Settings, api_env: str
+) -> None:
+    """B-13 SD9, AC17: the order is booked to the organiser's key."""
+    organiser = login("organiser", "Organisatie")
+    live = _live(organiser)
+    drink = next(iter(live))
+
+    response = _order(
+        organiser,
+        "k-organiser-01",
+        [{"drink_id": drink, "qty": 1, "unit_price_cents": live[drink]}],
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["total_cents"] == live[drink]
+    assert _sql(
+        settings,
+        api_env,
+        'SELECT k.role, k.label FROM "order" o JOIN auth_key k ON k.key_id = o.actor_key_id',
+    ) == [("organiser", "Organisatie")]
+
+
 def test_with_no_live_run_an_order_is_409(login: Login) -> None:
     client = login("bar")
 

@@ -64,7 +64,7 @@ async def post_order(
     idempotency_key: Annotated[
         str, Header(alias="Idempotency-Key", pattern=IDEMPOTENCY_KEY_PATTERN)
     ],
-    principal: Annotated[Principal, Depends(require_role("bar", "admin"))],
+    principal: Annotated[Principal, Depends(require_role("bar", "organiser", "admin"))],
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> Response:
     placed = await place_order(

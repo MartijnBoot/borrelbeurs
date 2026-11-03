@@ -38,8 +38,9 @@ WALLET_COOKIE: Final = "bb_wallet"
 ALL_ROLES: Final[tuple[Role, ...]] = ("display", "bar", "admin", "kassa", "organiser")
 # The roles that read the market's own routes (`GET /api/news`). `kassa` (B-05 SD7)
 # keeps only the session's routes and the market feed (`/ws`, `GET /api/state`,
-# plan PD1 reading A), so widening `ALL_ROLES` grants it nothing else.
-MARKET_ROLES: Final[tuple[Role, ...]] = ("display", "bar", "admin")
+# plan PD1 reading A), so widening `ALL_ROLES` grants it nothing else. The
+# organiser reads them as the bar does (B-13 SD9).
+MARKET_ROLES: Final[tuple[Role, ...]] = ("display", "bar", "admin", "organiser")
 
 
 class Unauthenticated(AppError):
