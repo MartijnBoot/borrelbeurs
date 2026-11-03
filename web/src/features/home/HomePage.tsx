@@ -2,7 +2,8 @@
  * Home (`/`, Phase 6 SD31; AC41, AC25): v1's four tiles and a "Status" panel.
  *
  * - **Tiles:** v1's titles and blurbs (`home.html`), corrected: drinks and
- *   shutdown moved to settings, so the manipulation blurb drops them.
+ *   shutdown moved to settings, so the manipulation blurb drops them. The
+ *   settings tile names B-12's three screens (SD15).
  * - **Status:**
  *   - this browser's socket (Verbonden / Verbinden… / Offline) and the age of
  *     its last frame, from the store's `lastFrameAt` (PD14);
@@ -27,12 +28,7 @@ const POLL_MS = 5_000
 const TILES = [
   ['/koers', 'Live koersbord', 'Bekijk live prijzen en grafiek.', 'Open koers'],
   ['/bar', 'Bar', 'Snel bestellingen plaatsen.', 'Open bar'],
-  [
-    '/settings',
-    'Instellingen',
-    'Globale instellingen, grenzen, vraag/aanbod, drankjes, afsluiten.',
-    'Open instellingen',
-  ],
+  ['/settings', 'Instellingen', 'Spelopzet, wallets en beheer.', 'Open instellingen'],
   ['/manipulation', 'Spel mechanica', 'Price jumps, nieuws, idle, reset.', 'Open spel mechanica'],
   ['/kassa', 'Kassa', 'Wallets opwaarderen, terugdraaien en overzetten.', 'Open kassa'],
 ] as const

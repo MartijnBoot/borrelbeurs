@@ -11,6 +11,7 @@ import { pngBlob, saveFile, svgDocument } from '../../components/qr/qrFiles'
 import { formatBalance, formatEuro } from '../../lib/format'
 import { formatDayMonth } from '../../lib/time'
 import { SIGNUP_QR, signupLink } from './signupQr'
+import { UnsavedEditsProvider, useHasUnsaved } from '../../lib/unsavedEdits'
 import { WalletsSection } from './WalletsSection'
 
 // jsdom's own address is http://localhost:3000, a loopback host (PD8): a test that needs the
@@ -551,14 +552,17 @@ describe('a failed load', () => {
   })
 })
 
+// B-12 SD7, AC21: a switch now, still saved at once with no confirm.
 describe('"QR-code op het scherm" (B-10 SD5; AC10)', () => {
-  const box = () =>
-    within(region('Aanmeldcode')).getByRole('checkbox', {
+  const box = () => {
+    const toggle = within(region('Aanmeldcode')).getByRole('switch', {
       name: 'QR-code op het scherm',
-    }) as HTMLInputElement
+    })
+    return { checked: toggle.getAttribute('aria-checked') === 'true', element: toggle }
+  }
 
   async function toggle() {
-    fireEvent.click(box())
+    fireEvent.click(box().element)
     await act(async () => {})
   }
 
@@ -616,5 +620,60 @@ describe('"QR-code op het scherm" (B-10 SD5; AC10)', () => {
       'Verbindingsfout. Probeer opnieuw.',
     )
     expect(box().checked).toBe(false)
+  })
+})
+
+// B-12 T11a (SD9, PD4): the leave guard counts typed values that differ from the stored ones.
+describe('unsaved edits (B-12 PD4)', () => {
+  function Unsaved() {
+    return <output data-testid="unsaved">{String(useHasUnsaved())}</output>
+  }
+  const unsaved = () => screen.getByTestId('unsaved').textContent
+
+  async function openGuarded() {
+    render(
+      <UnsavedEditsProvider>
+        <WalletsSection />
+        <Unsaved />
+      </UnsavedEditsProvider>,
+    )
+    await act(async () => {})
+    await act(async () => {})
+  }
+
+  const codeField = () => within(region('Aanmeldcode')).getByLabelText('Aanmeldcode')
+  const days = () => screen.getByLabelText('Zonder opwaardering verwijderen na (dagen)')
+
+  it('a typed code counts until it is saved', async () => {
+    await openGuarded()
+    expect(unsaved()).toBe('false')
+    fireEvent.change(codeField(), { target: { value: 'Anders' } })
+    expect(unsaved()).toBe('true')
+
+    await click(region('Aanmeldcode'), 'Opslaan')
+    await click(screen.getByRole('dialog'), 'Wijzigen')
+    expect(unsaved()).toBe('false')
+  })
+
+  it('a code typed back to the stored one does not count', async () => {
+    await openGuarded()
+    fireEvent.change(codeField(), { target: { value: 'Anders' } })
+    fireEvent.change(codeField(), { target: { value: STORED.signup_code } })
+    expect(unsaved()).toBe('false')
+  })
+
+  it('a typed retention period counts until it is saved, or typed back', async () => {
+    await openGuarded()
+    fireEvent.change(days(), { target: { value: '45' } })
+    expect(unsaved()).toBe('true')
+    fireEvent.change(days(), { target: { value: '30' } })
+    expect(unsaved()).toBe('false')
+
+    fireEvent.change(screen.getByLabelText('Inactief verwijderen na (maanden)'), {
+      target: { value: '6' },
+    })
+    expect(unsaved()).toBe('true')
+    await click(region('Bewaartermijnen'), 'Opslaan')
+    expect(unsaved()).toBe('false')
   })
 })

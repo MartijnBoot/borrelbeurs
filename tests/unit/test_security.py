@@ -29,7 +29,19 @@ def test_the_role_route_table_is_sd2s() -> None:
     assert ROLE_ROUTES == {
         "display": ("/koers",),
         "bar": ("/bar", "/manipulation"),
-        "admin": ("/", "/koers", "/bar", "/manipulation", "/settings", "/analytics", "/kassa"),
+        # B-12 SD1, SD17: the three settings screens, for admin only.
+        "admin": (
+            "/",
+            "/koers",
+            "/bar",
+            "/manipulation",
+            "/settings",
+            "/settings/spel",
+            "/settings/wallets",
+            "/settings/beheer",
+            "/analytics",
+            "/kassa",
+        ),
         "kassa": ("/kassa",),
     }
 

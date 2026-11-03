@@ -64,7 +64,7 @@ async function adminSettings(browser: Browser, baseURL: string): Promise<Page> {
   await page.goto('/login')
   await submitKey(page, server().keys.admin)
   await page.waitForURL((url) => url.pathname !== '/login')
-  await page.goto('/settings')
+  await page.goto('/settings/wallets') // B-12 SD3: Aanmeldcode is on Mensen en wallets
   return page
 }
 

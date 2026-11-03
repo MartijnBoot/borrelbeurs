@@ -5,6 +5,7 @@
 // that selects the key instead of throwing when the clipboard is missing.
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { UnsavedEditsProvider, useHasUnsaved } from '../../lib/unsavedEdits'
 import { KeysSection } from './KeysSection'
 import styles from './KeysSection.module.css'
 
@@ -202,5 +203,29 @@ describe('KeysSection', () => {
     expect(screen.getByRole('alert').textContent).toBe(
       'Dit is de laatste beheerderssleutel; die kan niet worden ingetrokken.',
     )
+  })
+})
+
+function Unsaved() {
+  return <output data-testid="unsaved">{String(useHasUnsaved())}</output>
+}
+const unsaved = () => screen.getByTestId('unsaved').textContent
+
+// B-12 T11b (SD9, OQ1 = B): a half-typed key label counts as unsaved; the role select does not.
+describe('KeysSection: unsaved edits (B-12 T11b)', () => {
+  it('a typed label counts until the key is made; the role never does', async () => {
+    render(
+      <UnsavedEditsProvider>
+        <KeysSection />
+        <Unsaved />
+      </UnsavedEditsProvider>,
+    )
+    await settle()
+    fireEvent.change(screen.getByLabelText('Rol'), { target: { value: 'kassa' } })
+    expect(unsaved()).toBe('false')
+    await create()
+    expect(unsaved()).toBe('false')
+    fireEvent.change(screen.getByLabelText('Label'), { target: { value: 'Tap' } })
+    expect(unsaved()).toBe('true')
   })
 })

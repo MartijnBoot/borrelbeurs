@@ -3,10 +3,12 @@
 // The D-03 gate: an untouched save sends nothing; an edit sends exactly its field.
 // B-01 T5: the new names, and an (i) per field (E1-E10).
 // B-03 T4: the six noise controls after Kaarsbreedte (SD4-SD6; AC10-AC14; E34-E39).
-// B-06 T17: "Wallet verplicht" and "Rood staan tot" at the top level (SD1-SD3; AC2, AC3).
-// B-07 T10: a Prijsstap that moves a bound asks first (SD3; AC10), and the
-// server's `bounds_collision` shows under Prijsstap (AC8).
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+// B-06 T17: "Wallet verplicht" and "Rood staan tot" at the top level (SD1-SD3; AC2, AC3);
+// B-12 T8 moved them, and their cases, to PaymentSection.test.tsx.
+// B-12 T7 (SD4): Prijsstap, and B-07's cases with it, moved to PriceStepSection.test.tsx.
+// B-12 T9 (SD5, SD6; PD11, PD12; AC12-AC14): three groups in one form, and the five
+// noise fields shown only while the noise is on, their edits kept while hidden.
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectExplained } from '../../components/ui/infoTesting'
 import { exchangeStore } from '../exchange'
@@ -14,7 +16,6 @@ import explanations from './explanations.json'
 import { GlobalSection } from './GlobalSection'
 
 const GLOBAL_KEYS = [
-  'step_quant',
   'eta',
   'K',
   'lambda_orders',
@@ -148,6 +149,8 @@ function refuse(loc: string[], msg: string) {
 
 const input = (label: string) => screen.getByLabelText(label) as HTMLInputElement
 const noiseSwitch = () => screen.getByRole('switch', { name: 'Willekeurige ruis' })
+const labelOf = (control: HTMLElement) =>
+  (control as HTMLInputElement | HTMLButtonElement).labels?.[0]?.textContent
 const NOISE_NUMBERS = [
   'Sterkte ruis',
   'Ritme ruis (min)',
@@ -162,7 +165,6 @@ describe('GlobalSection', () => {
     expect((screen.getByLabelText('Beweging per bestelling') as HTMLInputElement).value).toBe('0,6')
     expect((screen.getByLabelText('Kaarsbreedte (sec)') as HTMLInputElement).value).toBe('60')
     for (const label of [
-      'Prijsstap (€)',
       'Drukdrempel',
       'Concurrentie tussen drankjes',
       'Trek naar gemiddelde prijs',
@@ -173,6 +175,52 @@ describe('GlobalSection', () => {
     ]) {
       expect(screen.getByLabelText(label)).toBeTruthy()
     }
+  })
+
+  // B-12 SD5, PD11 (AC12): one form, three groups, in this order.
+  it('shows three groups with 7, 1 + 5 and 2 controls, and one save', async () => {
+    await open()
+    const groups = screen.getAllByRole('region')
+    expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual([
+      'Hoe bestellingen de prijs bewegen',
+      'Willekeurige ruis',
+      'Koersbord',
+    ])
+    for (const group of groups) {
+      expect(within(group).getByRole('heading', { level: 3 }).textContent).toBe(
+        group.getAttribute('aria-label'),
+      )
+    }
+    expect(within(groups[0]).getAllByRole('textbox').map(labelOf)).toEqual([
+      'Beweging per bestelling',
+      'Drukdrempel',
+      'Concurrentie tussen drankjes',
+      'Trek naar gemiddelde prijs',
+      'Nawerking van bestellingen',
+      'Geheugen van bestellingen',
+      'Ritme stille drankjes (min)',
+    ])
+    expect(within(groups[1]).getAllByRole('switch').map(labelOf)).toEqual(['Willekeurige ruis'])
+    expect(within(groups[1]).getAllByRole('textbox').map(labelOf)).toEqual(NOISE_NUMBERS)
+    expect(within(groups[2]).getAllByRole('textbox').map(labelOf)).toEqual([
+      'Grafiekgeschiedenis (min)',
+      'Kaarsbreedte (sec)',
+    ])
+    expect(screen.getAllByRole('button', { name: /^Opslaan/ })).toHaveLength(1)
+  })
+
+  it('edits in two groups go out in one save, split as before (AC13)', async () => {
+    await open()
+    fireEvent.change(input('Drukdrempel'), { target: { value: '7' } })
+    fireEvent.change(input('Kaarsbreedte (sec)'), { target: { value: '30' } })
+    await save()
+    expect(patches()).toEqual([{ params: { K: 7 }, candle_interval_s: 30 }])
+  })
+
+  it('has no Prijsstap: it is on Spelopzet (B-12 SD4, AC12)', async () => {
+    await open()
+    expect(screen.queryByLabelText('Prijsstap (€)')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Uitleg: Prijsstap (€)' })).toBeNull()
   })
 
   it.each(GLOBAL_KEYS)('%s has an (i) with its explanation (B-01 AC1, AC7)', async (key) => {
@@ -269,9 +317,9 @@ describe('GlobalSection', () => {
   })
 
   describe('the noise (B-03)', () => {
-    it('shows the six after Kaarsbreedte, in SD4 order, with the server values (AC10)', async () => {
+    it('shows the switch then the five, in SD4 order, with the server values (AC10)', async () => {
       await open()
-      const controls = [input('Kaarsbreedte (sec)'), noiseSwitch(), ...NOISE_NUMBERS.map(input)]
+      const controls = [noiseSwitch(), ...NOISE_NUMBERS.map(input)]
       for (let i = 1; i < controls.length; i++) {
         const order = controls[i - 1].compareDocumentPosition(controls[i])
         expect(order & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -286,10 +334,85 @@ describe('GlobalSection', () => {
       ])
     })
 
-    it('the switch shows the server off as off (AC10)', async () => {
+    it('the switch shows the server off as off, and the five hidden (AC10; B-12 AC14)', async () => {
       served = config({ ...PARAMS, bm_enabled: false })
       await open()
       expect(noiseSwitch().getAttribute('aria-checked')).toBe('false')
+      for (const label of NOISE_NUMBERS) expect(screen.queryByLabelText(label)).toBeNull()
+    })
+
+    // B-12 SD6, AC14 (amends B-03 SD5: the five no longer stay on screen while off).
+    it('switching off hides the five, switching on shows them again', async () => {
+      await open()
+      fireEvent.click(noiseSwitch())
+      for (const label of NOISE_NUMBERS) expect(screen.queryByLabelText(label)).toBeNull()
+      fireEvent.click(noiseSwitch())
+      for (const label of NOISE_NUMBERS) expect(input(label)).toBeTruthy()
+    })
+
+    it('an edit to a field then hidden is kept and sent by the next save (AC14)', async () => {
+      await open()
+      fireEvent.change(input('Sterkte ruis'), { target: { value: '0,5' } })
+      fireEvent.click(noiseSwitch())
+      await save()
+      expect(patches()).toEqual([{ params: { bm_sigma_y: 0.5, bm_enabled: false } }])
+    })
+
+    it('a hidden field left empty blocks the save and says how to fix it (AC14, PD12)', async () => {
+      await open()
+      fireEvent.change(input('Sterkte ruis'), { target: { value: '' } })
+      fireEvent.click(noiseSwitch())
+      await save()
+      expect(patches()).toEqual([])
+      expect(screen.getByRole('alert').textContent).toBe(
+        'Sterkte ruis is leeg of ongeldig. Zet Willekeurige ruis aan om het te verbeteren.',
+      )
+      fireEvent.click(noiseSwitch())
+      expect(screen.queryByText(/Zet Willekeurige ruis aan/)).toBeNull()
+      expect(screen.getByText('Verplicht')).toBeTruthy()
+    })
+
+    it('names every hidden field that blocks, one line each (PD12)', async () => {
+      await open()
+      fireEvent.change(input('Sterkte ruis'), { target: { value: '' } })
+      fireEvent.change(input('Grens ruis'), { target: { value: 'x' } })
+      fireEvent.click(noiseSwitch())
+      await save()
+      expect(patches()).toEqual([])
+      expect(screen.getAllByRole('alert').map((line) => line.textContent)).toEqual([
+        'Sterkte ruis is leeg of ongeldig. Zet Willekeurige ruis aan om het te verbeteren.',
+        'Grens ruis is leeg of ongeldig. Zet Willekeurige ruis aan om het te verbeteren.',
+      ])
+    })
+
+    // B-12 review C1: a value only the server refuses comes back as a 422 for a
+    // field that is not on screen; it says so, as a blocked hidden field does.
+    it('a 422 on a hidden field names it and says to switch the noise on (AC13, AC14)', async () => {
+      refuse(['body', 'params', 'bm_sigma_y'], 'Input should be greater than or equal to 0')
+      await open()
+      fireEvent.change(input('Sterkte ruis'), { target: { value: '-1' } })
+      fireEvent.click(noiseSwitch())
+      await save()
+      expect(patches()).toEqual([{ params: { bm_sigma_y: -1, bm_enabled: false } }])
+      expect(screen.getByRole('alert').textContent).toBe(
+        'Sterkte ruis is leeg of ongeldig. Zet Willekeurige ruis aan om het te verbeteren.',
+      )
+      fireEvent.click(noiseSwitch())
+      expect(screen.queryByText(/Zet Willekeurige ruis aan/)).toBeNull()
+      expect(screen.getByText('Input should be greater than or equal to 0')).toBeTruthy()
+    })
+
+    // B-12 review R1: the line follows the field, not the last save.
+    it('a blocked hidden field fixed with the noise on is not named again when hidden', async () => {
+      await open()
+      fireEvent.change(input('Sterkte ruis'), { target: { value: '' } })
+      fireEvent.click(noiseSwitch())
+      await save()
+      expect(screen.getByText(/Zet Willekeurige ruis aan/)).toBeTruthy()
+      fireEvent.click(noiseSwitch())
+      fireEvent.change(input('Sterkte ruis'), { target: { value: '0,5' } })
+      fireEvent.click(noiseSwitch())
+      expect(screen.queryByText(/Zet Willekeurige ruis aan/)).toBeNull()
     })
 
     it.each(NOISE_KEYS)('%s has an (i) with its explanation (AC14)', async (key) => {
@@ -329,13 +452,11 @@ describe('GlobalSection', () => {
       expect(screen.getByText('Input should be a valid boolean')).toBeTruthy()
     })
 
-    it('with the switch off the five stay editable and save (AC12)', async () => {
+    it('switching off sends {params: {bm_enabled: false}} and keeps the five as stored (AC12)', async () => {
       await open()
       fireEvent.click(noiseSwitch())
-      for (const label of NOISE_NUMBERS) expect(input(label).disabled).toBe(false)
-      fireEvent.change(input('Ritme ruis (min)'), { target: { value: '0,5' } })
       await save()
-      expect(patches()).toEqual([{ params: { bm_enabled: false, bm_dt_minutes: 0.5 } }])
+      expect(patches()).toEqual([{ params: { bm_enabled: false } }])
     })
 
     it('a server change of y_clip while Sterkte ruis is dirty offers "Overnemen" (AC13)', async () => {
@@ -354,149 +475,13 @@ describe('GlobalSection', () => {
     })
   })
 
-  describe('the wallet settings (B-06)', () => {
-    const walletSwitch = () => screen.getByRole('switch', { name: 'Wallet verplicht' })
-
-    it('show the server values: the switch on, the limit in euros (SD1, SD2)', async () => {
-      served = { ...config(), run: { ...config().run, credit_limit_cents: 250 } }
-      await open()
-      expect(walletSwitch().getAttribute('aria-checked')).toBe('true')
-      expect(input('Rood staan tot (€)').value).toBe('2,50')
-    })
-
-    it.each(['wallet_required', 'credit_limit_cents'] as const)(
-      '%s has an (i) with its explanation (AC3)',
-      async (key) => {
-        const { container } = render(<GlobalSection />)
-        await settle()
-        expectExplained(container, explanations[key])
-      },
-    )
-
-    it('toggling "Wallet verplicht" sends {wallet_required: false} at the top level (AC2)', async () => {
-      await open()
-      fireEvent.click(walletSwitch())
-      await save()
-      expect(patches()).toEqual([{ wallet_required: false }])
-    })
-
-    it('a limit of 2,50 sends {credit_limit_cents: 250} at the top level (AC2)', async () => {
-      await open()
-      fireEvent.change(input('Rood staan tot (€)'), { target: { value: '2,50' } })
-      await save()
-      expect(patches()).toEqual([{ credit_limit_cents: 250 }])
-    })
-
-    it('a 422 on credit_limit_cents shows under that field (AC2)', async () => {
-      refuse(['body', 'credit_limit_cents'], 'Input should be a multiple of 50')
-      await open()
-      fireEvent.change(input('Rood staan tot (€)'), { target: { value: '0,25' } })
-      await save()
-      expect(input('Rood staan tot (€)').getAttribute('aria-invalid')).toBe('true')
-      expect(screen.getByText('Input should be a multiple of 50')).toBeTruthy()
-    })
-
-    it('an emptied limit blocks the save', async () => {
-      await open()
-      fireEvent.change(input('Rood staan tot (€)'), { target: { value: '' } })
-      await save()
-      expect(patches()).toEqual([])
-    })
-  })
-})
-
-describe('GlobalSection: a Prijsstap that moves bounds (B-07)', () => {
-  const drink = (drink_id: number, slot: number, name: string, low: number, high: number) => ({
-    drink_id,
-    slot,
-    name,
-    active: true,
-    p_min_cents: low,
-    p0_cents: 200,
-    p_max_cents: high,
-    bar_price_cents: 200,
-    a: 10,
-    d: 0.6,
-    s0: 8,
-    c: 0.4,
-  })
-
-  beforeEach(() => {
-    served = {
-      ...config({ ...PARAMS, step_quant: 0.1 }),
-      drinks: [drink(11, 0, 'Bier', 150, 310), drink(12, 1, 'Wijn', 150, 300)],
-    }
-  })
-
-  const prijsstap = (value: string) =>
-    fireEvent.change(input('Prijsstap (€)'), { target: { value } })
-
-  it('0,10 to 0,25 lists the moving bound before sending (AC10)', async () => {
+  // B-12 T8 (SD3): the two moved to Betalen, with B-06's cases (PaymentSection.test.tsx).
+  it('shows neither wallet setting, and a save never carries them (AC12)', async () => {
     await open()
-    prijsstap('0,25')
+    expect(screen.queryByRole('switch', { name: 'Wallet verplicht' })).toBeNull()
+    expect(screen.queryByLabelText('Rood staan tot (€)')).toBeNull()
+    fireEvent.change(input('Drukdrempel'), { target: { value: '7' } })
     await save()
-    expect(patches()).toEqual([])
-    const dialog = screen.getByRole('dialog')
-    expect(dialog.textContent).toContain('Prijsstap 0,25 opslaan? Deze grenzen schuiven mee:')
-    const items = Array.from(dialog.querySelectorAll('li')).map((li) => li.textContent)
-    expect(items).toEqual(['Bier: Maximumprijs 3,10 → 3,00'])
-  })
-
-  it('"Annuleren" sends nothing and keeps the typed step', async () => {
-    await open()
-    prijsstap('0,25')
-    await save()
-    fireEvent.click(screen.getByRole('button', { name: 'Annuleren' }))
-    await settle()
-    expect(patches()).toEqual([])
-    expect(screen.queryByRole('dialog')).toBeNull()
-    expect(input('Prijsstap (€)').value).toBe('0,25')
-  })
-
-  it('"Opslaan" sends one PATCH', async () => {
-    await open()
-    prijsstap('0,25')
-    await save()
-    fireEvent.click(screen.getByRole('button', { name: 'Opslaan' }))
-    await settle()
-    expect(patches()).toEqual([{ params: { step_quant: 0.25 } }])
-  })
-
-  it('a step that moves no bound sends without a dialog', async () => {
-    await open()
-    prijsstap('0,05')
-    await save()
-    expect(screen.queryByRole('dialog')).toBeNull()
-    expect(patches()).toEqual([{ params: { step_quant: 0.05 } }])
-  })
-
-  it("the server's bounds_collision shows under Prijsstap, every drink named (AC8)", async () => {
-    const msg =
-      'Past niet bij Bier: de grenzen worden 2,00\u20132,00. ' +
-      'Past niet bij Wijn: de grenzen worden 2,00\u20132,00.'
-    fetchMock.mockImplementation((path: string, init?: RequestInit) => {
-      if (init?.method === 'PATCH') {
-        return Promise.resolve(
-          json(422, {
-            error: {
-              code: 'bounds_collision',
-              message: msg,
-              faults: [{ loc: ['body', 'params', 'step_quant'], msg }],
-            },
-          }),
-        )
-      }
-      if (path === '/api/runs/current') {
-        return Promise.resolve(json(200, { run_id: 7, name: 'Vrijmibo', status: 'live' }))
-      }
-      return Promise.resolve(json(200, served))
-    })
-    await open()
-    prijsstap('2')
-    await save()
-    fireEvent.click(screen.getByRole('button', { name: 'Opslaan' }))
-    await settle()
-    expect(input('Prijsstap (€)').getAttribute('aria-invalid')).toBe('true')
-    expect(screen.getByText(msg)).toBeTruthy()
+    expect(patches()).toEqual([{ params: { K: 7 } }])
   })
 })

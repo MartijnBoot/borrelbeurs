@@ -3,6 +3,7 @@
 // and strengths, and both target lists over active drinks, sent as a dirty-only
 // `PATCH config` of `drink_id`s. B-01 T8: the new names and (i) (E21-E26), and AC18.
 // B-04 T9 (AC16, PD10 reading A): a live run's idle numbers loaded from a profile show.
+// B-12 T4 (SD7, PD15; AC21): one switch per drink, the saved lists exactly as before.
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectExplained } from '../../components/ui/infoTesting'
@@ -102,6 +103,9 @@ async function open() {
 
 const decayTargets = () => screen.getByRole('group', { name: 'Omlaag bij stilte' })
 const riseTargets = () => screen.getByRole('group', { name: 'Omhoog bij stilte' })
+const drinkSwitch = (group: HTMLElement, name: string) =>
+  within(group).getByRole('switch', { name })
+const isOn = (toggle: HTMLElement) => toggle.getAttribute('aria-checked') === 'true'
 
 describe('IdleSection', () => {
   it('shows the server values and the target lists over active drinks', async () => {
@@ -109,14 +113,14 @@ describe('IdleSection', () => {
     expect((screen.getByLabelText('Omlaag na stilte van (min)') as HTMLInputElement).value).toBe(
       '5',
     )
-    const wijn = within(riseTargets()).getByLabelText('Wijn') as HTMLInputElement
-    expect(wijn.checked).toBe(true)
-    expect((within(decayTargets()).getByLabelText('Bier') as HTMLInputElement).checked).toBe(false)
+    expect(isOn(drinkSwitch(riseTargets(), 'Wijn'))).toBe(true)
+    expect(isOn(drinkSwitch(decayTargets(), 'Bier'))).toBe(false)
   })
 
-  it('ticking one drink sends {params:{idle_targets:[id]}} only', async () => {
+  it('switching one drink on sends {params:{idle_targets:[id]}} only', async () => {
     await open()
-    fireEvent.click(within(decayTargets()).getByLabelText('Bier'))
+    fireEvent.click(drinkSwitch(decayTargets(), 'Bier'))
+    expect(isOn(drinkSwitch(decayTargets(), 'Bier'))).toBe(true)
     fireEvent.click(screen.getByRole('button', { name: 'Opslaan idle' }))
     await act(async () => {})
 
@@ -130,6 +134,35 @@ describe('IdleSection', () => {
     const button = screen.getByRole('button', { name: 'Opslaan idle' })
     expect(button.textContent).toBe('Opslaan idle')
     expect(button.querySelector('svg')).toBeNull()
+  })
+
+  it('switching a drink on in each list appends its id, as the checkbox did (B-12 AC21)', async () => {
+    await open()
+    fireEvent.click(drinkSwitch(riseTargets(), 'Bier'))
+    fireEvent.click(drinkSwitch(decayTargets(), 'Wijn'))
+    fireEvent.click(drinkSwitch(decayTargets(), 'Bier'))
+    fireEvent.click(screen.getByRole('button', { name: 'Opslaan idle' }))
+    await act(async () => {})
+
+    expect(writes()).toEqual([
+      [
+        '/api/runs/1/config',
+        'PATCH',
+        JSON.stringify({ params: { idle_targets: [2, 1], idle_rise_targets: [2, 1] } }),
+      ],
+    ])
+  })
+
+  it('switching a drink off and on again leaves the form clean (B-12 AC21)', async () => {
+    await open()
+    fireEvent.click(drinkSwitch(riseTargets(), 'Wijn'))
+    expect(isOn(drinkSwitch(riseTargets(), 'Wijn'))).toBe(false)
+    fireEvent.click(drinkSwitch(riseTargets(), 'Wijn'))
+    fireEvent.click(screen.getByRole('button', { name: 'Opslaan idle' }))
+    await act(async () => {})
+
+    expect(writes()).toEqual([])
+    expect(screen.getByText('Niets te wijzigen')).toBeTruthy()
   })
 
   it('untouched sends nothing (AC2)', async () => {
@@ -202,9 +235,9 @@ describe('IdleSection', () => {
     expect(screen.getByText('Opgeslagen')).toBeTruthy()
   })
 
-  it('a config message removing a drink drops its checkbox (AC22)', async () => {
+  it('a config message removing a drink drops its switch (AC22)', async () => {
     await open()
-    expect(within(decayTargets()).getAllByRole('checkbox')).toHaveLength(2)
+    expect(within(decayTargets()).getAllByRole('switch')).toHaveLength(2)
 
     dispatch('config', {
       revision: 4,
@@ -214,8 +247,8 @@ describe('IdleSection', () => {
     })
     await act(async () => {})
 
-    expect(within(decayTargets()).queryByLabelText('Wijn')).toBeNull()
-    expect(within(riseTargets()).queryByLabelText('Wijn')).toBeNull()
+    expect(within(decayTargets()).queryByRole('switch', { name: 'Wijn' })).toBeNull()
+    expect(within(riseTargets()).queryByRole('switch', { name: 'Wijn' })).toBeNull()
   })
 
   it('shows the idle numbers of a live run started from a profile (B-04 AC16, PD10 A)', async () => {

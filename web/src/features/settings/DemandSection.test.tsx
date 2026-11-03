@@ -4,11 +4,15 @@
 // (D-03). Here the real `useEditableRecord` runs: an untouched save sends nothing;
 // one edited `a` sends exactly `{a}` to that drink's PATCH.
 // B-01 T6: the new names (E11-E16), the switches' and the column headers' (i).
+// B-12 T10 (SD3, SD16, PD13; AC17, AC18): the switches (Beheer) and the table
+// (Spelopzet) are two components; the cases below mount both, as one page did.
+// The table shows only while "Verwachte verkoop meetellen" is on, live.
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectExplained } from '../../components/ui/infoTesting'
 import { exchangeStore } from '../exchange'
-import { DemandSection } from './DemandSection'
+import { UnsavedEditsProvider, useHasUnsaved } from '../../lib/unsavedEdits'
+import { DemandSwitches, DemandTable } from './DemandSection'
 import explanations from './explanations.json'
 
 const DRINK = {
@@ -100,7 +104,12 @@ function writes(): [string, string, unknown][] {
 }
 
 async function open() {
-  render(<DemandSection />)
+  render(
+    <>
+      <DemandSwitches />
+      <DemandTable />
+    </>,
+  )
   await settle()
 }
 
@@ -142,6 +151,7 @@ describe('DemandSection', () => {
     })
     await saveTable()
     expect(writes()).toEqual([])
+    expect(screen.getByText('Vul elk veld in met een geldig getal.')).toBeTruthy()
   })
 
   it('a toggle sends PATCH config with only that param', async () => {
@@ -171,7 +181,7 @@ describe('DemandSection', () => {
   })
 
   it('names the switches E11 and E12, each with its (i) (B-01 AC7, AC13)', async () => {
-    render(<DemandSection />)
+    render(<DemandSwitches />)
     await settle()
     expect(screen.getByRole('switch', { name: 'Verwachte verkoop meetellen' })).toBeTruthy()
     expect(screen.getByRole('switch', { name: 'Evenwicht zetten bij live zetten' })).toBeTruthy()
@@ -235,5 +245,85 @@ describe('DemandSection', () => {
       (table().getByLabelText('Bier Voordeel onder gemiddelde (c)') as HTMLInputElement).value,
     ).toBe('0,9')
     expect((table().getByLabelText('Bier Basisvraag (a)') as HTMLInputElement).value).toBe('10')
+  })
+})
+
+/** The config the server holds now; `useCurrentRun` refetches it on a store `params` change. */
+function serve(config: typeof CONFIG) {
+  fetchMock.mockImplementation((path: string, init?: RequestInit) => {
+    if (path === '/api/runs/current') {
+      return Promise.resolve(json(200, { run_id: 7, name: 'Vrijmibo', status: 'live' }))
+    }
+    if ((init?.method ?? 'GET') === 'GET') return Promise.resolve(json(200, config))
+    return Promise.resolve(json(200, { revision: 5 }))
+  })
+}
+
+const withDemand = (on: boolean, revision: number) => ({
+  ...CONFIG,
+  revision,
+  params: { ...CONFIG.params, demand_enabled: on },
+})
+
+/** The `config` message's effect on the store, as `useCurrentRun.test.tsx` drives it. */
+async function broadcast(config: typeof CONFIG) {
+  serve(config)
+  act(() => exchangeStore.setState({ params: { ...config.params } }))
+  await settle()
+}
+
+function Unsaved() {
+  return <output data-testid="unsaved">{String(useHasUnsaved())}</output>
+}
+
+describe('the split (B-12 PD13)', () => {
+  it('DemandSwitches holds the two switches and their save, no table', async () => {
+    render(<DemandSwitches />)
+    await settle()
+    expect(screen.getAllByRole('switch')).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'Opslaan schakelaars' })).toBeTruthy()
+    expect(screen.queryByRole('table')).toBeNull()
+  })
+
+  it('DemandTable holds the table and its save, no switch', async () => {
+    render(<DemandTable />)
+    await settle()
+    expect(screen.getByRole('table', { name: 'Coëfficiënten' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Opslaan coëfficiënten' })).toBeTruthy()
+    expect(screen.queryByRole('switch')).toBeNull()
+  })
+
+  it('with "Verwachte verkoop meetellen" off, the table is one sentence and no link (AC17)', async () => {
+    serve(withDemand(false, 3))
+    const { container } = render(<DemandTable />)
+    await settle()
+    expect(container.textContent).toBe('Vraag/Aanbod staat uit. Zet het aan onder Beheer.')
+    expect(screen.queryByRole('table')).toBeNull()
+    expect(container.querySelector('a')).toBeNull()
+    expect(screen.queryByRole('link')).toBeNull()
+  })
+
+  it('follows the switch live: an edited table goes, with its edits (AC18, SD16)', async () => {
+    render(
+      <UnsavedEditsProvider>
+        <DemandTable />
+        <Unsaved />
+      </UnsavedEditsProvider>,
+    )
+    await settle()
+    fireEvent.change(table().getByLabelText('Bier Basisvraag (a)'), { target: { value: '3' } })
+    await settle()
+    expect(screen.getByTestId('unsaved').textContent).toBe('true')
+
+    await broadcast(withDemand(false, 4))
+
+    expect(screen.queryByRole('table')).toBeNull()
+    expect(screen.getByText('Vraag/Aanbod staat uit. Zet het aan onder Beheer.')).toBeTruthy()
+    expect(screen.getByTestId('unsaved').textContent).toBe('false')
+
+    await broadcast(withDemand(true, 5))
+
+    expect((table().getByLabelText('Bier Basisvraag (a)') as HTMLInputElement).value).toBe('10')
+    expect(screen.getByTestId('unsaved').textContent).toBe('false')
   })
 })

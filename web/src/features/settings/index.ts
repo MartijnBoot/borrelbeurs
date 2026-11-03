@@ -2,7 +2,7 @@
 // section `/settings` composes. The keys section lives in `features/keys`,
 // composed by `app/pages/SettingsPage.tsx`.
 export { BorrelSection } from './BorrelSection'
-export { DemandSection } from './DemandSection'
+export { DemandSwitches, DemandTable } from './DemandSection'
 export { BoundsSection } from './BoundsSection'
 export { DrinksSection } from './DrinksSection'
 // The 29 settings explanations (B-01's 21, B-03's six, B-06's two), for the
@@ -10,6 +10,8 @@ export { DrinksSection } from './DrinksSection'
 export { default as settingsExplanations } from './explanations.json'
 export { GlobalSection } from './GlobalSection'
 export { ImagesSection } from './ImagesSection'
+export { PaymentSection } from './PaymentSection'
+export { PriceStepSection } from './PriceStepSection'
 export { ProfilesSection } from './ProfilesSection'
 export { type SettingsSection, SettingsLayout } from './SettingsLayout'
 export { SystemSection } from './SystemSection'

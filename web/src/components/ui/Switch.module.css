@@ -1,22 +1,30 @@
-.switch {
-  display: inline-flex;
+/* B-12 PD14: a fixed-width row, so the tracks of one column share one x. */
+.row {
+  display: flex;
   align-items: center;
   gap: 0.5rem;
-  background: none;
-  border: none;
-  color: var(--text);
-  font: inherit;
+  width: 20rem;
+  max-width: 100%;
   padding: 0.25rem 0;
+}
+
+.label {
+  color: var(--text);
   cursor: pointer;
 }
 
-.row {
+.switch {
   display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
+  flex: none;
+  margin-left: auto;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
 }
 
-.switch:disabled {
+.switch:disabled,
+.row:has(.switch:disabled) .label {
   opacity: 0.6;
   cursor: default;
 }

@@ -1,6 +1,6 @@
 /**
  * The server-side theme in Chromium against the real app (AC3, AC4, AC10):
- * an admin's pick on `/settings` reaches a display on `/koers` live, and the
+ * an admin's pick on `/settings/spel` (B-12) reaches a display on `/koers` live, and the
  * blocking `/theme.css` paints the stored theme before any script runs.
  * Expected colours are the presets' own `--bg` (`app/runtime/theme.py`,
  * ported from v1's `theme.js`). The theme is put back to Blauw afterwards.
@@ -38,12 +38,12 @@ test.afterAll(async () => {
   await storeTheme('blauw')
 })
 
-test('a preset picked on /settings re-themes /koers within 2 s, without navigation (AC3)', async ({
+test('a preset picked on /settings/spel re-themes /koers within 2 s, without navigation (AC3)', async ({
   browser,
 }) => {
   await storeTheme('blauw')
   const admin = await pageAs(browser, 'admin')
-  await admin.goto('/settings')
+  await admin.goto('/settings/spel') // B-12 SD3
   const display = await pageAs(browser, 'display')
   await expect(display).toHaveURL((url) => url.pathname === '/koers')
   await expect.poll(() => bodyBackground(display)).toBe(BG.blauw)
@@ -61,7 +61,7 @@ test('a preset picked on /settings re-themes /koers within 2 s, without navigati
 test('picking Oud Geld sets EB Garamond on the display, loaded (AC10)', async ({ browser }) => {
   await storeTheme('blauw')
   const admin = await pageAs(browser, 'admin')
-  await admin.goto('/settings')
+  await admin.goto('/settings/spel') // B-12 SD3
   const display = await pageAs(browser, 'display')
   await expect(display).toHaveURL((url) => url.pathname === '/koers')
 

@@ -169,7 +169,8 @@ test('two borrels: close, copy, compare, export and delete', async ({ page, brow
   const started = Date.now()
   await sameOriginOnly(page.context())
   await login(page, adminKey)
-  await page.goto('/settings')
+  // B-12 SD3: the borrel and its drinks on Spelopzet, the keys on Beheer.
+  await page.goto('/settings/spel')
   const borrel = section(page, 'Borrel')
 
   // 1. A borrel with three drinks, live.
@@ -178,8 +179,10 @@ test('two borrels: close, copy, compare, export and delete', async ({ page, brow
   await expect(borrel.getByText('Vrijdag')).toBeVisible()
   await walletOptional(page)
   for (const [name, min, start, max] of DRINKS) await addDrink(page, name, min, start, max)
+  await page.goto('/settings/beheer')
   const displayKey = await createKey(page, 'Scherm', 'Koersbord')
   const barKey = await createKey(page, 'Bar', 'Tap 1')
+  await page.goto('/settings/spel')
   await goLive(page)
 
   // 2. Orders from the bar, a changed bar price, and a drink added live.

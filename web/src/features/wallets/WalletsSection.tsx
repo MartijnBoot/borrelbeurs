@@ -8,8 +8,11 @@
  *   would point at the phone itself (B-09 SD2–SD5). Replacing or clearing a
  *   saved code asks first, since printed QR codes stop working (B-09 SD7).
  *   "QR-code op het scherm" shows the code on the koers screen (B-10 SD5);
- *   it saves at once, with no confirm: nothing printed breaks.
+ *   it saves at once, with no confirm: nothing printed breaks. It is a
+ *   `Switch` (B-12 SD7).
  * - **Bewaartermijnen:** the two retention periods, whole days and months.
+ * - The code and the two periods count as unsaved while they differ from the
+ *   stored settings (B-12 PD4).
  * - **Totalen:** "Tegoed", what the association still owes in drinks, and
  *   "Rood", what players owe, never netted (B-06 SD20, PD10); per borrel the
  *   top-ups net of reversals and the wallet payments net of refunds, newest
@@ -26,8 +29,10 @@ import { Button } from '../../components/ui/Button'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Field } from '../../components/ui/Field'
 import fieldStyles from '../../components/ui/Field.module.css'
+import { Switch } from '../../components/ui/Switch'
 import { formatBalance, formatEuro } from '../../lib/format'
 import { HttpError } from '../../lib/http'
+import { useReportUnsaved } from '../../lib/unsavedEdits'
 import { formatDayMonth } from '../../lib/time'
 import {
   deleteWallet,
@@ -84,6 +89,13 @@ export function WalletsSection() {
   const modules = useMemo(
     () => (saved === null ? null : encode(signupLink(origin, saved), SIGNUP_QR).data),
     [origin, saved],
+  )
+
+  useReportUnsaved(
+    settings !== null &&
+      (code !== (settings.signup_code ?? '') ||
+        days !== String(settings.unfunded_days) ||
+        months !== String(settings.inactive_months)),
   )
 
   const show = useCallback((stored: WalletSettings) => {
@@ -205,15 +217,12 @@ export function WalletsSection() {
             Wissen
           </Button>
         </form>
-        <label className={styles.row}>
-          <input
-            type="checkbox"
-            checked={settings.show_signup_on_screen}
-            disabled={busy}
-            onChange={(event) => storeOnScreen(event.target.checked)}
-          />
-          QR-code op het scherm
-        </label>
+        <Switch
+          label="QR-code op het scherm"
+          checked={settings.show_signup_on_screen}
+          disabled={busy}
+          onChange={storeOnScreen}
+        />
         {saved === null || modules === null ? (
           <p className={styles.muted}>Aanmelden is gesloten.</p>
         ) : (

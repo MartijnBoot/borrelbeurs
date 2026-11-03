@@ -6,8 +6,9 @@
 import { act, cleanup, fireEvent, render, renderHook, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { exchangeStore } from '../exchange'
-import { DemandSection } from './DemandSection'
+import { DemandSwitches } from './DemandSection'
 import { GlobalSection } from './GlobalSection'
+import { UnsavedEditsProvider, useHasUnsaved } from '../../lib/unsavedEdits'
 import { ProfilesSection } from './ProfilesSection'
 import { useProfiles } from './useProfiles'
 
@@ -527,7 +528,7 @@ describe('after a load, the other sections show the loaded values (AC16)', () =>
       <>
         <ProfilesSection names={NAMES} />
         <GlobalSection />
-        <DemandSection />
+        <DemandSwitches />
       </>,
     )
     await settle()
@@ -566,5 +567,30 @@ describe('after a load, the other sections show the loaded values (AC16)', () =>
     fireEvent.click(screen.getAllByRole('button', { name: 'Overnemen' })[0])
     expect(field('Sterkte ruis').value).toBe('0,5')
     expect(field('Kaarsbreedte (sec)').value).toBe('30')
+  })
+})
+
+function Unsaved() {
+  return <output data-testid="unsaved">{String(useHasUnsaved())}</output>
+}
+const unsaved = () => screen.getByTestId('unsaved').textContent
+
+// B-12 T11b (SD9, OQ1 = B): a half-typed profile name counts as unsaved.
+describe('ProfilesSection: unsaved edits (B-12 T11b)', () => {
+  it('a typed profile name counts until it is saved', async () => {
+    writes = [() => json(201, { ...WILD, profile_id: 3, name: 'Nieuw' })]
+    render(
+      <UnsavedEditsProvider>
+        <ProfilesSection names={NAMES} />
+        <Unsaved />
+      </UnsavedEditsProvider>,
+    )
+    await settle()
+    expect(unsaved()).toBe('false')
+    typeName('Nieuw')
+    expect(unsaved()).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'Opslaan als profiel' }))
+    await settle()
+    expect(unsaved()).toBe('false')
   })
 })

@@ -75,9 +75,9 @@ async function expectAsTallAsItsText(container: Locator) {
 }
 
 test.describe('an icon is as tall as its text (AC5)', () => {
-  test('the Systeemacties heading on /settings', async ({ page, loginAs }) => {
+  test('the Systeemacties heading on /settings/beheer', async ({ page, loginAs }) => {
     await loginAs('admin')
-    await page.goto('/settings')
+    await page.goto('/settings/beheer') // B-12 SD3
     await expectAsTallAsItsText(page.getByRole('heading', { name: 'Systeemacties' }))
   })
 
@@ -133,8 +133,9 @@ test('a heading icon takes the theme’s text colour live, preset and custom (AC
 }) => {
   await storeTheme('blauw')
   await loginAs('admin')
-  await page.goto('/settings')
-  const heading = page.getByRole('heading', { name: 'Globale instellingen' })
+  // B-12 SD3: Kleurenschema is on Spelopzet, so the heading is one of its own.
+  await page.goto('/settings/spel')
+  const heading = page.getByRole('heading', { name: 'Drankjes beheren' })
   await expect(heading.locator('svg')).toBeVisible()
   const colours = () =>
     heading.evaluate((h) => ({
@@ -169,6 +170,10 @@ const ROUTES: readonly [string, MintedRole | null][] = [
   ['/koers', 'display'],
   ['/bar', 'bar'],
   ['/settings', 'admin'],
+  // B-12 SD1: the three settings screens.
+  ['/settings/spel', 'admin'],
+  ['/settings/wallets', 'admin'],
+  ['/settings/beheer', 'admin'],
   ['/manipulation', 'admin'],
   ['/analytics', 'admin'],
   ['/login', null],

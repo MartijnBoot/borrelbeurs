@@ -106,6 +106,10 @@ def spa_client(
         "/bar",
         "/manipulation",
         "/settings",
+        # B-12 AC2.
+        "/settings/spel",
+        "/settings/wallets",
+        "/settings/beheer",
         "/analytics",
         "/kassa",
         "/speler",
@@ -127,13 +131,20 @@ def test_the_spa_routes_are_login_plus_the_role_table() -> None:
         "/bar",
         "/manipulation",
         "/settings",
+        "/settings/spel",
+        "/settings/wallets",
+        "/settings/beheer",
         "/analytics",
         "/kassa",
         "/speler",
     } == app.main.SPA_ROUTES
 
 
-@pytest.mark.parametrize("path", ["/probe", "/koers/x", "/login/", "/settings.json"])
+@pytest.mark.parametrize(
+    # B-12 AC2: only the four settings addresses render the app.
+    "path",
+    ["/probe", "/koers/x", "/login/", "/settings.json", "/settings/x", "/settings/spel/x"],
+)
 def test_any_other_unknown_path_stays_a_plain_404(spa_client: TestClient, path: str) -> None:
     response = spa_client.get(path)
 

@@ -10,79 +10,59 @@
  * editing keeps the input and offers "Overnemen" (AC5). A 422 shows under the
  * field it names.
  *
- * B-03 (SD4-SD6) adds the noise after Kaarsbreedte, behind the same save:
- * Willekeurige ruis as a `Switch`, then its five settings as `NumberField`s
- * (E34-E39). Switching the noise off disables none of them (SD5).
+ * B-03 (SD4-SD6) adds the noise, behind the same save: Willekeurige ruis as a
+ * `Switch`, then its five settings as `NumberField`s (E34-E39).
  *
- * B-06 (SD1-SD3) adds "Wallet verplicht" as a `Switch` and "Rood staan tot" as a
- * `MoneyField` (E40, E41), after the noise. Both are run columns: they go at the
- * top level beside the candle interval, never under `params`.
+ * B-12 SD5, SD6 (PD11, PD12): one form and one "Opslaan instellingen", in three
+ * groups with their own heading: "Hoe bestellingen de prijs bewegen",
+ * "Willekeurige ruis" and "Koersbord". The five noise fields show only while
+ * the switch is on. Turning it off discards nothing: a hidden field keeps its
+ * edit, and the next save sends it. A hidden field that is empty or invalid
+ * blocks the save, and a line per field names it and says to switch the noise
+ * on to fix it. This amends B-03 SD5 ("disables none of them"). So does a
+ * hidden field the server refused (a 422), since its own message is not on
+ * screen. The lines follow the fields: one fixed with the noise on is not named
+ * again when it hides.
  *
- * B-07 (SD3; PD10): a new Prijsstap moves every active drink's off-grid bound
- * inward. When the save holds a valid new step and at least one bound would move
- * (from this page's own config), a `ConfirmDialog` lists the moves first:
- * "Annuleren" sends nothing and keeps the input, "Opslaan" sends. With no move,
- * it sends as before. The server recomputes the moves and is what is stored; a
- * drink left with no room comes back as its `bounds_collision` message under
- * Prijsstap.
+ * B-12 SD3, SD4: Prijsstap, and B-07's confirm with it, is on Spelopzet's
+ * Prijzen (`PriceStepSection`), and B-06's "Wallet verplicht" and "Rood staan
+ * tot" are Betalen on Mensen en wallets (`PaymentSection`).
  */
-import { type FormEvent, useMemo, useState } from 'react'
+import { type FormEvent, type ReactNode, useMemo, useState } from 'react'
 import { Button } from '../../components/ui/Button'
-import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
-import { MoneyField } from '../../components/ui/MoneyField'
 import { NumberField } from '../../components/ui/NumberField'
 import { Switch } from '../../components/ui/Switch'
 import { Toast } from '../../components/ui/Toast'
-import { centsText } from '../../lib/format'
 import { request } from '../../lib/http'
 import { useEditableRecord } from '../../lib/useEditableRecord'
 import explanations from './explanations.json'
-import { type BoundMove, boundMoves, stepCents } from './grid'
 import styles from './settings.module.css'
+import groupStyles from './GlobalSection.module.css'
 import { faultsOf, Revision, type RunConfig, useRunConfig } from './useRunConfig'
 
-const FIELDS = [
-  'step_quant',
+/** PD11: what moves the price on an order, in SD5's order. */
+const PRICE_FIELDS = [
   'eta',
   'K',
   'lambda_orders',
   'alpha_price',
   'phi_persist',
   'decay_rho',
-  'history_window_minutes',
   'refresh_minutes',
-  'candle_interval_s',
 ] as const
 
 /** After the Willekeurige ruis switch, in B-03 SD4's order. */
 const NOISE_FIELDS = ['bm_sigma_y', 'bm_dt_minutes', 'flow_vol_amp', 'flow_beta', 'y_clip'] as const
 
-type Field = (typeof FIELDS)[number] | (typeof NOISE_FIELDS)[number]
-type GlobalRecord = Record<Field, number> & {
-  bm_enabled: boolean
-  wallet_required: boolean
-  credit_limit_cents: number
-}
+const BOARD_FIELDS = ['history_window_minutes', 'candle_interval_s'] as const
 
-const BOUND_NAMES: Readonly<Record<BoundMove['field'], string>> = {
-  p_min_cents: 'Minimumprijs',
-  p_max_cents: 'Maximumprijs',
-}
-
-/** A step the server would accept: above 0, at most 5, in whole cents. */
-function validStep(step: unknown): step is number {
-  return (
-    typeof step === 'number' &&
-    step > 0 &&
-    step <= 5 &&
-    Math.abs(step * 100 - Math.round(step * 100)) < 1e-9
-  )
-}
+type Field =
+  (typeof PRICE_FIELDS)[number] | (typeof NOISE_FIELDS)[number] | (typeof BOARD_FIELDS)[number]
+type GlobalRecord = Record<Field, number> & { bm_enabled: boolean }
 
 function recordOf(config: RunConfig): GlobalRecord {
   const { params, run } = config
   return {
-    step_quant: params.step_quant,
     eta: params.eta,
     K: params.K,
     lambda_orders: params.lambda_orders,
@@ -98,8 +78,6 @@ function recordOf(config: RunConfig): GlobalRecord {
     flow_vol_amp: params.flow_vol_amp,
     flow_beta: params.flow_beta,
     y_clip: params.y_clip,
-    wallet_required: run.wallet_required,
-    credit_limit_cents: run.credit_limit_cents,
   }
 }
 
@@ -111,43 +89,37 @@ export function GlobalSection() {
   const [faults, setFaults] = useState<Record<string, string>>({})
   const [saveError, setSaveError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [moving, setMoving] = useState<{ step: number; moves: BoundMove[] } | null>(null)
+  // PD12: a save was tried, so a hidden field that blocks one is named.
+  const [tried, setTried] = useState(false)
 
   if (config === null) {
     return <p className={styles.muted}>{failed ? 'Verbindingsfout. Probeer opnieuw.' : 'Laden…'}</p>
   }
   const runId = config.run.run_id
-  const drinks = config.drinks
+  const noiseOn = record.values?.bm_enabled === true
+  const unfilled = (field: Field) =>
+    record.values?.[field] === null || record.values?.[field] === 'invalid'
+  // PD12: the hidden fields to name -- empty or invalid, or refused by the server.
+  const hiddenFaults = noiseOn
+    ? []
+    : NOISE_FIELDS.filter((field) => (tried && unfilled(field)) || faults[field] !== undefined)
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    // `patch` is typed as the record, but holds an edited field as typed: maybe empty or invalid.
-    const edited: Record<string, unknown> = record.patch
-    const step = edited.step_quant
-    const complete = Object.values(edited).every((v) => v !== null && v !== 'invalid')
-    if (complete && validStep(step)) {
-      const moves = boundMoves(drinks, stepCents(step))
-      if (moves.length > 0) {
-        setMoving({ step, moves })
-        return
-      }
-    }
-    void send()
+    setTried(true)
+    if (noiseOn || !NOISE_FIELDS.some(unfilled)) void send()
   }
 
   async function send() {
-    setMoving(null)
     setFaults({})
     setSaveError(null)
     setBusy(true)
     try {
       const result = await record.save(async (patch) => {
-        const { candle_interval_s, wallet_required, credit_limit_cents, ...params } = patch
+        const { candle_interval_s, ...params } = patch
         const body = {
           ...(Object.keys(params).length > 0 ? { params } : {}),
           ...(candle_interval_s !== undefined ? { candle_interval_s } : {}),
-          ...(wallet_required !== undefined ? { wallet_required } : {}),
-          ...(credit_limit_cents !== undefined ? { credit_limit_cents } : {}),
         }
         await request('PATCH', `/api/runs/${runId}/config`, { body, schema: Revision })
         await reload()
@@ -163,7 +135,7 @@ export function GlobalSection() {
     }
   }
 
-  function errorFor(field: Field | 'credit_limit_cents'): string | undefined {
+  function errorFor(field: Field): string | undefined {
     const value = record.values?.[field]
     if (value === null) return 'Verplicht'
     if (value === 'invalid') return 'Ongeldig getal'
@@ -189,39 +161,28 @@ export function GlobalSection() {
           <Button onClick={record.takeServer}>Overnemen</Button>
         </p>
       )}
-      <div className={styles.grid}>
-        {FIELDS.map(numberField)}
+      <Group title="Hoe bestellingen de prijs bewegen">{PRICE_FIELDS.map(numberField)}</Group>
+      <Group title="Willekeurige ruis">
         <div>
           <Switch
             label={explanations.bm_enabled.name}
             info={explanations.bm_enabled}
-            checked={record.values?.bm_enabled === true}
+            checked={noiseOn}
             onChange={(on) => record.set('bm_enabled', on)}
           />
           {faults.bm_enabled !== undefined && (
             <span className={styles.error}>{faults.bm_enabled}</span>
           )}
         </div>
-        {NOISE_FIELDS.map(numberField)}
-        <div>
-          <Switch
-            label={explanations.wallet_required.name}
-            info={explanations.wallet_required}
-            checked={record.values?.wallet_required === true}
-            onChange={(on) => record.set('wallet_required', on)}
-          />
-          {faults.wallet_required !== undefined && (
-            <span className={styles.error}>{faults.wallet_required}</span>
-          )}
-        </div>
-        <MoneyField
-          label={explanations.credit_limit_cents.name}
-          info={explanations.credit_limit_cents}
-          cents={record.values?.credit_limit_cents ?? null}
-          onChange={(cents) => record.set('credit_limit_cents', cents)}
-          error={errorFor('credit_limit_cents')}
-        />
-      </div>
+        {noiseOn && NOISE_FIELDS.map(numberField)}
+      </Group>
+      {hiddenFaults.map((field) => (
+        <p key={field} className={styles.error} role="alert">
+          {explanations[field].name} is leeg of ongeldig. Zet Willekeurige ruis aan om het te
+          verbeteren.
+        </p>
+      ))}
+      <Group title="Koersbord">{BOARD_FIELDS.map(numberField)}</Group>
       <div className={styles.row}>
         <Button type="submit" disabled={busy}>
           Opslaan instellingen
@@ -229,30 +190,16 @@ export function GlobalSection() {
         {saveError !== null && <span className={styles.error}>{saveError}</span>}
       </div>
       <Toast message={notice} onDone={() => setNotice(null)} />
-      <ConfirmDialog
-        open={moving !== null}
-        message={
-          moving !== null && (
-            <>
-              <p>
-                Prijsstap {centsText(stepCents(moving.step))} opslaan? Deze grenzen schuiven mee:
-              </p>
-              <ul>
-                {moving.moves.map((move) => (
-                  <li key={`${move.name}-${move.field}`}>
-                    {move.name}: {BOUND_NAMES[move.field]} {centsText(move.from)} →{' '}
-                    {centsText(move.to)}
-                  </li>
-                ))}
-              </ul>
-            </>
-          )
-        }
-        confirmLabel="Opslaan"
-        cancelLabel="Annuleren"
-        onConfirm={() => void send()}
-        onCancel={() => setMoving(null)}
-      />
     </form>
+  )
+}
+
+/** One of PD11's groups: a labelled region with its heading, its fields in the grid. */
+function Group({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className={groupStyles.group} aria-label={title}>
+      <h3>{title}</h3>
+      <div className={styles.grid}>{children}</div>
+    </section>
   )
 }

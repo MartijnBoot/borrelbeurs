@@ -6,6 +6,9 @@
  * beurs"; set back; loaded again; then the draft is deleted and "Nieuwe borrel"
  * with the profile brings the values back. The spec starts its own `serve.py
  * --empty` (as `admin.spec.ts`), so the shared server's live run is not in the way.
+ *
+ * B-12 SD3: Borrel and Profielen are on Spelopzet, Globale instellingen on Beheer;
+ * every form is saved before the flow moves to the other screen.
  */
 import { test as base, expect, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
@@ -66,7 +69,7 @@ async function expectNoise(page: Page, sigma: string, candle: string): Promise<v
 test('a profile saved from a draft is loaded back and starts a new borrel', async ({ page }) => {
   test.setTimeout(150_000)
   await login(page, adminKey)
-  await page.goto('/settings')
+  await page.goto('/settings/spel')
 
   // 1. A draft.
   const borrel = section(page, 'Borrel')
@@ -75,10 +78,12 @@ test('a profile saved from a draft is loaded back and starts a new borrel', asyn
   await expect(borrel.getByText('Proef')).toBeVisible()
 
   // 2. Tuned wild.
+  await page.goto('/settings/beheer')
   await expectNoise(page, '0,18', '60')
   await setNoise(page, '0,5', '30')
 
   // 3. Saved as "Wilde beurs" (AC1, AC19, AC20).
+  await page.goto('/settings/spel')
   const profiles = section(page, 'Profielen')
   await expect(
     page.getByRole('heading', { level: 2, name: 'Profielen' }).locator('svg'),
@@ -93,9 +98,12 @@ test('a profile saved from a draft is loaded back and starts a new borrel', asyn
   )
 
   // 4. Set back to the defaults.
+  await page.goto('/settings/beheer')
   await setNoise(page, '0,18', '60')
 
-  // 5. Loaded again, without a page reload (AC11, AC12, AC16).
+  // 5. Loaded again, without a page reload (AC11, AC12, AC16): to Beheer through the
+  // landing's links, inside the app.
+  await page.goto('/settings/spel')
   await profiles.getByLabel('Profiel laden').selectOption({ label: 'Wilde beurs' })
   await profiles.getByRole('button', { name: 'Laden' }).click()
   const dialog = page.getByRole('dialog')
@@ -104,7 +112,12 @@ test('a profile saved from a draft is loaded back and starts a new borrel', asyn
   )
   await dialog.getByRole('button', { name: 'Laden' }).click()
   await expect(dialog).toHaveCount(0)
+  // A page reload would drop this marker.
+  await page.evaluate(() => Object.assign(window, { b12SamePage: true }))
+  await page.getByRole('link', { name: '← Instellingen' }).click()
+  await page.getByRole('link', { name: /^Beheer/ }).click()
   await expectNoise(page, '0,5', '30')
+  expect(await page.evaluate(() => 'b12SamePage' in window)).toBe(true)
 
   // 6. The draft deleted on /analytics (Phase 7 SD3).
   await page.goto('/analytics')
@@ -115,10 +128,11 @@ test('a profile saved from a draft is loaded back and starts a new borrel', asyn
   await expect(run).toHaveCount(0)
 
   // 7. "Nieuwe borrel" with the profile brings the values back (AC7).
-  await page.goto('/settings')
+  await page.goto('/settings/spel')
   await borrel.getByLabel('Naam').fill('Proef 2')
   await borrel.getByLabel('Profiel').selectOption({ label: 'Wilde beurs' })
   await borrel.getByRole('button', { name: 'Nieuwe borrel' }).click()
   await expect(borrel.getByText('Proef 2')).toBeVisible()
+  await page.goto('/settings/beheer')
   await expectNoise(page, '0,5', '30')
 })

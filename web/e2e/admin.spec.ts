@@ -97,7 +97,9 @@ test('an admin builds a borrel from nothing, and every screen follows live', asy
   await expect(page.getByText('Geen actieve borrel')).toBeVisible()
   expect(errors).toEqual([])
 
-  await page.goto('/settings')
+  // B-12: the night on Spelopzet, the system on Beheer. Every form is saved
+  // before a goto, so no unsaved-edits prompt holds a navigation (R4).
+  await page.goto('/settings/spel')
 
   // 1. A borrel.
   const borrel = section(page, 'Borrel')
@@ -118,22 +120,31 @@ test('an admin builds a borrel from nothing, and every screen follows live', asy
     ).toBeVisible()
   }
 
-  // 3. Params, the noise among them (B-03 T4): kept across a reload.
+  // 3. Params, the noise among them (B-03 T4): kept across a reload. Prijsstap
+  // is on Spelopzet's Prijzen (B-12 SD4), the rest on Beheer.
+  const prices = section(page, 'Prijzen')
+  await prices.getByLabel('Prijsstap (€)', { exact: true }).fill('0,05')
+  await prices.getByRole('button', { name: 'Opslaan prijsstap' }).click()
+  await expect(page.getByText('Opgeslagen')).toBeVisible()
+  await page.goto('/settings/beheer')
   const global = section(page, 'Globale instellingen')
   const noise = global.getByRole('switch', { name: 'Willekeurige ruis' })
-  await global.getByLabel('Prijsstap (€)', { exact: true }).fill('0,05')
   await global.getByLabel('Sterkte ruis', { exact: true }).fill('0,5')
   await noise.click()
   await global.getByRole('button', { name: 'Opslaan instellingen' }).click()
   await expect(page.getByText('Opgeslagen')).toBeVisible()
   await page.reload()
-  await expect(global.getByLabel('Sterkte ruis', { exact: true })).toHaveValue('0,5')
   await expect(noise).toHaveAttribute('aria-checked', 'false')
+  // B-12 SD6: the five show only while the noise is on.
+  await expect(global.getByLabel('Sterkte ruis', { exact: true })).toHaveCount(0)
   // Back on, so the rest of the flow runs on the noise it was written against.
   await noise.click()
   await global.getByRole('button', { name: 'Opslaan instellingen' }).click()
   await expect(page.getByText('Opgeslagen')).toBeVisible()
   await expect(noise).toHaveAttribute('aria-checked', 'true')
+  await expect(global.getByLabel('Sterkte ruis', { exact: true })).toHaveValue('0,5')
+  await page.goto('/settings/spel')
+  await expect(prices.getByLabel('Prijsstap (€)', { exact: true })).toHaveValue('0,05')
 
   // 4. A preset, then a custom theme.
   const colours = section(page, 'Kleurenschema')
@@ -162,7 +173,8 @@ test('an admin builds a borrel from nothing, and every screen follows live', asy
   await page.getByRole('button', { name: 'Annuleren' }).click()
   await expect(logo.getByRole('img', { name: 'Logo' })).toBeVisible()
 
-  // 6. A display key and a bar key, read from the one-time display.
+  // 6. A display key and a bar key, read from the one-time display, on Beheer.
+  await page.goto('/settings/beheer')
   const displayKey = await createKey(page, 'Scherm', 'Koersbord')
   const barKey = await createKey(page, 'Bar', 'Tap 1')
 
@@ -180,7 +192,8 @@ test('an admin builds a borrel from nothing, and every screen follows live', asy
   await expect(display).toHaveURL(/\/koers$/)
   await expect(display.getByText('Geen actieve borrel')).toBeVisible()
 
-  // 7. Go live; Annuleren first (AC39).
+  // 7. Go live; Annuleren first (AC39). Back on Spelopzet.
+  await page.goto('/settings/spel')
   await borrel.getByRole('button', { name: 'Live zetten' }).click()
   await page.getByRole('button', { name: 'Annuleren' }).click()
   await expect(borrel.getByText('Concept')).toBeVisible()
@@ -224,7 +237,7 @@ test('at 360 px an explanation fits the screen, and the keyboard opens and close
   await page.setViewportSize({ width: 360, height: 800 })
   await login(page, adminKey)
   for (const [path, name] of [
-    ['/settings', 'Prijsstap (€)'],
+    ['/settings/spel', 'Prijsstap (€)'], // B-12 SD4: on Prijzen
     ['/manipulation', 'Kracht omlaag'],
   ] as const) {
     await page.goto(path)

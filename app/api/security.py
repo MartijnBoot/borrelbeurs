@@ -125,7 +125,19 @@ async def issue_key(
 ROLE_ROUTES: Final[dict[Role, tuple[str, ...]]] = {
     "display": ("/koers",),
     "bar": ("/bar", "/manipulation"),
-    "admin": ("/", "/koers", "/bar", "/manipulation", "/settings", "/analytics", "/kassa"),
+    # B-12 SD1, SD17: the settings landing and its three screens, admin only.
+    "admin": (
+        "/",
+        "/koers",
+        "/bar",
+        "/manipulation",
+        "/settings",
+        "/settings/spel",
+        "/settings/wallets",
+        "/settings/beheer",
+        "/analytics",
+        "/kassa",
+    ),
     "kassa": ("/kassa",),
 }
 

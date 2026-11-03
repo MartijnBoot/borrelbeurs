@@ -4,3 +4,53 @@
   font-size: 20px;
   color: var(--muted);
 }
+
+/* B-12 PD8: a settings screen's way back to the landing, above its sections. */
+.back {
+  display: inline-block;
+  margin: 18px 18px 0;
+  color: var(--text);
+}
+
+/* B-12 PD7: the settings landing. The tiles copy HomePage.module.css's grid and
+   tile; at 375 px the grid is one column. */
+.landing {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px;
+}
+
+.runStatus {
+  margin: 0;
+  color: var(--muted);
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid var(--grid);
+  border-radius: 14px;
+  background: var(--panel);
+  color: inherit;
+  text-decoration: none;
+}
+
+.tile h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.tile p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}

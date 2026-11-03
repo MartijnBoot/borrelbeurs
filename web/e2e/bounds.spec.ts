@@ -48,15 +48,16 @@ async function login(page: Page, key: string): Promise<void> {
 }
 
 const section = (page: Page, name: string) => page.getByRole('region', { name, exact: true })
+// B-12 SD4: Min/Max/Startprijs is Prijzen now, with Prijsstap above it, on Spelopzet.
 const bier = (page: Page) =>
-  section(page, 'Min/Max/Startprijs').getByRole('group', { name: 'Bier', exact: true })
+  section(page, 'Prijzen').getByRole('group', { name: 'Bier', exact: true })
 
 test('a Prijsstap change moves a bound inward, and an off-grid bound is refused', async ({
   page,
 }) => {
   test.setTimeout(150_000)
   await login(page, adminKey)
-  await page.goto('/settings')
+  await page.goto('/settings/spel')
 
   // 1. A borrel.
   const borrel = section(page, 'Borrel')
@@ -74,10 +75,10 @@ test('a Prijsstap change moves a bound inward, and an off-grid bound is refused'
   await expect(bier(page).getByLabel('Maximumprijs (€)', { exact: true })).toHaveValue('3,10')
 
   // 3. Prijsstap 0,10 -> 0,25: the dialog lists the moving bound (AC10).
-  const global = section(page, 'Globale instellingen')
-  await expect(global.getByLabel('Prijsstap (€)', { exact: true })).toHaveValue('0,1')
-  await global.getByLabel('Prijsstap (€)', { exact: true }).fill('0,25')
-  await global.getByRole('button', { name: 'Opslaan instellingen' }).click()
+  const prices = section(page, 'Prijzen')
+  await expect(prices.getByLabel('Prijsstap (€)', { exact: true })).toHaveValue('0,1')
+  await prices.getByLabel('Prijsstap (€)', { exact: true }).fill('0,25')
+  await prices.getByRole('button', { name: 'Opslaan prijsstap' }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog).toContainText('Prijsstap 0,25 opslaan? Deze grenzen schuiven mee:')
   await expect(dialog.getByRole('listitem')).toHaveText(['Bier: Maximumprijs 3,10 → 3,00'])
@@ -95,6 +96,8 @@ test('a Prijsstap change moves a bound inward, and an off-grid bound is refused'
   await expect(
     bier(page).getByText('Moet een veelvoud van de Prijsstap (0,25) zijn: 1,50 of 1,75.'),
   ).toBeVisible()
+  // The refused 1,60 is still typed, so the reload asks first (B-12 AC24): leave.
+  page.once('dialog', (dialog) => void dialog.accept())
   await page.reload()
   await expect(bier(page).getByLabel('Minimumprijs (€)', { exact: true })).toHaveValue('1,50')
 })

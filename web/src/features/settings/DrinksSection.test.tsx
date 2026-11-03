@@ -6,6 +6,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { expectExplained } from '../../components/ui/infoTesting'
 import { exchangeStore } from '../exchange'
+import { UnsavedEditsProvider, useHasUnsaved } from '../../lib/unsavedEdits'
 import { DrinksSection } from './DrinksSection'
 import explanations from './explanations.json'
 
@@ -280,5 +281,45 @@ describe('DrinksSection', () => {
     await settle()
 
     expect(screen.getByRole('alert').textContent).toBe('Het laatste actieve drankje kan niet weg.')
+  })
+})
+
+function Unsaved() {
+  return <output data-testid="unsaved">{String(useHasUnsaved())}</output>
+}
+const unsaved = () => screen.getByTestId('unsaved').textContent
+
+// B-12 T11b (SD9, OQ1 = B): a half-filled "Drankje toevoegen" counts as unsaved,
+// any of its text fields.
+describe('DrinksSection: unsaved edits (B-12 T11b)', () => {
+  async function openGuarded() {
+    render(
+      <UnsavedEditsProvider>
+        <DrinksSection />
+        <Unsaved />
+      </UnsavedEditsProvider>,
+    )
+    await settle()
+  }
+
+  it.each(['Naam', 'Startprijs (€)', 'Basisvraag (a)'])('typing in %s counts', async (label) => {
+    await openGuarded()
+    expect(unsaved()).toBe('false')
+    type(addForm(), label, '1')
+    expect(unsaved()).toBe('true')
+    type(addForm(), label, '')
+    expect(unsaved()).toBe('false')
+  })
+
+  it('a drink added empties the form, which stops counting', async () => {
+    await openGuarded()
+    const form = addForm()
+    type(form, 'Naam', 'Cola')
+    type(form, 'Minimumprijs (€)', '1,00')
+    type(form, 'Startprijs (€)', '2,50')
+    type(form, 'Maximumprijs (€)', '6')
+    fireEvent.click(form.getByRole('button', { name: 'Toevoegen' }))
+    await settle()
+    expect(unsaved()).toBe('false')
   })
 })

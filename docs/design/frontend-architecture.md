@@ -41,7 +41,7 @@ web/src/
     theme/        ThemeProvider, ThemeSection (preset picker); Phase 6 adds the editor.
                   The token manifest (24 tokens) is server-side, app/runtime/theme.py
     koers/  bar/  manipulation/  settings/  home/
-    player/  kassa/  wallets/   B-05: /speler, /kassa, and the Wallets section on /settings
+    player/  kassa/  wallets/   B-05: /speler, /kassa, and the Mensen en wallets screen, /settings/wallets
   components/ui/  Button, Field, NumberField, Select, Switch, Marquee, NavMenu,
                   MobileSectionNav, ConfirmDialog, Toast, StatusDot
   components/scanner/  Scanner, camera, decodeQr: the camera, shared by kassa and bar
@@ -62,7 +62,9 @@ feature; `exchange` may import nothing from `features/`. Everything else is sibl
 Without that rule, "shared core" quietly becomes "everything imports everything".
 
 Routes keep v1's paths — `/login`, `/`, `/koers`, `/bar`, `/manipulation`, `/settings` — so
-QR codes, bookmarks and muscle memory survive. *B-05* adds `/kassa` inside the shell (the
+QR codes, bookmarks and muscle memory survive. *B-12* adds `/settings/spel`, `/settings/wallets`
+and `/settings/beheer` under the `/settings` landing
+([phase-b-12-settings-screens.md](../specs/phase-b-12-settings-screens.md)). *B-05* adds `/kassa` inside the shell (the
 `kassa` role), `/speler` beside `/login` outside it (a player has no session and no WebSocket),
 and at `/`, without a crew session, the landing choice "Speler" or "Crew". **Role gating comes from the server:**
 `/auth/me` returns `allowed_routes`, and both `RequireRole` and `NavMenu` read that one list.

@@ -76,6 +76,56 @@ describe('Switch', () => {
     fireEvent.click(info)
     expect(onChange).not.toHaveBeenCalled()
   })
+
+  // B-12 SD7, PD14 (AC19, AC20): one row -- label, (i), then the track at the row's end.
+  it('is a native button holding only the track, named exactly by its label', () => {
+    render(<Switch label={DEMAND.name} checked onChange={vi.fn()} info={DEMAND} />)
+    const toggle = screen.getByRole('switch', { name: DEMAND.name })
+
+    expect(toggle.tagName).toBe('BUTTON')
+    expect(toggle.getAttribute('type')).toBe('button')
+    expect(toggle.getAttribute('aria-checked')).toBe('true')
+    expect(toggle.textContent).toBe('')
+  })
+
+  it('lays out the label, then the (i), then the track', () => {
+    render(<Switch label={DEMAND.name} checked={false} onChange={vi.fn()} info={DEMAND} />)
+    const toggle = screen.getByRole('switch', { name: DEMAND.name })
+    const info = screen.getByRole('button', { name: `Uitleg: ${DEMAND.name}` })
+    const row = toggle.parentElement!
+
+    const label = screen.getByText(DEMAND.name)
+    expect([...row.children]).toEqual([label, info, toggle])
+  })
+
+  it('without info, the row is the label then the track', () => {
+    render(<Switch label="Wallet verplicht" checked={false} onChange={vi.fn()} />)
+    const toggle = screen.getByRole('switch', { name: 'Wallet verplicht' })
+    expect([...toggle.parentElement!.children]).toEqual([
+      screen.getByText('Wallet verplicht'),
+      toggle,
+    ])
+  })
+
+  it('a click on the label text toggles', () => {
+    const onChange = vi.fn()
+    render(<Switch label="Wallet verplicht" checked={false} onChange={onChange} />)
+
+    fireEvent.click(screen.getByText('Wallet verplicht'))
+
+    expect(onChange).toHaveBeenCalledWith(true)
+  })
+
+  it('a disabled switch does not toggle, from the track or the label', () => {
+    const onChange = vi.fn()
+    render(<Switch label="Wallet verplicht" checked={false} onChange={onChange} disabled />)
+    const toggle = screen.getByRole('switch', { name: 'Wallet verplicht' })
+
+    expect((toggle as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(toggle)
+    fireEvent.click(screen.getByText('Wallet verplicht'))
+    expect(onChange).not.toHaveBeenCalled()
+  })
 })
 
 describe('Field', () => {

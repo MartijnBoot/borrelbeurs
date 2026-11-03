@@ -82,6 +82,10 @@ rules and were stated, not asked. The planner must not reopen any of them.
   icon.
 - **SD5 — With Willekeurige ruis off, the other five stay editable.** Each explanation says
   it does nothing then, as B-01 does for the demand columns. Nothing is greyed out.
+
+  > **Amended by B-12 SD6** ([phase-b-12-settings-screens.md](phase-b-12-settings-screens.md)). The five show only while
+  > Willekeurige ruis is on. Edits to a hidden field are kept and saved, and a hidden field that
+  > is empty or invalid blocks the save with a message that names it.
 - **SD6 — The names** (no emoji, B-01 SD6; units in brackets as B-01 does):
 
   | Field | Name |

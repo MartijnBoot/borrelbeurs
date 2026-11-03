@@ -6,12 +6,29 @@ import { NavMenu } from './NavMenu'
 
 afterEach(cleanup)
 
-// Phase 3 SD2's allowed_routes, as GET /api/auth/me returns them.
+// Phase 3 SD2's allowed_routes, as GET /api/auth/me returns them (B-12 SD1).
 const ALLOWED: Record<string, string[]> = {
   display: ['/koers'],
   bar: ['/bar', '/manipulation'],
-  admin: ['/', '/koers', '/bar', '/manipulation', '/settings', '/analytics', '/kassa'],
+  admin: [
+    '/',
+    '/koers',
+    '/bar',
+    '/manipulation',
+    '/settings',
+    '/settings/spel',
+    '/settings/wallets',
+    '/settings/beheer',
+    '/analytics',
+    '/kassa',
+  ],
   kassa: ['/kassa'],
+}
+
+// What the menu lists: the routes minus the ones nested under another listed route (B-12 PD5).
+const LISTED: Record<string, string[]> = {
+  ...ALLOWED,
+  admin: ['/', '/koers', '/bar', '/manipulation', '/settings', '/analytics', '/kassa'],
 }
 
 function renderMenu(routes: string[], onLogout = vi.fn()) {
@@ -30,8 +47,19 @@ const hrefs = (menu: ReturnType<typeof within>) =>
     .map((a: HTMLElement) => a.getAttribute('href'))
 
 describe('NavMenu (AC22, SD13)', () => {
-  it.each(Object.entries(ALLOWED))('for %s lists exactly its allowed routes', (_role, routes) => {
-    expect(hrefs(renderMenu(routes))).toEqual(routes)
+  it.each(Object.entries(ALLOWED))('for %s lists exactly its allowed routes', (role, routes) => {
+    expect(hrefs(renderMenu(routes))).toEqual(LISTED[role])
+  })
+
+  it('lists "Instellingen" once and none of the settings screens (B-12 AC4, SD11)', () => {
+    const menu = renderMenu(ALLOWED.admin)
+    expect(menu.getAllByRole('menuitem', { name: 'Instellingen' })).toHaveLength(1)
+    const nested = hrefs(menu).filter((href: string | null) => href?.startsWith('/settings/'))
+    expect(nested).toEqual([])
+  })
+
+  it('keeps a nested route whose parent is not listed (B-12 PD5)', () => {
+    expect(hrefs(renderMenu(['/koers', '/settings/spel']))).toEqual(['/koers', '/settings/spel'])
   })
 
   it('the button is named exactly "Menu", the chevron icon after the word (B-02 AC7, AC8)', () => {

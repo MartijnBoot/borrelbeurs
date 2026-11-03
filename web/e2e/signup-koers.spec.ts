@@ -170,20 +170,21 @@ test('the koers screen shows the sign-up QR code, follows changes live and hides
   const display = await openAs(browser, signupUrl(), server().keys.display, '/koers')
   const errors: Error[] = []
   display.on('pageerror', (error) => errors.push(error))
-  const admin = await openAs(browser, signupUrl(), server().keys.admin, '/settings')
+  const admin = await openAs(browser, signupUrl(), server().keys.admin, '/settings/wallets')
 
   // 1. The switch is off: no block (AC13). Not a secure context (AC20).
   expect(await display.evaluate(() => window.isSecureContext)).toBe(false)
   await expect(display.locator('[class*="_tile_"]').first()).toBeVisible()
   await expect(qr(display)).toHaveCount(0)
 
-  // 2. A code with the switch off: still none. The checkbox turns it on, with no reload (AC11, AC18).
+  // 2. A code with the switch off: still none. The switch turns it on, with no reload (AC11, AC18;
+  // B-12 SD7: a switch now, not a checkbox).
   await putSettings({ signup_code: 'BORREL' })
   await expect(wallets(admin).getByRole('textbox', { name: 'Aanmeldcode' })).toBeVisible()
   await display.waitForTimeout(500)
   await expect(qr(display)).toHaveCount(0)
   await admin.reload()
-  const onScreen = wallets(admin).getByRole('checkbox', { name: 'QR-code op het scherm' })
+  const onScreen = wallets(admin).getByRole('switch', { name: 'QR-code op het scherm' })
   await onScreen.click() // controlled: it flips when the save returns
   await expect(onScreen).toBeChecked()
   await expect(qr(display)).toBeVisible()

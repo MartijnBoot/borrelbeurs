@@ -1,21 +1,33 @@
 // @vitest-environment jsdom
 // Login and role routing through the real route table, with fetch stubbed
 // as the server answers (AC20-AC23, SD4, SD12, SD13).
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter, useLocation } from 'react-router'
+import { act, cleanup, fireEvent, screen } from '@testing-library/react'
+import { useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppRoutes } from '../../app/routes'
+import { renderInDataRouter } from '../../app/testRouter'
 
 // jsdom has no Web Animations API; the board's marquees are tested on their own.
 vi.mock('../../components/ui/Marquee', () => ({ Marquee: () => null }))
 
 type Role = 'display' | 'bar' | 'admin' | 'kassa'
 
-// Phase 3 SD2, as GET /api/auth/me returns it.
+// Phase 3 SD2, as GET /api/auth/me returns it (B-12 SD1: the three settings screens).
 const ALLOWED: Record<Role, string[]> = {
   display: ['/koers'],
   bar: ['/bar', '/manipulation'],
-  admin: ['/', '/koers', '/bar', '/manipulation', '/settings', '/analytics', '/kassa'],
+  admin: [
+    '/',
+    '/koers',
+    '/bar',
+    '/manipulation',
+    '/settings',
+    '/settings/spel',
+    '/settings/wallets',
+    '/settings/beheer',
+    '/analytics',
+    '/kassa',
+  ],
   kassa: ['/kassa'],
 }
 
@@ -87,12 +99,14 @@ function Where() {
 
 const where = () => screen.getByTestId('where').textContent
 
+// B-12 PD1: mounted as main.tsx mounts it, under a data router (the shell's leave guard).
 async function open(path: string) {
-  render(
-    <MemoryRouter initialEntries={[path]}>
+  renderInDataRouter(
+    <>
       <AppRoutes />
       <Where />
-    </MemoryRouter>,
+    </>,
+    [path],
   )
   await act(async () => {})
 }
@@ -215,6 +229,18 @@ describe('routes (AC22, AC23, SD4, SD13)', () => {
     await open('/settings')
     expect(screen.getByText('Geen toegang')).toBeTruthy()
     expect(where()).toBe('/settings')
+  })
+
+  // B-12 AC3: only admin opens the screens (SD17); the address stays.
+  it.each(
+    (['display', 'bar', 'kassa'] as const).flatMap((role) =>
+      ['/settings/spel', '/settings/wallets', '/settings/beheer'].map((path) => [role, path]),
+    ),
+  )('%s on %s sees "Geen toegang"', async (role, path) => {
+    session = role as Role
+    await open(path)
+    expect(screen.getByText('Geen toegang')).toBeTruthy()
+    expect(where()).toBe(path)
   })
 
   it('bar on /bar sees the bar page inside the shell (Phase 5 AC28)', async () => {

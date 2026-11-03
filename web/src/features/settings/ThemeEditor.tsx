@@ -7,6 +7,7 @@
  * with a colour picker and a hex field checked against SD28's pattern, plus the
  * font. "Opslaan" sends `PUT /api/theme {preset: "custom", tokens, font}` with
  * all of them; any invalid hex disables it. The new theme arrives by broadcast.
+ * While the draft differs from the active theme, it counts as unsaved (B-12 PD4).
  */
 import { type FormEvent, useId, useMemo, useState } from 'react'
 import { z } from 'zod'
@@ -15,6 +16,7 @@ import { Field } from '../../components/ui/Field'
 import fieldStyles from '../../components/ui/Field.module.css'
 import { Select } from '../../components/ui/Select'
 import { request } from '../../lib/http'
+import { useReportUnsaved } from '../../lib/unsavedEdits'
 import { selectTheme, useExchange } from '../exchange'
 import styles from './settings.module.css'
 
@@ -47,6 +49,12 @@ export function ThemeEditor() {
   const [error, setError] = useState<string | null>(null)
 
   const current = edited ?? source
+  useReportUnsaved(
+    edited !== null &&
+      source !== null &&
+      (edited.font !== source.font ||
+        Object.keys(edited.tokens).some((name) => edited.tokens[name] !== source.tokens[name])),
+  )
   if (current === null) return <p className={styles.muted}>Laden…</p>
   const names = Object.keys(current.tokens)
   const valid = names.every((name) => HEX.test(current.tokens[name]))

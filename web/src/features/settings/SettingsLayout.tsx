@@ -2,7 +2,8 @@
  * `/settings`' frame (Phase 6 SD25): every section under its own heading and
  * anchor, in v1's sidebar order, with `MobileSectionNav` beside them -- or above
  * them, as one select, on a narrow screen. A section's pixel icon goes before
- * its name in the heading (B-02 SD4).
+ * its name in the heading (B-02 SD4). With fewer than two sections there is
+ * nothing to navigate, so there is no navigation (B-12 SD8, PD8).
  */
 import type { ReactNode } from 'react'
 import { MobileSectionNav } from '../../components/ui/MobileSectionNav'
@@ -17,11 +18,14 @@ export interface SettingsSection {
 }
 
 export function SettingsLayout({ sections }: { sections: readonly SettingsSection[] }) {
+  const navigable = sections.length > 1
   return (
-    <div className={styles.layout}>
-      <div className={styles.nav}>
-        <MobileSectionNav sections={sections} />
-      </div>
+    <div className={navigable ? styles.layout : `${styles.layout} ${styles.single}`}>
+      {navigable && (
+        <div className={styles.nav}>
+          <MobileSectionNav sections={sections} />
+        </div>
+      )}
       <div className={styles.sections}>
         {sections.map((section) => (
           <section
