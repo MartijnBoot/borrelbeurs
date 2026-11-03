@@ -52,16 +52,21 @@ PORT_RETRIES = 5
 
 
 def free_port() -> int:
-    """A port free on `0.0.0.0`, the address the app binds, and on `127.0.0.1`, the one we use."""
+    """A port free on `0.0.0.0`, the address the app binds, and on `127.0.0.1`, the one we use.
+
+    One bind after the other, never both held at once: Linux refuses `127.0.0.1:p`
+    while this process still holds `0.0.0.0:p`, so every probe would fail.
+    """
     while True:
-        with socket.socket() as wide, socket.socket() as narrow:
+        with socket.socket() as wide:
             wide.bind(("0.0.0.0", 0))
             port = int(wide.getsockname()[1])
+        with socket.socket() as narrow:
             try:
                 narrow.bind(("127.0.0.1", port))
             except OSError:
                 continue
-            return port
+        return port
 
 
 def _something_listens(port: int) -> bool:
