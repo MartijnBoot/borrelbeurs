@@ -194,6 +194,8 @@ class PriceTick(Base):
             "source IN ('tick', 'order', 'jump', 'idle', 'reset', 'gap', 'config')",
             name="price_tick_source_check",
         ),
+        # Boot's history-window read (0018): without it, every tick of the run.
+        Index("price_tick_run_wall_ts", "run_id", "wall_ts_ms"),
     )
 
     run_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("run.run_id"), primary_key=True)

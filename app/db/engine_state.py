@@ -162,15 +162,23 @@ async def save_transition(
 async def load_ticks_in_window(
     conn: AsyncConnection, run_id: int, window_ms: int
 ) -> list[TickEntry]:
-    """Ticks within `window_ms` of the highest version's wall time, ordered by version."""
+    """Ticks within `window_ms` of the highest version's wall time, ordered by version.
+
+    Two statements, so the cutoff reaches the planner as a value: computed in a
+    subquery it cannot be estimated, and Postgres scanned every tick of the run
+    rather than use `price_tick_run_wall_ts` (0018).
+    """
     tick = models.PriceTick
     latest = (
-        select(tick.wall_ts_ms)
-        .where(tick.run_id == run_id)
-        .order_by(tick.version.desc())
-        .limit(1)
-        .scalar_subquery()
-    )
+        await conn.execute(
+            select(tick.wall_ts_ms)
+            .where(tick.run_id == run_id)
+            .order_by(tick.version.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if latest is None:
+        return []
     result = await conn.execute(
         select(tick.version, tick.wall_ts_ms, tick.source, tick.prices)
         .where(tick.run_id == run_id, tick.wall_ts_ms >= latest - window_ms)
