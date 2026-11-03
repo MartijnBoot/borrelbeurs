@@ -18,6 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
+from app.db.keys import Role
 from tests.api.conftest import IssueKey, MintKey
 from tests.api.test_keys import sign_in, switch
 from tests.support.clock import FakeClock
@@ -34,15 +35,21 @@ def _handshake(ws: Any) -> None:
     assert json.loads(ws.receive_text())["type"] == "snapshot"
 
 
+# B-13 SD15, AC4: an organiser key is revoked like any other.
+@pytest.mark.parametrize("role", ["display", "organiser"])
 def test_a_revoked_keys_socket_closes_4401_and_others_stay_open(
-    live_client: TestClient, mint_key: MintKey, issued_key: IssueKey, clock: FakeClock
+    live_client: TestClient,
+    mint_key: MintKey,
+    issued_key: IssueKey,
+    clock: FakeClock,
+    role: Role,
 ) -> None:
     admin = sign_in(live_client, mint_key("admin"))
-    revoked = issued_key("display", "Oud scherm")
+    revoked = issued_key(role, "Oud scherm")
     at = clock.wall_ms()
 
     with ExitStack() as stack:
-        sign_in(live_client, revoked.key)
+        revoked_jar = sign_in(live_client, revoked.key)
         gone = stack.enter_context(_open(live_client))
         _handshake(gone)
         sign_in(live_client, mint_key("display", "Nieuw scherm"))
@@ -61,3 +68,4 @@ def test_a_revoked_keys_socket_closes_4401_and_others_stay_open(
         stays.send_text(json.dumps({"type": "ping"}))
         while json.loads(stays.receive_text())["type"] != "pong":
             pass
+        assert switch(live_client, revoked_jar).get("/api/auth/me").status_code == 401

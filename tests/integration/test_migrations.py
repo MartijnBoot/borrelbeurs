@@ -628,3 +628,55 @@ def test_0016_gives_the_existing_settings_row_the_screen_switch_off(
 
     _in_transaction(empty_database, read_columns)
     assert columns == []
+
+
+def test_0017_admits_the_organiser_role_and_keeps_the_old_keys(
+    empty_database: str, alembic: RunAlembic
+) -> None:
+    """B-13 T1 (SD1, AC3; plan PD1): keys of the four old roles keep their role across
+    0017; `organiser` is accepted at head; the downgrade refuses while an organiser
+    row exists, revoked or not, and once it is gone restores the four-role CHECK."""
+    assert alembic(empty_database, "upgrade", "0016").returncode == 0
+    old_roles = ("display", "bar", "admin", "kassa")
+
+    async def old_keys(connection: AsyncConnection) -> None:
+        for role in old_roles:
+            await connection.execute(
+                text("INSERT INTO auth_key (label, role, secret_hash) VALUES (:r, :r, :r)"),
+                {"r": role},
+            )
+
+    _in_transaction(empty_database, old_keys)
+    step = alembic(empty_database, "upgrade", "head")
+    assert step.returncode == 0, step.stderr
+
+    found: list[tuple[str, str]] = []
+
+    async def read(connection: AsyncConnection) -> None:
+        result = await connection.execute(text("SELECT label, role FROM auth_key ORDER BY key_id"))
+        found.extend((str(row[0]), str(row[1])) for row in result)
+
+    _in_transaction(empty_database, read)
+    assert found == [(role, role) for role in old_roles]
+
+    async def organiser_key(connection: AsyncConnection) -> None:
+        await connection.execute(
+            text(
+                "INSERT INTO auth_key (label, role, secret_hash, revoked_at) "
+                "VALUES ('O', 'organiser', 'o', now())"
+            )
+        )
+
+    async def remove_it(connection: AsyncConnection) -> None:
+        await connection.execute(text("DELETE FROM auth_key WHERE role = 'organiser'"))
+
+    _in_transaction(empty_database, organiser_key)
+    refused = alembic(empty_database, "downgrade", "-1")
+    assert refused.returncode != 0, "the downgrade must fail loudly while an organiser key exists"
+    assert "auth_key_role_check" in refused.stderr
+
+    _in_transaction(empty_database, remove_it)
+    step = alembic(empty_database, "downgrade", "-1")
+    assert step.returncode == 0, step.stderr
+    with pytest.raises(IntegrityError, match="auth_key_role_check"):
+        _in_transaction(empty_database, organiser_key)

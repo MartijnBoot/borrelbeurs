@@ -35,7 +35,7 @@ REQUIRE_ROLE_MARKER: Final = "__require_role__"
 # this marker, which the route audit accepts beside `require_role`'s.
 REQUIRE_WALLET_MARKER: Final = "__require_wallet__"
 WALLET_COOKIE: Final = "bb_wallet"
-ALL_ROLES: Final[tuple[Role, ...]] = ("display", "bar", "admin", "kassa")
+ALL_ROLES: Final[tuple[Role, ...]] = ("display", "bar", "admin", "kassa", "organiser")
 # The roles that read the market's own routes (`GET /api/news`). `kassa` (B-05 SD7)
 # keeps only the session's routes and the market feed (`/ws`, `GET /api/state`,
 # plan PD1 reading A), so widening `ALL_ROLES` grants it nothing else.

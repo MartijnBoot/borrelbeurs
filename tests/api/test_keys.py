@@ -289,7 +289,21 @@ def test_an_unknown_key_is_404(client: TestClient, login: Login) -> None:
     assert response.json()["error"]["code"] == "key_not_found"
 
 
-@pytest.mark.parametrize("role", ["display", "bar"])
+def test_admin_creates_an_organiser_key(client: TestClient, login: Login) -> None:
+    """B-13 AC2: the fifth role through `POST /api/keys`, listed with its role."""
+    admin = login("admin")
+
+    response = admin.post("/api/keys", json={"role": "organiser", "label": "Organisatie"})
+
+    assert response.status_code == 201, response.text
+    created = response.json()
+    listed = admin.get("/api/keys").json()
+    row = next(k for k in listed if k["key_id"] == created["key_id"])
+    assert row["role"] == "organiser" and row["label"] == "Organisatie"
+
+
+# B-13 AC2: the organiser and the kassa make no keys either.
+@pytest.mark.parametrize("role", ["display", "bar", "kassa", "organiser"])
 def test_other_roles_are_403(client: TestClient, login: Login, role: str) -> None:
     session = login(role)
 

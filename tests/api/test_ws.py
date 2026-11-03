@@ -103,6 +103,27 @@ def test_hello_then_snapshot_when_the_client_hello_is_foreign(
     assert snap["seq"] == hello["seq"] == client.app.state.hub.seq  # type: ignore[attr-defined]
 
 
+def test_an_organiser_socket_says_its_role_and_gets_the_bars_snapshot(
+    live_client: TestClient, issued_key: IssueKey
+) -> None:
+    """B-13 AC18: the same messages as a bar socket; the hello carries its role."""
+    received: dict[str, tuple[Any, Any]] = {}
+    for role in ("bar", "organiser"):
+        live_client.cookies.clear()
+        key = issued_key(role).key
+        assert live_client.post("/api/auth/login", json={"key": key}).status_code == 200
+        with _connect(live_client) as ws:
+            hello = json.loads(ws.receive_text())
+            ws.send_text(json.dumps({"type": "hello", "boot_id": "elsewhere", "last_seq": 0}))
+            received[role] = (hello, json.loads(ws.receive_text()))
+
+    (bar_hello, bar_snap), (hello, snap) = received["bar"], received["organiser"]
+    assert hello["data"]["role"] == "organiser"
+    assert {**hello["data"], "role": "bar"} == bar_hello["data"]
+    assert snap["type"] == "snapshot"
+    assert snap["data"] == bar_snap["data"]
+
+
 def test_a_current_hello_gets_exactly_the_missed_broadcasts_and_no_snapshot(
     live_client: TestClient, login: Login, advance: Advance
 ) -> None:

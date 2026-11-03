@@ -343,11 +343,11 @@ async def _auth_key(connection: AsyncConnection, *, role: str = "bar", label: st
     return int(result.scalar_one())
 
 
-def test_the_four_roles_are_accepted(database_url: str) -> None:
-    """B-05 SD7 adds `kassa`."""
+def test_the_five_roles_are_accepted(database_url: str) -> None:
+    """B-05 SD7 adds `kassa`, B-13 SD1 `organiser`."""
 
     async def write(connection: AsyncConnection) -> None:
-        for role in ("display", "bar", "admin", "kassa"):
+        for role in ("display", "bar", "admin", "kassa", "organiser"):
             await _auth_key(connection, role=role)
 
     _in_transaction(database_url, write)

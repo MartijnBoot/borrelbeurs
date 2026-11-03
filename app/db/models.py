@@ -280,7 +280,10 @@ class AuthKey(Base):
 
     __tablename__ = "auth_key"
     __table_args__ = (
-        CheckConstraint("role IN ('display', 'bar', 'admin', 'kassa')", name="auth_key_role_check"),
+        CheckConstraint(
+            "role IN ('display', 'bar', 'admin', 'kassa', 'organiser')",
+            name="auth_key_role_check",
+        ),
         CheckConstraint("char_length(label) BETWEEN 1 AND 100", name="auth_key_label_check"),
         UniqueConstraint("secret_hash", name="auth_key_secret_hash_key"),
     )

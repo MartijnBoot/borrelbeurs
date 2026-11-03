@@ -19,8 +19,9 @@ from tests.api.conftest import IssueKey
 from tests.meta.test_route_authorization import PUBLIC_ROUTES, flatten
 
 # B-05 SD7 (plan PD1 reading A): a kassa session keeps its own routes and the market
-# feed; every other route below is 403 for it (AC36).
-ALL: Final = frozenset({"display", "bar", "admin", "kassa"})
+# feed; every other route below is 403 for it (AC36). B-13 SD1: the organiser is a
+# session like any other.
+ALL: Final = frozenset({"display", "bar", "admin", "kassa", "organiser"})
 MARKET: Final = frozenset({"display", "bar", "admin"})
 WRITERS: Final = frozenset({"bar", "admin"})
 ADMIN: Final = frozenset({"admin"})
@@ -108,7 +109,7 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
 # `require_wallet`, and every crew session without a wallet cookie is 401 there.
 WALLET_ROUTES: Final = frozenset({("GET", "/api/wallet"), ("DELETE", "/api/wallet")})
 
-ACTORS: Final = ("anonymous", "revoked", "display", "bar", "admin", "kassa")
+ACTORS: Final = ("anonymous", "revoked", "display", "bar", "admin", "kassa", "organiser")
 
 
 def _served_routes(client: TestClient) -> set[tuple[str, str]]:
@@ -131,7 +132,7 @@ def test_the_table_covers_every_served_route(client: TestClient) -> None:
     assert _served_routes(client) >= WALLET_ROUTES
 
 
-@pytest.mark.parametrize("actor", ["anonymous", "display", "bar", "kassa", "admin"])
+@pytest.mark.parametrize("actor", ["anonymous", "display", "bar", "kassa", "organiser", "admin"])
 @pytest.mark.parametrize(("method", "path"), sorted(WALLET_ROUTES))
 def test_a_player_route_needs_the_wallet_cookie_not_a_session(
     client: TestClient, issued_key: IssueKey, method: str, path: str, actor: str

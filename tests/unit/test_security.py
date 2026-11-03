@@ -43,6 +43,17 @@ def test_the_role_route_table_is_sd2s() -> None:
             "/kassa",
         ),
         "kassa": ("/kassa",),
+        # B-13 SD3: setup and the cash desk, not Beheer or Analyse.
+        "organiser": (
+            "/",
+            "/koers",
+            "/bar",
+            "/manipulation",
+            "/settings",
+            "/settings/spel",
+            "/settings/wallets",
+            "/kassa",
+        ),
     }
 
 
