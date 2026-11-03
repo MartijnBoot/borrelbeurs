@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.core.config import Settings
 from app.db import wallets
+from app.db.keys import Role
 from app.db.runs import create_draft_run
 from app.db.session import create_engine
 from app.db.wallets import EntryKind, WalletRow, WalletSettingsRow, at
@@ -510,3 +511,43 @@ def test_the_admin_writes_while_draining_are_503_and_write_nothing(
     assert [w["name"] for w in _overview(admin)["wallets"]] == ["Jan"]
     stored = admin.get("/api/admin/wallet-settings").json()
     assert (stored["signup_code"], stored["show_signup_on_screen"]) == (None, False)
+
+
+# --- B-13 T4: the kassa and the organiser (SD8; AC13) -------------------------------
+
+
+@pytest.mark.parametrize("role", ["kassa", "organiser"])
+def test_the_kassa_and_the_organiser_hold_the_wallet_routes_as_admin_does(
+    live_run: int, login: Login, settings: Settings, api_env: str, role: Role
+) -> None:
+    """The list, the settings read and write, and a delete with the key on the closing."""
+    jan = _wallet(settings, api_env, "Jan")
+    _entry(settings, api_env, jan.wallet_id, 1200, run_id=live_run)
+    expected = _overview(login("admin"))
+    session = login(role, "Kassa 1")
+
+    assert _overview(session) == expected
+    body = _settings_body(signup_code="ABC", show_signup_on_screen=True)
+    assert session.put("/api/admin/wallet-settings", json=body).json() == body
+    assert session.get("/api/admin/wallet-settings").json() == body
+    assert session.delete(f"/api/admin/wallets/{jan.wallet_id}").status_code == 204
+    assert _sql(
+        settings,
+        api_env,
+        "SELECT kind, amount_cents, actor_label FROM wallet_entry WHERE kind = 'closing'",
+    ) == [("closing", -1200, "Kassa 1")]
+
+
+@pytest.mark.parametrize("role", ["display", "bar"])
+def test_the_bar_and_the_display_hold_no_wallet_route(
+    login: Login, settings: Settings, api_env: str, role: Role
+) -> None:
+    """AC13: still 403, and nothing written."""
+    jan = _wallet(settings, api_env, "Jan")
+    session = login(role)
+
+    assert session.get("/api/admin/wallets").status_code == 403
+    assert session.get("/api/admin/wallet-settings").status_code == 403
+    assert session.put("/api/admin/wallet-settings", json=_settings_body()).status_code == 403
+    assert session.delete(f"/api/admin/wallets/{jan.wallet_id}").status_code == 403
+    assert _sql(settings, api_env, "SELECT name FROM wallet") == [("Jan",)]

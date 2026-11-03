@@ -42,7 +42,8 @@ def test_the_role_route_table_is_sd2s() -> None:
             "/analytics",
             "/kassa",
         ),
-        "kassa": ("/kassa",),
+        # B-13 SD4: Mensen en wallets, without Betalen.
+        "kassa": ("/kassa", "/settings", "/settings/wallets"),
         # B-13 SD3: setup and the cash desk, not Beheer or Analyse.
         "organiser": (
             "/",

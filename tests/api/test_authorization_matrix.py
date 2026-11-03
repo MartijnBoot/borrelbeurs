@@ -26,10 +26,13 @@ ALL: Final = frozenset({"display", "bar", "admin", "kassa", "organiser"})
 MARKET: Final = frozenset({"display", "bar", "admin"})
 WRITERS: Final = frozenset({"bar", "admin"})
 ADMIN: Final = frozenset({"admin"})
-# B-05 SD7.
-KASSA: Final = frozenset({"kassa", "admin"})
-# B-06 SD9: the bar within its limits, the kassa and admin at any age.
-REFUNDERS: Final = frozenset({"bar", "kassa", "admin"})
+# B-05 SD7; B-13 SD8: the organiser has the full cash desk.
+KASSA: Final = frozenset({"kassa", "organiser", "admin"})
+# B-06 SD9: the bar within its limits, the kassa and admin at any age; B-13 SD10:
+# the organiser as the kassa.
+REFUNDERS: Final = frozenset({"bar", "kassa", "organiser", "admin"})
+# B-13 SD8: the wallet settings and the wallets list, for kassa and organiser too.
+WALLET_ADMIN: Final = frozenset({"organiser", "kassa", "admin"})
 # B-13 SD5, SD6, SD11: setting up a night.
 SETUP: Final = frozenset({"organiser", "admin"})
 
@@ -98,10 +101,10 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     ("POST", "/api/kassa/wallets/{wallet_id}/move"): KASSA,
     ("POST", "/api/kassa/wallets/{wallet_id}/new-code"): KASSA,
     # B-05 SD6, SD15, SD16.
-    ("GET", "/api/admin/wallets"): ADMIN,
-    ("DELETE", "/api/admin/wallets/{wallet_id}"): ADMIN,
-    ("GET", "/api/admin/wallet-settings"): ADMIN,
-    ("PUT", "/api/admin/wallet-settings"): ADMIN,
+    ("GET", "/api/admin/wallets"): WALLET_ADMIN,
+    ("DELETE", "/api/admin/wallets/{wallet_id}"): WALLET_ADMIN,
+    ("GET", "/api/admin/wallet-settings"): WALLET_ADMIN,
+    ("PUT", "/api/admin/wallet-settings"): WALLET_ADMIN,
     # B-06 SD9, SD13 (PD9).
     ("POST", "/api/bar/wallet-lookup"): WRITERS,
     ("GET", "/api/bar/payments"): WRITERS,
