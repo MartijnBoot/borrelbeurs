@@ -11,7 +11,7 @@ transaction.
 
 422 naming the field (SD8); 409 `duplicate_drink_name`; 404 `run_not_found`,
 `drink_not_found`; 409 `run_ended`, `drink_removed`, `last_active_drink`.
-Admin only. Refuses while draining (SD24).
+Admin and organiser (B-13 SD5). Refuses while draining (SD24).
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ async def post_drink(
     run_id: int,
     body: DrinkCreate,
     request: Request,
-    principal: Annotated[Principal, Depends(require_role("admin"))],
+    principal: Annotated[Principal, Depends(require_role("organiser", "admin"))],
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> CreatedDrink:
     holder: MarketHolder = request.app.state.holder
@@ -60,7 +60,7 @@ async def patch_drink(
     drink_id: int,
     body: DrinkPatch,
     request: Request,
-    principal: Annotated[Principal, Depends(require_role("admin"))],
+    principal: Annotated[Principal, Depends(require_role("organiser", "admin"))],
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> RevisionData:
     holder: MarketHolder = request.app.state.holder
@@ -80,7 +80,7 @@ async def delete_drink(
     run_id: int,
     drink_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(require_role("admin"))],
+    principal: Annotated[Principal, Depends(require_role("organiser", "admin"))],
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> RevisionData:
     holder: MarketHolder = request.app.state.holder

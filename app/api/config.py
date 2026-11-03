@@ -16,8 +16,8 @@ a draft (B-04 SD3) and returns `{revision}`, the current one when nothing
 changed: 409 `run_not_draft` for a live or ended run, 404 `profile_not_found`,
 422 naming a stored value outside today's rules, each writing nothing.
 
-404 `run_not_found`; 409 `run_ended`. Admin only. The writes refuse while
-draining (SD24).
+404 `run_not_found`; 409 `run_ended`. Admin, and the organiser (B-13 SD5, SD6).
+The writes refuse while draining (SD24).
 """
 
 from __future__ import annotations
@@ -57,7 +57,9 @@ class LoadProfileRequest(BaseModel):
 
 @router.get("/{run_id}/config")
 async def get_config(
-    run_id: int, request: Request, _: Annotated[Principal, Depends(require_role("admin"))]
+    run_id: int,
+    request: Request,
+    _: Annotated[Principal, Depends(require_role("organiser", "admin"))],
 ) -> ConfigData:
     return await read_config(db_engine(request), run_id)
 
@@ -99,7 +101,7 @@ async def post_profile_load(
     run_id: int,
     body: LoadProfileRequest,
     request: Request,
-    principal: Annotated[Principal, Depends(require_role("admin"))],
+    principal: Annotated[Principal, Depends(require_role("organiser", "admin"))],
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> RevisionData:
     revision = await load_profile_onto_draft(

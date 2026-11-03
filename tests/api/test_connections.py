@@ -11,15 +11,18 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from app.db.keys import Role
 from tests.api.conftest import Login, MintKey
 from tests.api.test_keys import sign_in, switch
 from tests.support.clock import FakeClock
 
 
+# B-13 SD11, AC9: the organiser reads the home page's panel as admin does.
+@pytest.mark.parametrize("viewer", ["admin", "organiser"])
 def test_connections_lists_a_connected_display(
-    live_client: TestClient, login: Login, mint_key: MintKey, clock: FakeClock
+    live_client: TestClient, login: Login, mint_key: MintKey, clock: FakeClock, viewer: Role
 ) -> None:
-    admin = sign_in(live_client, mint_key("admin"))
+    admin = sign_in(live_client, mint_key(viewer))
     assert live_client.get("/api/admin/connections").json() == []
     sign_in(live_client, mint_key("display", "Beamer"))
 

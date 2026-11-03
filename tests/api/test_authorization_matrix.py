@@ -29,6 +29,8 @@ ADMIN: Final = frozenset({"admin"})
 KASSA: Final = frozenset({"kassa", "admin"})
 # B-06 SD9: the bar within its limits, the kassa and admin at any age.
 REFUNDERS: Final = frozenset({"bar", "kassa", "admin"})
+# B-13 SD5, SD6, SD11: setting up a night.
+SETUP: Final = frozenset({"organiser", "admin"})
 
 # SD1, verbatim. (method, path) -> roles allowed.
 SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
@@ -44,34 +46,34 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     ("POST", "/api/market/events"): WRITERS,
     ("POST", "/api/admin/shutdown"): ADMIN,
     # Phase 4 SD5.
-    ("PUT", "/api/theme"): ADMIN,
+    ("PUT", "/api/theme"): SETUP,
     # Phase 5 SD19.
     ("GET", "/api/earnings/series"): WRITERS,
     # Phase 6 SD2, SD4 (PD2).
-    ("POST", "/api/runs"): ADMIN,
-    ("GET", "/api/runs/current"): ADMIN,
-    ("POST", "/api/runs/{run_id}/go-live"): ADMIN,
+    ("POST", "/api/runs"): SETUP,
+    ("GET", "/api/runs/current"): SETUP,
+    ("POST", "/api/runs/{run_id}/go-live"): SETUP,
     # Phase 6 SD5.
-    ("GET", "/api/runs/{run_id}/config"): ADMIN,
+    ("GET", "/api/runs/{run_id}/config"): SETUP,
     ("PATCH", "/api/runs/{run_id}/config"): ADMIN,
-    ("POST", "/api/runs/{run_id}/drinks"): ADMIN,
-    ("PATCH", "/api/runs/{run_id}/drinks/{drink_id}"): ADMIN,
-    ("DELETE", "/api/runs/{run_id}/drinks/{drink_id}"): ADMIN,
+    ("POST", "/api/runs/{run_id}/drinks"): SETUP,
+    ("PATCH", "/api/runs/{run_id}/drinks/{drink_id}"): SETUP,
+    ("DELETE", "/api/runs/{run_id}/drinks/{drink_id}"): SETUP,
     ("POST", "/api/runs/{run_id}/anchor-s0"): ADMIN,
     # Phase 6 SD30, AC41.
     ("GET", "/api/keys"): ADMIN,
     ("POST", "/api/keys"): ADMIN,
     ("DELETE", "/api/keys/{key_id}"): ADMIN,
-    ("GET", "/api/admin/connections"): ADMIN,
+    ("GET", "/api/admin/connections"): SETUP,
     # Phase 6 SD29.
-    ("POST", "/api/theme/images/{slot}"): ADMIN,
-    ("DELETE", "/api/theme/images/{slot}"): ADMIN,
+    ("POST", "/api/theme/images/{slot}"): SETUP,
+    ("DELETE", "/api/theme/images/{slot}"): SETUP,
     # Phase 7 SD2.
-    ("POST", "/api/runs/{run_id}/close"): ADMIN,
+    ("POST", "/api/runs/{run_id}/close"): SETUP,
     # Phase 7 SD3.
     ("DELETE", "/api/runs/{run_id}"): ADMIN,
     # Phase 7 SD12.
-    ("GET", "/api/analytics/runs"): ADMIN,
+    ("GET", "/api/analytics/runs"): SETUP,
     ("GET", "/api/analytics/runs/{run_id}"): ADMIN,
     ("GET", "/api/analytics/compare"): ADMIN,
     ("GET", "/api/analytics/price-curve"): ADMIN,
@@ -80,10 +82,10 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     ("GET", "/api/exports/{export_id}"): ADMIN,
     ("GET", "/api/exports/{export_id}/file"): ADMIN,
     # B-04 SD14.
-    ("GET", "/api/profiles"): ADMIN,
+    ("GET", "/api/profiles"): SETUP,
     ("POST", "/api/profiles"): ADMIN,
     ("DELETE", "/api/profiles/{profile_id}"): ADMIN,
-    ("POST", "/api/runs/{run_id}/profile"): ADMIN,
+    ("POST", "/api/runs/{run_id}/profile"): SETUP,
     # B-05 SD7, SD10, SD22.
     ("POST", "/api/kassa/lookup"): KASSA,
     ("GET", "/api/kassa/wallets/{wallet_id}/topups"): KASSA,

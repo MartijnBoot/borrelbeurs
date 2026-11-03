@@ -8,7 +8,8 @@ name is taken and `overwrite` is not set, 404 `run_not_found`, 409 `run_ended`,
 422 naming a run value outside today's rules. `DELETE /api/profiles/{profile_id}`
 removes one, 204, or 404 `profile_not_found`.
 
-Admin only. The writes refuse while draining (SD24).
+Admin only; the organiser may list (B-13 SD6). The writes refuse while draining
+(SD24).
 """
 
 from __future__ import annotations
@@ -53,7 +54,7 @@ def _data(row: ProfileRow) -> ProfileData:
 
 @router.get("")
 async def get_profiles(
-    request: Request, _: Annotated[Principal, Depends(require_role("admin"))]
+    request: Request, _: Annotated[Principal, Depends(require_role("organiser", "admin"))]
 ) -> list[ProfileData]:
     async with db_engine(request).connect() as conn:
         return [_data(row) for row in await list_profiles(conn)]

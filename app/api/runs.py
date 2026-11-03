@@ -25,7 +25,8 @@ process (`app/runtime/close.py`, Phase 7 SD2): 404 `run_not_found`, 409
 everything it owns (`delete_run`, Phase 7 SD3), answering 204: 404
 `run_not_found`, 409 `run_live`, 422 `name_mismatch`, each removing nothing.
 
-Admin only. The writes refuse while draining (SD24).
+Admin and organiser (B-13 SD5), but the delete is admin only. The writes refuse
+while draining (SD24).
 """
 
 from __future__ import annotations
@@ -75,7 +76,7 @@ class RunSummaryData(BaseModel):
 async def post_run(
     body: CreateRunRequest,
     request: Request,
-    principal: Annotated[Principal, Depends(require_role("admin"))],
+    principal: Annotated[Principal, Depends(require_role("organiser", "admin"))],
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> RunSummaryData:
     run_id = await create_run(
@@ -90,7 +91,7 @@ async def post_run(
 
 @router.get("/current")
 async def get_current_run(
-    request: Request, _: Annotated[Principal, Depends(require_role("admin"))]
+    request: Request, _: Annotated[Principal, Depends(require_role("organiser", "admin"))]
 ) -> RunSummaryData:
     async with db_engine(request).connect() as conn:
         run = await current_run(conn)
@@ -103,7 +104,7 @@ async def get_current_run(
 async def post_go_live(
     run_id: int,
     request: Request,
-    principal: Annotated[Principal, Depends(require_role("admin"))],
+    principal: Annotated[Principal, Depends(require_role("organiser", "admin"))],
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> RunSummaryData:
     await go_live_in_process(request.app.state, run_id, author=principal.label)
@@ -118,7 +119,7 @@ async def post_close(
     run_id: int,
     body: ConfirmNameRequest,
     request: Request,
-    principal: Annotated[Principal, Depends(require_role("admin"))],
+    principal: Annotated[Principal, Depends(require_role("organiser", "admin"))],
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> RunSummaryData:
     run = await close_in_process(

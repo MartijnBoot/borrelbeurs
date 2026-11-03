@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.core.config import Settings
+from app.db.keys import Role
 from app.db.session import create_engine
 from app.runtime.clock import Clock
 from app.runtime.grace import QuotedLine
@@ -70,6 +71,8 @@ def _until(ws: Any, kind: str, limit: int = 30) -> dict[str, Any]:
     raise AssertionError(f"no {kind} within {limit} frames")
 
 
+# B-13 SD5, AC10: the organiser closes as admin does.
+@pytest.mark.parametrize("role", ["admin", "organiser"])
 def test_a_close_ends_the_run_and_unloads_it(
     live_client: TestClient,
     live_run: int,
@@ -77,12 +80,15 @@ def test_a_close_ends_the_run_and_unloads_it(
     settings: Settings,
     api_env: str,
     advance: Advance,
+    role: Role,
 ) -> None:
     """AC1: ended on the app clock, events ended, one final export queued, no more ticks."""
-    admin = login("admin", label="Bestuur")
-    assert admin.post(
-        "/api/market/events", json={"kind": "crash", "duration_ms": 60_000}
-    ).is_success
+    assert (
+        login("admin")
+        .post("/api/market/events", json={"kind": "crash", "duration_ms": 60_000})
+        .is_success
+    )
+    admin = login(role, label="Bestuur")
     advance(2_500)
     now = live_client.app.state.clock.wall_ms()  # type: ignore[attr-defined]
 
@@ -120,6 +126,8 @@ def test_a_close_ends_the_run_and_unloads_it(
         ("draining", 503, "shutting_down"),
     ],
 )
+# B-13 AC10: a wrong name fails for the organiser as for admin.
+@pytest.mark.parametrize("role", ["admin", "organiser"])
 def test_each_refusal_changes_nothing(
     case: str,
     status: int,
@@ -129,12 +137,15 @@ def test_each_refusal_changes_nothing(
     login: Login,
     settings: Settings,
     api_env: str,
+    role: Role,
 ) -> None:
     """AC2: status, ended_at, event and export counts and the holder are as before."""
-    admin = login("admin")
-    assert admin.post(
-        "/api/market/events", json={"kind": "bubble", "duration_ms": 60_000}
-    ).is_success
+    assert (
+        login("admin")
+        .post("/api/market/events", json={"kind": "bubble", "duration_ms": 60_000})
+        .is_success
+    )
+    admin = login(role)
     target, name = live_run, "Borrel"
     if case == "unknown":
         target = 999_999

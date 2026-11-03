@@ -13,11 +13,13 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.core.config import Settings
 from app.db import wallets
+from app.db.keys import Role
 from app.db.session import create_engine
 from app.runtime.wallet_codes import cookie_hash
 from tests.api.conftest import Login
@@ -57,12 +59,14 @@ def _order(client: TestClient, key: str, wallet: dict[str, str] | None = None) -
     return total
 
 
+# B-13 SD11, AC9: the organiser reads Borrel's list of past runs as admin does.
+@pytest.mark.parametrize("role", ["admin", "organiser"])
 def test_the_run_list_on_the_heavy_engine(
-    live_client: TestClient, live_run: int, login: Login
+    live_client: TestClient, live_run: int, login: Login, role: Role
 ) -> None:
     """AC26, AC31: the live run with its sale; no duration while live (PD12)."""
-    admin = login("admin")
-    total = _order(admin, "k-analytics-0001")
+    total = _order(login("admin"), "k-analytics-0001")
+    admin = login(role)
     spy = _spy_heavy(live_client)
 
     response = admin.get("/api/analytics/runs")
@@ -172,3 +176,13 @@ def test_an_unknown_run_is_404(live_client: TestClient, login: Login) -> None:
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "run_not_found"
+
+
+def test_the_organiser_reads_no_other_analytics_or_export_route(
+    live_client: TestClient, live_run: int, login: Login
+) -> None:
+    """B-13 SD11, AC9: the run list only; the detail and the exports stay admin's."""
+    organiser = login("organiser")
+
+    assert organiser.get(f"/api/analytics/runs/{live_run}").status_code == 403
+    assert organiser.get(f"/api/runs/{live_run}/exports").status_code == 403
