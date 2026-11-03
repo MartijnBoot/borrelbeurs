@@ -43,12 +43,16 @@ type CurrentRun = z.infer<typeof CurrentRun>
 const Health = z.object({ status: z.string(), last_tick_age_ms: z.number().nullable() })
 type Health = z.infer<typeof Health> | 'stale' | 'unreachable'
 
-const Connections = z.array(z.object({ role: z.enum(['display', 'bar', 'admin', 'kassa']) }))
+const Connections = z.array(
+  z.object({ role: z.enum(['display', 'bar', 'admin', 'kassa', 'organiser']) }),
+)
 
 const ROLES = [
   ['display', 'Scherm'],
   ['bar', 'Bar'],
   ['kassa', 'Kassa'],
+  // B-13 SD13: beside Beheer, nearest its rights.
+  ['organiser', 'Organisator'],
   ['admin', 'Beheer'],
 ] as const
 

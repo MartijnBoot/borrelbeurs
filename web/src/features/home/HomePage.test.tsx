@@ -15,6 +15,7 @@ const HEALTH = { status: 'ok', last_tick_age_ms: 400, last_commit_age_ms: 900 }
 const BAR = { role: 'bar', label: 'Tap 1', connected_at_ms: 0, last_seen_ms: 0 }
 const DISPLAY = { role: 'display', label: 'Scherm', connected_at_ms: 0, last_seen_ms: 0 }
 const KASSA = { role: 'kassa', label: 'Kassa 1', connected_at_ms: 0, last_seen_ms: 0 }
+const ORGANISER = { role: 'organiser', label: 'Organisatie', connected_at_ms: 0, last_seen_ms: 0 }
 
 // Vitest runs in Node; `src/` has no Node types, so the one call this file needs is typed here.
 type Listener = (reason: unknown) => void
@@ -114,7 +115,17 @@ describe('HomePage', () => {
   it('counts kassa connections between Bar and Beheer (B-05 SD22, AC40)', async () => {
     connections = [BAR, KASSA, KASSA, DISPLAY]
     await open()
-    expect(within(status()).getByText(/Scherm: 1, Bar: 1, Kassa: 2, Beheer: 0/)).toBeTruthy()
+    expect(
+      within(status()).getByText(/Scherm: 1, Bar: 1, Kassa: 2, Organisator: 0, Beheer: 0/),
+    ).toBeTruthy()
+  })
+
+  it('counts organiser connections under "Organisator", before Beheer (B-13 AC21)', async () => {
+    connections = [BAR, ORGANISER, DISPLAY]
+    await open()
+    expect(
+      within(status()).getByText(/Scherm: 1, Bar: 1, Kassa: 0, Organisator: 1, Beheer: 0/),
+    ).toBeTruthy()
   })
 
   it('polls health and connections every 5 s, and stops on unmount', async () => {
