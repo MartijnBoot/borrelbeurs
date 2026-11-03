@@ -18,16 +18,24 @@ changed: 409 `run_not_draft` for a live or ended run, 404 `profile_not_found`,
 
 404 `run_not_found`; 409 `run_ended`. Admin, and the organiser (B-13 SD5, SD6).
 The writes refuse while draining (SD24).
+
+For an organiser the PATCH is cut by field (B-13 SD7): the body may hold only
+`ORGANISER_CONFIG_FIELDS`. Any other key, a `params` key included, is 403
+`forbidden` naming it, with `fields` listing every one. The check is a
+dependency, so it runs before the body is validated against `ConfigPatch`: a
+refused field is 403 whatever its value, and nothing is written or broadcast.
 """
 
 from __future__ import annotations
 
-from typing import Annotated
+import json
+from typing import Annotated, Final
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, JsonValue
 
 from app.api.deps import (
+    Forbidden,
     Principal,
     clock_of,
     db_engine,
@@ -47,6 +55,48 @@ from app.runtime.config import (
 from app.runtime.holder import MarketHolder
 
 router = APIRouter(prefix="/runs", tags=["config"])
+
+# B-13 SD7: what an organiser's `PATCH /config` may carry; a `params` key is dotted.
+ORGANISER_CONFIG_FIELDS: Final = frozenset(
+    {"name", "wallet_required", "credit_limit_cents", "params.step_quant"}
+)
+_TOP_LEVEL: Final = frozenset(field for field in ORGANISER_CONFIG_FIELDS if "." not in field)
+
+
+def _refused_fields(body: object) -> list[str]:
+    """The body's fields outside `ORGANISER_CONFIG_FIELDS`, dotted and sorted.
+
+    A body or `params` that is not an object names no field: it is left to
+    `ConfigPatch`'s 422, as for admin.
+    """
+    if not isinstance(body, dict):
+        return []
+    refused = [key for key in body if key != "params" and key not in _TOP_LEVEL]
+    params = body.get("params")
+    if isinstance(params, dict):
+        dotted = (f"params.{key}" for key in params)
+        refused += [field for field in dotted if field not in ORGANISER_CONFIG_FIELDS]
+    return sorted(refused)
+
+
+_config_writer = require_role("organiser", "admin")
+
+
+async def config_writer(
+    request: Request, principal: Annotated[Principal, Depends(_config_writer)]
+) -> Principal:
+    """`PATCH /config`'s role check, then SD7's field check for an organiser."""
+    if principal.role != "organiser":
+        return principal
+    try:
+        body = json.loads(await request.body() or b"null")
+    except ValueError:
+        return principal  # not JSON: FastAPI's own 422
+    refused = _refused_fields(body)
+    if refused:
+        fields: list[JsonValue] = list(refused)
+        raise Forbidden(f"the organiser may not set {refused[0]}", extra={"fields": fields})
+    return principal
 
 
 class LoadProfileRequest(BaseModel):
@@ -69,7 +119,7 @@ async def patch_config(
     run_id: int,
     body: ConfigPatch,
     request: Request,
-    principal: Annotated[Principal, Depends(require_role("admin"))],
+    principal: Annotated[Principal, Depends(config_writer)],
     _draining: Annotated[None, Depends(refuse_while_draining)],
 ) -> RevisionData:
     holder: MarketHolder = request.app.state.holder

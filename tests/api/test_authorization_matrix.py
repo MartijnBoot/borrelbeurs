@@ -14,6 +14,7 @@ from typing import Final
 import pytest
 from fastapi.testclient import TestClient
 
+from app.api import config
 from app.cli.keys import main as keys_main
 from tests.api.conftest import IssueKey
 from tests.meta.test_route_authorization import PUBLIC_ROUTES, flatten
@@ -55,7 +56,8 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     ("POST", "/api/runs/{run_id}/go-live"): SETUP,
     # Phase 6 SD5.
     ("GET", "/api/runs/{run_id}/config"): SETUP,
-    ("PATCH", "/api/runs/{run_id}/config"): ADMIN,
+    # B-13 SD7: for an organiser, cut by field (ORGANISER_CONFIG_FIELDS below).
+    ("PATCH", "/api/runs/{run_id}/config"): SETUP,
     ("POST", "/api/runs/{run_id}/drinks"): SETUP,
     ("PATCH", "/api/runs/{run_id}/drinks/{drink_id}"): SETUP,
     ("DELETE", "/api/runs/{run_id}/drinks/{drink_id}"): SETUP,
@@ -107,6 +109,11 @@ SD1: Final[dict[tuple[str, str], frozenset[str]]] = {
     ("GET", "/api/kassa/wallets/{wallet_id}/payments"): KASSA,
 }
 
+# B-13 SD7, verbatim: the only fields an organiser's `PATCH /config` may carry.
+ORGANISER_CONFIG_FIELDS: Final = frozenset(
+    {"name", "wallet_required", "credit_limit_cents", "params.step_quant"}
+)
+
 # B-05 SD8: the player's own routes. A player is not a role: these carry
 # `require_wallet`, and every crew session without a wallet cookie is 401 there.
 WALLET_ROUTES: Final = frozenset({("GET", "/api/wallet"), ("DELETE", "/api/wallet")})
@@ -123,6 +130,11 @@ def _served_routes(client: TestClient) -> set[tuple[str, str]]:
         elif type(getattr(route, "original_route", route)).__name__.endswith("WebSocketRoute"):
             keys.add(("WS", route.path))
     return keys
+
+
+def test_the_organisers_config_fields_are_sd7s() -> None:
+    """B-13 SD7: the app's allowlist is the spec's, field for field."""
+    assert config.ORGANISER_CONFIG_FIELDS == ORGANISER_CONFIG_FIELDS
 
 
 def test_the_table_covers_every_served_route(client: TestClient) -> None:
