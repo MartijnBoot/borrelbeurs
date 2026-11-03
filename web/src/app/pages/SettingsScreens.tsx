@@ -6,8 +6,14 @@
  * its own sections. Vraag/Aanbod is on two screens, a half on each (PD13). Composed here in the app layer, as the one page was,
  * because `features/keys`, `features/wallets` and `features/settings` may not
  * import each other (sibling isolation). The section ids are the old page's.
+ *
+ * B-13: what a role may do is applied here, from the session, as `canEditIdle`
+ * is in `routes.tsx`. Profielen saves and deletes for admin only (SD6, OQ1 = B);
+ * Betalen reads the run's config, so a session without Spelopzet -- the kassa --
+ * gets Mensen en wallets without it (SD4, SD14).
  */
 import { Link } from 'react-router'
+import { useSession } from '../../features/auth'
 import { KeysSection } from '../../features/keys'
 import {
   BorrelSection,
@@ -30,14 +36,16 @@ import { WalletsSection } from '../../features/wallets'
 import styles from './pages.module.css'
 import { settingNames } from './settingNames'
 
+/** Profielen, managed by admin only (B-13 SD6, OQ1 = B). */
+function Profiles() {
+  const { session } = useSession()
+  const canManage = session.status === 'ready' && session.me.role === 'admin'
+  return <ProfilesSection names={settingNames} canManage={canManage} />
+}
+
 const SPELOPZET: readonly SettingsSection[] = [
   { id: 'borrel', label: 'Borrel', content: <BorrelSection names={settingNames} /> },
-  {
-    id: 'profielen',
-    label: 'Profielen',
-    icon: 'floppy',
-    content: <ProfilesSection names={settingNames} />,
-  },
+  { id: 'profielen', label: 'Profielen', icon: 'floppy', content: <Profiles /> },
   { id: 'drankjes', label: 'Drankjes beheren', icon: 'cup', content: <DrinksSection /> },
   // SD4, SD12: Prijsstap above the bounds it constrains, under Min/Max/Startprijs's icon.
   {
@@ -98,7 +106,14 @@ export function SpelopzetPage() {
 }
 
 export function WalletsScreenPage() {
-  return <SettingsScreen sections={WALLETS} />
+  const { session } = useSession()
+  const holdsSpel =
+    session.status === 'ready' && session.me.allowed_routes.includes('/settings/spel')
+  return (
+    <SettingsScreen
+      sections={holdsSpel ? WALLETS : WALLETS.filter((section) => section.id !== 'betalen')}
+    />
+  )
 }
 
 export function BeheerPage() {

@@ -87,8 +87,8 @@ function sent(): [string, string | undefined, unknown][] {
 
 const rows = () => screen.getAllByRole('listitem').map((li) => li.textContent)
 
-async function open() {
-  render(<ProfilesSection names={NAMES} />)
+async function open(canManage = true) {
+  render(<ProfilesSection names={NAMES} canManage={canManage} />)
   await settle()
 }
 
@@ -129,6 +129,18 @@ describe('the list (AC20, SD12)', () => {
 
     expect(document.body.textContent).not.toMatch(/\d,\d|0\.\d/)
     expect(document.body.textContent).not.toContain('Grens ruis')
+  })
+})
+
+// B-13 SD6 (OQ1 = B): the organiser lists and loads, and neither saves nor deletes.
+describe('without canManage', () => {
+  it('lists and loads, with no save form and no "Verwijderen"', async () => {
+    await open(false)
+    expect(rows()).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: 'Verwijderen' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Opslaan als profiel' })).toBeNull()
+    expect(screen.queryByLabelText('Naam')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Laden' })).toBeTruthy()
   })
 })
 
@@ -526,7 +538,7 @@ describe('after a load, the other sections show the loaded values (AC16)', () =>
   async function renderTogether() {
     render(
       <>
-        <ProfilesSection names={NAMES} />
+        <ProfilesSection names={NAMES} canManage />
         <GlobalSection />
         <DemandSwitches />
       </>,
@@ -581,7 +593,7 @@ describe('ProfilesSection: unsaved edits (B-12 T11b)', () => {
     writes = [() => json(201, { ...WILD, profile_id: 3, name: 'Nieuw' })]
     render(
       <UnsavedEditsProvider>
-        <ProfilesSection names={NAMES} />
+        <ProfilesSection names={NAMES} canManage />
         <Unsaved />
       </UnsavedEditsProvider>,
     )

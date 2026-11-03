@@ -18,8 +18,9 @@
 import { act, cleanup, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import explanationsText from '../../features/settings/explanations.json?raw'
+import { SessionProvider } from '../../features/auth'
 import { renderInDataRouter } from '../testRouter'
-import { stubNarrow, stubServer } from './settingsFixture'
+import { SERVED, stubNarrow, stubServer } from './settingsFixture'
 import { BeheerPage, SpelopzetPage, WalletsScreenPage } from './SettingsScreens'
 
 type Control = readonly [section: string, role: string, name: string]
@@ -248,7 +249,15 @@ function expected(screenName: ScreenName): string[] {
 
 beforeEach(() => {
   stubNarrow(false)
-  stubServer()
+  // B-13: the screens read the session; these are admin's.
+  stubServer({
+    ...SERVED,
+    '/api/auth/me': {
+      role: 'admin',
+      label: 'admin key',
+      allowed_routes: ['/settings', '/settings/spel', '/settings/wallets', '/settings/beheer'],
+    },
+  })
 })
 
 afterEach(cleanup)
@@ -265,7 +274,7 @@ describe('the three screens (AC10)', () => {
   it.each(Object.keys(SCREENS) as ScreenName[])(
     '%s holds its old controls and its additions, nothing else',
     async (screenName) => {
-      renderInDataRouter(SCREENS[screenName])
+      renderInDataRouter(<SessionProvider>{SCREENS[screenName]}</SessionProvider>)
       await settle()
       const shown = sections().flatMap((section) =>
         controlsOf(section).map(([role, name]) => `${role} ${name}`),
@@ -284,7 +293,7 @@ describe('the three screens (AC10)', () => {
   it.each(Object.keys(SCREENS) as ScreenName[])(
     '%s: each (i) sits in the section of the control it explains (AC11)',
     async (screenName) => {
-      renderInDataRouter(SCREENS[screenName])
+      renderInDataRouter(<SessionProvider>{SCREENS[screenName]}</SessionProvider>)
       await settle()
       for (const section of sections()) {
         for (const button of within(section).queryAllByRole('button', { name: /^Uitleg: / })) {

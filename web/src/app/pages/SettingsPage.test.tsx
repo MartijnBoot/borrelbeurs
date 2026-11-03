@@ -43,17 +43,32 @@ const TILES = [
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
+// B-13 SD3, SD4.
+const ORGANISER = [
+  '/',
+  '/koers',
+  '/bar',
+  '/manipulation',
+  '/settings',
+  '/settings/spel',
+  '/settings/wallets',
+  '/kassa',
+]
+const KASSA = ['/kassa', '/settings', '/settings/wallets']
+
+let role: string
 let routes: string[]
 let current: () => Response
 
 beforeEach(() => {
+  role = 'admin'
   routes = ADMIN
   current = () => json(200, { run_id: 7, name: 'Vrijmibo', status: 'live' })
   vi.stubGlobal(
     'fetch',
     vi.fn(async (path: string) => {
       if (path === '/api/auth/me') {
-        return json(200, { role: 'admin', label: 'admin key', allowed_routes: routes })
+        return json(200, { role, label: `${role} key`, allowed_routes: routes })
       }
       if (path === '/api/runs/current') return current()
       throw new Error(`unexpected ${path}`)
@@ -102,6 +117,40 @@ describe('the landing (AC5)', () => {
     for (const role of ['textbox', 'spinbutton', 'switch', 'combobox', 'checkbox']) {
       expect(screen.queryAllByRole(role)).toEqual([])
     }
+  })
+})
+
+// B-13 SD14; AC7: the tiles follow `allowed_routes`, and only a session holding
+// Spelopzet reads the current run.
+describe('per role (B-13)', () => {
+  const runCalls = () =>
+    vi.mocked(fetch).mock.calls.filter(([path]) => String(path) === '/api/runs/current').length
+  const hrefs = () => tiles().map((tile) => tile.getAttribute('href'))
+
+  it('the organiser sees Spelopzet and Mensen en wallets, no Beheer, and the status line', async () => {
+    role = 'organiser'
+    routes = ORGANISER
+    await open()
+    expect(hrefs()).toEqual(['/settings/spel', '/settings/wallets'])
+    expect(screen.getByText('Borrel: Vrijmibo (live)')).toBeTruthy()
+  })
+
+  it('the kassa sees one tile, no status line, and asks for no run', async () => {
+    role = 'kassa'
+    routes = KASSA
+    await open()
+    expect(hrefs()).toEqual(['/settings/wallets'])
+    for (const text of [/Borrel/, /Laden/, /Geen actieve borrel/]) {
+      expect(screen.queryByText(text)).toBeNull()
+    }
+    expect(runCalls()).toBe(0)
+  })
+
+  it('admin sees all three tiles and the status line, as before', async () => {
+    await open()
+    expect(hrefs()).toEqual(TILES.map(([, , href]) => href))
+    expect(screen.getByText('Borrel: Vrijmibo (live)')).toBeTruthy()
+    expect(runCalls()).toBe(1)
   })
 })
 
