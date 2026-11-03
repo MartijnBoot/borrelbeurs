@@ -385,6 +385,36 @@ describe('GlobalSection', () => {
       ])
     })
 
+    // B-12 review C1: a value only the server refuses comes back as a 422 for a
+    // field that is not on screen; it says so, as a blocked hidden field does.
+    it('a 422 on a hidden field names it and says to switch the noise on (AC13, AC14)', async () => {
+      refuse(['body', 'params', 'bm_sigma_y'], 'Input should be greater than or equal to 0')
+      await open()
+      fireEvent.change(input('Sterkte ruis'), { target: { value: '-1' } })
+      fireEvent.click(noiseSwitch())
+      await save()
+      expect(patches()).toEqual([{ params: { bm_sigma_y: -1, bm_enabled: false } }])
+      expect(screen.getByRole('alert').textContent).toBe(
+        'Sterkte ruis is leeg of ongeldig. Zet Willekeurige ruis aan om het te verbeteren.',
+      )
+      fireEvent.click(noiseSwitch())
+      expect(screen.queryByText(/Zet Willekeurige ruis aan/)).toBeNull()
+      expect(screen.getByText('Input should be greater than or equal to 0')).toBeTruthy()
+    })
+
+    // B-12 review R1: the line follows the field, not the last save.
+    it('a blocked hidden field fixed with the noise on is not named again when hidden', async () => {
+      await open()
+      fireEvent.change(input('Sterkte ruis'), { target: { value: '' } })
+      fireEvent.click(noiseSwitch())
+      await save()
+      expect(screen.getByText(/Zet Willekeurige ruis aan/)).toBeTruthy()
+      fireEvent.click(noiseSwitch())
+      fireEvent.change(input('Sterkte ruis'), { target: { value: '0,5' } })
+      fireEvent.click(noiseSwitch())
+      expect(screen.queryByText(/Zet Willekeurige ruis aan/)).toBeNull()
+    })
+
     it.each(NOISE_KEYS)('%s has an (i) with its explanation (AC14)', async (key) => {
       const { container } = render(<GlobalSection />)
       await settle()

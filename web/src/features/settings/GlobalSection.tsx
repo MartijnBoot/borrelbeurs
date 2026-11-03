@@ -19,7 +19,10 @@
  * the switch is on. Turning it off discards nothing: a hidden field keeps its
  * edit, and the next save sends it. A hidden field that is empty or invalid
  * blocks the save, and a line per field names it and says to switch the noise
- * on to fix it. This amends B-03 SD5 ("disables none of them").
+ * on to fix it. This amends B-03 SD5 ("disables none of them"). So does a
+ * hidden field the server refused (a 422), since its own message is not on
+ * screen. The lines follow the fields: one fixed with the noise on is not named
+ * again when it hides.
  *
  * B-12 SD3, SD4: Prijsstap, and B-07's confirm with it, is on Spelopzet's
  * Prijzen (`PriceStepSection`), and B-06's "Wallet verplicht" and "Rood staan
@@ -86,23 +89,25 @@ export function GlobalSection() {
   const [faults, setFaults] = useState<Record<string, string>>({})
   const [saveError, setSaveError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  // PD12: hidden noise fields that blocked the last save.
-  const [hiddenFaults, setHiddenFaults] = useState<readonly Field[]>([])
+  // PD12: a save was tried, so a hidden field that blocks one is named.
+  const [tried, setTried] = useState(false)
 
   if (config === null) {
     return <p className={styles.muted}>{failed ? 'Verbindingsfout. Probeer opnieuw.' : 'Laden…'}</p>
   }
   const runId = config.run.run_id
   const noiseOn = record.values?.bm_enabled === true
+  const unfilled = (field: Field) =>
+    record.values?.[field] === null || record.values?.[field] === 'invalid'
+  // PD12: the hidden fields to name -- empty or invalid, or refused by the server.
+  const hiddenFaults = noiseOn
+    ? []
+    : NOISE_FIELDS.filter((field) => (tried && unfilled(field)) || faults[field] !== undefined)
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    const values = record.values
-    const blocked = noiseOn
-      ? []
-      : NOISE_FIELDS.filter((field) => values?.[field] === null || values?.[field] === 'invalid')
-    setHiddenFaults(blocked)
-    if (blocked.length === 0) void send()
+    setTried(true)
+    if (noiseOn || !NOISE_FIELDS.some(unfilled)) void send()
   }
 
   async function send() {
@@ -171,13 +176,12 @@ export function GlobalSection() {
         </div>
         {noiseOn && NOISE_FIELDS.map(numberField)}
       </Group>
-      {!noiseOn &&
-        hiddenFaults.map((field) => (
-          <p key={field} className={styles.error} role="alert">
-            {explanations[field].name} is leeg of ongeldig. Zet Willekeurige ruis aan om het te
-            verbeteren.
-          </p>
-        ))}
+      {hiddenFaults.map((field) => (
+        <p key={field} className={styles.error} role="alert">
+          {explanations[field].name} is leeg of ongeldig. Zet Willekeurige ruis aan om het te
+          verbeteren.
+        </p>
+      ))}
       <Group title="Koersbord">{BOARD_FIELDS.map(numberField)}</Group>
       <div className={styles.row}>
         <Button type="submit" disabled={busy}>
