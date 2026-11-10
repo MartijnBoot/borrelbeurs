@@ -52,3 +52,6 @@ Thumbs.db
 
 # dev.ps1 state: pids and server logs
 .dev/
+
+# scratch output of agent sessions; the agentic workflow kit lives in its own repository
+output/
