@@ -7,3 +7,8 @@
 #
 #   # reason: <why this does not apply, or what blocks the fix; who decided>
 #   CVE-2026-12345 exp:2026-12-31
+
+# reason: zlib1g fix (+deb13u1) is in trixie-security but not yet in python:3.11-slim; drop on the next digest bump; MB, 2026-11-10
+CVE-2026-85091 exp:2026-11-24
+# reason: zlib1g fix (+deb13u1) is in trixie-security but not yet in python:3.11-slim; drop on the next digest bump; MB, 2026-11-10
+CVE-2026-76844 exp:2026-11-24
